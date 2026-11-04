@@ -1,0 +1,70 @@
+spring:
+  application:
+    name: yield-pricing-engine
+
+  datasource:
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/yield_engine}
+    username: ${SPRING_DATASOURCE_USERNAME:postgres}
+    password: ${SPRING_DATASOURCE_PASSWORD:postgres}
+    driver-class-name: org.postgresql.Driver
+    hikari:
+      pool-name: YieldEngineHikariPool
+      maximum-pool-size: 20
+      minimum-idle: 5
+      connection-timeout: 30000
+      idle-timeout: 600000
+      max-lifetime: 1800000
+
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate
+    properties:
+      hibernate:
+        format_sql: false
+        jdbc:
+          batch_size: 50
+        order_inserts: true
+        order_updates: true
+
+  flyway:
+    enabled: true
+    baseline-on-migrate: true
+    locations: classpath:db/migration
+
+  data:
+    redis:
+      host: ${SPRING_DATA_REDIS_HOST:localhost}
+      port: ${SPRING_DATA_REDIS_PORT:6379}
+      timeout: 2000ms
+
+  threads:
+    virtual:
+      enabled: false # Set to true when running on Java 21+
+
+server:
+  port: ${SERVER_PORT:8080}
+  shutdown: graceful
+
+pricing:
+  token:
+    secret-key: ${PRICING_TOKEN_SECRET:YieldEngineDeterministicSecretKeyHMACSHA256SecretValueMustBe256BitsMinimum!}
+    ttl-minutes: 10
+  hold:
+    ttl-minutes: 10
+  cache:
+    caffeine-spec: "maximumSize=10000,expireAfterWrite=60s"
+
+springdoc:
+  api-docs:
+    path: /v3/api-docs
+  swagger-ui:
+    path: /swagger-ui.html
+    tags-sorter: alpha
+    operations-sorter: alpha
+
+logging:
+  level:
+    com.yieldengine: INFO
+    org.hibernate.SQL: WARN
+    org.springframework.transaction: INFO
