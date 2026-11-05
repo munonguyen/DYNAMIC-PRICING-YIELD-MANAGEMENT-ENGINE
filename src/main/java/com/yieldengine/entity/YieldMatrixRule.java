@@ -20,44 +20,18 @@ public class YieldMatrixRule {
     private UUID id;
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "group_id", nullable = false)
-    private ResourceGroup resourceGroup;
+    @JoinColumn(name = "rule_set_id", nullable = false)
+    private YieldRuleSet ruleSet;
 
     @Column(name = "rule_name", nullable = false, length = 100)
     private String ruleName;
 
-    @Column(name = "min_occupancy_pct", nullable = false, precision = 5, scale = 2)
-    private BigDecimal minOccupancyPct;
+    @Column(name = "occupancy_pct", columnDefinition = "numrange", nullable = false)
+    private String occupancyPct;
 
-    @Column(name = "max_occupancy_pct", nullable = false, precision = 5, scale = 2)
-    private BigDecimal maxOccupancyPct;
+    @Column(name = "lead_hours", columnDefinition = "numrange", nullable = false)
+    private String leadHours;
 
-    @Column(name = "min_lead_hours", nullable = false, precision = 7, scale = 2)
-    private BigDecimal minLeadHours;
-
-    @Column(name = "max_lead_hours", nullable = false, precision = 7, scale = 2)
-    private BigDecimal maxLeadHours;
-
-    @Column(nullable = false, precision = 5, scale = 3)
+    @Column(nullable = false, precision = 6, scale = 4)
     private BigDecimal multiplier;
-
-    @Column(nullable = false)
-    @Builder.Default
-    private Integer priority = 1;
-
-    @Column(nullable = false)
-    @Builder.Default
-    private Boolean active = true;
-
-    /**
-     * Checks if given occupancy percentage and lead hours fall within this rule's bracket [min, max)
-     */
-    public boolean matches(BigDecimal occupancyPct, BigDecimal leadHours) {
-        if (!Boolean.TRUE.equals(active)) {
-            return false;
-        }
-        boolean occMatches = occupancyPct.compareTo(minOccupancyPct) >= 0 && occupancyPct.compareTo(maxOccupancyPct) < 0;
-        boolean leadMatches = leadHours.compareTo(minLeadHours) >= 0 && leadHours.compareTo(maxLeadHours) < 0;
-        return occMatches && leadMatches;
-    }
 }

@@ -7,3 +7,4 @@ public class ResourceNotFoundException extends AppException {
         super(message, HttpStatus.NOT_FOUND);
     }
 }
+

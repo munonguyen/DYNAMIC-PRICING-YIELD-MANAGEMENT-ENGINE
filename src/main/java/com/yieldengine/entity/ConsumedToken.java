@@ -20,9 +20,17 @@ public class ConsumedToken {
     @Column(name = "token_jti")
     private UUID tokenJti;
 
-    @OneToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "reservation_id", nullable = false, unique = true)
-    private Reservation reservation;
+    @Column(length = 40)
+    private String kid;
+
+    @Column(name = "tenant_id", nullable = false)
+    private UUID tenantId;
+
+    @Column(name = "reservation_id")
+    private UUID reservationId;
+
+    @Column(name = "token_expires", nullable = false)
+    private Instant tokenExpires;
 
     @CreationTimestamp
     @Column(name = "consumed_at", nullable = false, updatable = false)

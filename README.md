@@ -125,3 +125,4 @@ Truy cập Swagger UI tại:
 | `POST` | `/api/v1/bookings/{id}/confirm` | Xác nhận thanh toán thành công |
 | `POST` | `/api/v1/bookings/{id}/cancel` | Hủy đặt sân, hoàn lại số đếm `reserved_count` |
 | `POST` | `/api/v1/simulations/run` | **Monte Carlo Simulation**: Giả lập 1.500 khách đặt 980 giờ sân (+35.8% RevPAR) |
+

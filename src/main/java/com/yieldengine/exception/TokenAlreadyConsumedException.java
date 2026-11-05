@@ -7,3 +7,4 @@ public class TokenAlreadyConsumedException extends AppException {
         super(message, HttpStatus.CONFLICT);
     }
 }
+

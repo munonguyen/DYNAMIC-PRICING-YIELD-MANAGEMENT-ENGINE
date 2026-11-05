@@ -1,7 +1,7 @@
 package com.yieldengine.controller;
 
-import com.yieldengine.dto.SimulationRequest;
-import com.yieldengine.dto.SimulationResultResponse;
+import com.yieldengine.dto.request.SimulationRequest;
+import com.yieldengine.dto.response.SimulationResultResponse;
 import com.yieldengine.service.SimulationService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -33,3 +33,4 @@ public class SimulationController {
         return ResponseEntity.ok(result);
     }
 }
+

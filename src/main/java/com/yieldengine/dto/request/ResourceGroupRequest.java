@@ -1,6 +1,5 @@
-package com.yieldengine.dto;
+package com.yieldengine.dto.request;
 
-import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
@@ -9,13 +8,15 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
-import java.math.BigDecimal;
+import java.util.UUID;
 
 @Data
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
 public class ResourceGroupRequest {
+
+    private UUID tenantId;
 
     @NotBlank(message = "code is required")
     private String code;
@@ -28,14 +29,20 @@ public class ResourceGroupRequest {
     private Integer totalUnits;
 
     @NotNull(message = "basePrice is required")
-    @DecimalMin(value = "0.0", inclusive = false, message = "basePrice must be positive")
-    private BigDecimal basePrice;
+    @Min(value = 1, message = "basePrice must be positive")
+    private Long basePrice;
 
     @NotNull(message = "minPrice is required")
-    @DecimalMin(value = "0.0", inclusive = false, message = "minPrice must be positive")
-    private BigDecimal minPrice;
+    @Min(value = 1, message = "minPrice must be positive")
+    private Long minPrice;
 
     @NotNull(message = "maxPrice is required")
-    @DecimalMin(value = "0.0", inclusive = false, message = "maxPrice must be positive")
-    private BigDecimal maxPrice;
+    @Min(value = 1, message = "maxPrice must be positive")
+    private Long maxPrice;
+
+    @Builder.Default
+    private Integer slotMinutes = 60;
+
+    @Builder.Default
+    private Integer holdTtlSeconds = 600;
 }

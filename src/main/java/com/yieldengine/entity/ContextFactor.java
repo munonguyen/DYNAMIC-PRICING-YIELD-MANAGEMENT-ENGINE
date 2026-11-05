@@ -1,0 +1,46 @@
+package com.yieldengine.entity;
+
+import jakarta.persistence.*;
+import lombok.*;
+import org.hibernate.annotations.CreationTimestamp;
+
+import java.math.BigDecimal;
+import java.time.Instant;
+import java.util.UUID;
+
+@Entity
+@Table(name = "context_factors")
+@Getter
+@Setter
+@NoArgsConstructor
+@AllArgsConstructor
+@Builder
+public class ContextFactor {
+
+    @Id
+    @GeneratedValue(strategy = GenerationType.UUID)
+    private UUID id;
+
+    @Column(name = "tenant_id", nullable = false)
+    private UUID tenantId;
+
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(name = "group_id", nullable = false)
+    private ResourceGroup resourceGroup;
+
+    @Column(nullable = false, length = 30)
+    private String kind;
+
+    @Column(columnDefinition = "tstzrange", nullable = false)
+    private String period;
+
+    @Column(nullable = false, precision = 6, scale = 4)
+    private BigDecimal multiplier;
+
+    @Column(length = 100)
+    private String source;
+
+    @CreationTimestamp
+    @Column(name = "created_at", nullable = false, updatable = false)
+    private Instant createdAt;
+}

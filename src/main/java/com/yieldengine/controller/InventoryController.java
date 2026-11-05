@@ -1,7 +1,7 @@
 package com.yieldengine.controller;
 
-import com.yieldengine.dto.CreateTimeSlotRequest;
-import com.yieldengine.dto.ResourceGroupRequest;
+import com.yieldengine.dto.request.CreateTimeSlotRequest;
+import com.yieldengine.dto.request.ResourceGroupRequest;
 import com.yieldengine.entity.ResourceGroup;
 import com.yieldengine.entity.TimeSlot;
 import com.yieldengine.service.InventoryService;

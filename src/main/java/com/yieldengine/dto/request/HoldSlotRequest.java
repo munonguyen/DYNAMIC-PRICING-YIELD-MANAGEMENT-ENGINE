@@ -1,12 +1,12 @@
-package com.yieldengine.dto;
+package com.yieldengine.dto.request;
 
+import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
-import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.UUID;
 
@@ -14,7 +14,9 @@ import java.util.UUID;
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-public class CreateTimeSlotRequest {
+public class HoldSlotRequest {
+
+    private UUID tenantId;
 
     @NotNull(message = "groupId is required")
     private UUID groupId;
@@ -22,11 +24,11 @@ public class CreateTimeSlotRequest {
     @NotNull(message = "slotStart is required")
     private Instant slotStart;
 
-    @NotNull(message = "slotEnd is required")
-    private Instant slotEnd;
+    @NotBlank(message = "userId is required")
+    private String userId;
 
-    private Integer totalCapacity;
+    @NotBlank(message = "priceLockToken is required")
+    private String priceLockToken;
 
-    @Builder.Default
-    private BigDecimal contextMultiplier = BigDecimal.valueOf(1.000);
+    private String idempotencyKey;
 }

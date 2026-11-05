@@ -83,3 +83,4 @@ class PricingFormulaBoundaryTest {
         assertTrue(testedCombinations >= 200, "Tested at least 200 combinations, actually tested: " + testedCombinations);
     }
 }
+

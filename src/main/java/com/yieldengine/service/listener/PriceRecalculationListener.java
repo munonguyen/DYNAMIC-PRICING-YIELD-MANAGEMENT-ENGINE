@@ -2,6 +2,7 @@ package com.yieldengine.service.listener;
 
 import com.yieldengine.config.AsyncConfig;
 import com.yieldengine.dto.SlotOccupancyChangedEvent;
+import com.yieldengine.entity.SlotId;
 import com.yieldengine.entity.TimeSlot;
 import com.yieldengine.repository.TimeSlotRepository;
 import com.yieldengine.service.PricingEngineService;
@@ -25,17 +26,21 @@ public class PriceRecalculationListener {
     @Async(AsyncConfig.PRICE_RECALCULATION_EXECUTOR)
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
     public void onOccupancyChanged(SlotOccupancyChangedEvent event) {
-        log.info("Received SlotOccupancyChangedEvent for slotId={}, recalculating price asynchronously...", event.getSlotId());
+        log.info("Received SlotOccupancyChangedEvent for group={} at {}, recalculating price asynchronously...",
+                event.getGroupId(), event.getSlotStart());
         try {
-            Optional<TimeSlot> slotOpt = timeSlotRepository.findById(event.getSlotId());
+            SlotId slotId = new SlotId(event.getGroupId(), event.getSlotStart());
+            Optional<TimeSlot> slotOpt = timeSlotRepository.findById(slotId);
             if (slotOpt.isPresent()) {
                 pricingEngineService.recalculateAndSnapshot(slotOpt.get());
-                log.info("Successfully recalculated and warmed cache for slotId={}", event.getSlotId());
+                log.info("Successfully recalculated price and warmed cache for group={} at {}",
+                        event.getGroupId(), event.getSlotStart());
             } else {
-                log.warn("TimeSlot {} no longer exists during recalculation", event.getSlotId());
+                log.warn("TimeSlot no longer exists for group={} at {}", event.getGroupId(), event.getSlotStart());
             }
         } catch (Exception e) {
-            log.error("Failed to asynchronously recalculate price for slot: {}", event.getSlotId(), e);
+            log.error("Failed to asynchronously recalculate price for group={} at {}: {}",
+                    event.getGroupId(), event.getSlotStart(), e.getMessage(), e);
         }
     }
 }

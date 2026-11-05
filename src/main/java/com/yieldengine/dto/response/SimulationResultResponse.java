@@ -1,4 +1,4 @@
-package com.yieldengine.dto;
+package com.yieldengine.dto.response;
 
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -37,3 +37,4 @@ public class SimulationResultResponse {
         private BigDecimal revPar; // Revenue Per Available Resource (Revenue / Total Slot Hours)
     }
 }
+

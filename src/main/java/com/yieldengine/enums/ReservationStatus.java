@@ -1,4 +1,4 @@
-package com.yieldengine.entity;
+package com.yieldengine.enums;
 
 public enum ReservationStatus {
     HELD,
@@ -6,3 +6,4 @@ public enum ReservationStatus {
     EXPIRED,
     CANCELLED
 }
+

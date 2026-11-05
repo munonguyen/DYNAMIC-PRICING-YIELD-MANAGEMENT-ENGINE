@@ -7,3 +7,4 @@ public class SlotUnavailableException extends AppException {
         super(message, HttpStatus.CONFLICT);
     }
 }
+

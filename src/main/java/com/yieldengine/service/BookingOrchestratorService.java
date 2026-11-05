@@ -1,8 +1,9 @@
 package com.yieldengine.service;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.yieldengine.config.PricingProperties;
-import com.yieldengine.dto.HoldSlotRequest;
-import com.yieldengine.dto.HoldSlotResponse;
+import com.yieldengine.dto.request.HoldSlotRequest;
+import com.yieldengine.dto.response.HoldSlotResponse;
 import com.yieldengine.dto.SlotOccupancyChangedEvent;
 import com.yieldengine.entity.*;
 import com.yieldengine.exception.ResourceNotFoundException;
@@ -27,132 +28,179 @@ import java.util.UUID;
 public class BookingOrchestratorService {
 
     private final TimeSlotRepository timeSlotRepository;
+    private final SlotInventoryRepository slotInventoryRepository;
     private final UnitRepository unitRepository;
+    private final UnitTimeLockRepository unitTimeLockRepository;
     private final ReservationRepository reservationRepository;
     private final ConsumedTokenRepository consumedTokenRepository;
+    private final OutboxEventRepository outboxEventRepository;
     private final PriceLockTokenService priceLockTokenService;
     private final ApplicationEventPublisher eventPublisher;
     private final PricingProperties pricingProperties;
+    private final ObjectMapper objectMapper;
 
     /**
-     * ACID Hold Slot transaction:
-     * 1. Verify PriceLockToken (HMAC-SHA256 signature, expiry, matching slot/user).
-     * 2. Check token replay in consumed_tokens (Anti-Replay).
-     * 3. Check capacity on TimeSlot (@Version Optimistic Locking).
-     * 4. Lock physical unit via UnitRepository.findAndLockFirstAvailableUnit (FOR UPDATE SKIP LOCKED).
-     * 5. Increment reserved_count, save Reservation (status = HELD), insert into consumed_tokens.
-     * 6. Publish SlotOccupancyChangedEvent for AFTER_COMMIT asynchronous recalculation.
+     * Luồng B: Giữ chỗ & Khóa giá (Write-Contention, một @Transactional duy nhất)
      */
     @Transactional
     public HoldSlotResponse holdSlot(HoldSlotRequest request) {
-        // 1. Verify token signature and expiration
+        // 1. Xác thực chữ ký (theo kid) và thời hạn của token
         PriceLockTokenService.TokenPayload payload = priceLockTokenService.verifyAndExtract(request.getPriceLockToken());
 
-        if (!payload.getSlotId().equals(request.getSlotId())) {
-            throw new IllegalArgumentException("Token slotId does not match request slotId");
+        if (!payload.getGroupId().equals(request.getGroupId()) || !payload.getSlotStart().equals(request.getSlotStart())) {
+            throw new IllegalArgumentException("Token target slot does not match request target");
         }
 
-        // 2. Anti-Replay check: has token already been consumed?
+        // 2. Chống Replay Attack: kiểm tra token_jti
         if (consumedTokenRepository.existsById(payload.getTokenJti())) {
             throw new TokenAlreadyConsumedException("PriceLockToken has already been consumed: " + payload.getTokenJti());
         }
 
-        // 3. Load TimeSlot and check capacity
-        TimeSlot timeSlot = timeSlotRepository.findById(request.getSlotId())
-                .orElseThrow(() -> new ResourceNotFoundException("TimeSlot not found with id: " + request.getSlotId()));
+        // 3. Load TimeSlot
+        SlotId slotId = new SlotId(request.getGroupId(), request.getSlotStart());
+        TimeSlot timeSlot = timeSlotRepository.findById(slotId)
+                .orElseThrow(() -> new ResourceNotFoundException("TimeSlot not found for group: " + request.getGroupId()));
 
-        if (timeSlot.getReservedCount() >= timeSlot.getTotalCapacity()) {
-            throw new SlotUnavailableException("No remaining capacity for time slot: " + timeSlot.getId());
-        }
+        // 4. Chọn sân vật lý khả dụng với FOR UPDATE SKIP LOCKED
+        Unit unit = unitRepository.findAndLockFirstAvailableUnit(request.getGroupId(), request.getSlotStart(), timeSlot.getSlotEnd())
+                .orElseThrow(() -> new SlotUnavailableException("No physical court is currently available for this slot"));
 
-        // 4. Find and lock first available physical unit
-        Unit unit = unitRepository.findAndLockFirstAvailableUnit(timeSlot.getResourceGroup().getId(), timeSlot.getId())
-                .orElseThrow(() -> new SlotUnavailableException("All physical units are currently held or booked"));
+        // 5. Xóa khóa HOLD đã hết hạn của sân đó (nếu có)
+        unitTimeLockRepository.deleteExpiredHoldLocksForUnit(unit.getId());
 
-        // 5. Build and save Reservation
+        // 6. Chuẩn bị reservation ID và thời hạn giữ chỗ
+        UUID reservationId = UUID.randomUUID();
         Instant now = Instant.now();
         Instant holdExpiresAt = now.plus(Duration.ofMinutes(pricingProperties.getHold().getTtlMinutes()));
 
+        // 7. Tạo khóa vật lý unit_time_locks (GiST Exclusion chặn double-booking)
+        String periodRange = String.format("[\"%s\", \"%s\")", request.getSlotStart(), timeSlot.getSlotEnd());
+        UnitTimeLock lock = UnitTimeLock.builder()
+                .tenantId(request.getTenantId())
+                .unit(unit)
+                .period(periodRange)
+                .kind("HOLD")
+                .reservationId(reservationId)
+                .expiresAt(holdExpiresAt)
+                .build();
+        unitTimeLockRepository.save(lock);
+
+        // 8. Tạo đơn đặt chỗ reservations
         Map<String, Object> pricingAudit = new HashMap<>();
         pricingAudit.put("lockedPrice", payload.getLockedPrice());
-        pricingAudit.put("tokenJti", payload.getTokenJti());
-        pricingAudit.put("verifiedAt", now.toString());
+        pricingAudit.put("tokenJti", payload.getTokenJti().toString());
+        pricingAudit.put("kid", payload.getKid());
+        pricingAudit.put("heldAt", now.toString());
 
         Reservation reservation = Reservation.builder()
+                .id(new ReservationId(reservationId, request.getSlotStart()))
+                .tenantId(request.getTenantId())
+                .groupId(request.getGroupId())
                 .unit(unit)
-                .timeSlot(timeSlot)
-                .resourceGroup(timeSlot.getResourceGroup())
-                .userId(request.getUserId())
+                .status("HELD")
                 .lockedPrice(payload.getLockedPrice())
                 .pricingAudit(pricingAudit)
-                .status(ReservationStatus.HELD)
+                .tokenJti(payload.getTokenJti())
                 .holdExpiresAt(holdExpiresAt)
                 .build();
+        reservationRepository.save(reservation);
 
-        reservation = reservationRepository.save(reservation);
-
-        // 6. Record consumed token to prevent replay
+        // 9. INSERT consumed_tokens chống Replay Attack
         ConsumedToken consumedToken = ConsumedToken.builder()
                 .tokenJti(payload.getTokenJti())
-                .reservation(reservation)
+                .kid(payload.getKid())
+                .tenantId(request.getTenantId())
+                .reservationId(reservationId)
+                .tokenExpires(payload.getExpiresAt())
                 .build();
         consumedTokenRepository.save(consumedToken);
 
-        // 7. Update reservedCount on TimeSlot (triggers @Version check)
-        timeSlot.setReservedCount(timeSlot.getReservedCount() + 1);
-        timeSlotRepository.save(timeSlot);
+        // 10. UPDATE slot_inventory nguyên tử
+        int updated = slotInventoryRepository.incrementHeldCountIfAvailable(request.getGroupId(), request.getSlotStart());
+        if (updated == 0) {
+            throw new SlotUnavailableException("Slot capacity reached during atomic inventory update");
+        }
 
-        // 8. Publish internal Spring Event (handled AFTER_COMMIT via @Async)
-        eventPublisher.publishEvent(new SlotOccupancyChangedEvent(timeSlot.getId(), timeSlot.getResourceGroup().getId(), now));
+        // 11. INSERT outbox_events (SLOT_OCCUPANCY_CHANGED) cùng transaction
+        Map<String, Object> outboxPayload = new HashMap<>();
+        outboxPayload.put("groupId", request.getGroupId().toString());
+        outboxPayload.put("slotStart", request.getSlotStart().toString());
+        outboxPayload.put("reservationId", reservationId.toString());
+
+        OutboxEvent outboxEvent = OutboxEvent.builder()
+                .tenantId(request.getTenantId())
+                .aggregateType("SLOT")
+                .aggregateId(request.getGroupId().toString() + "#" + request.getSlotStart().toString())
+                .eventType("SLOT_OCCUPANCY_CHANGED")
+                .payload(outboxPayload)
+                .build();
+        outboxEventRepository.save(outboxEvent);
+
+        // 12. Phát sự kiện nội bộ Spring
+        eventPublisher.publishEvent(new SlotOccupancyChangedEvent(request.getGroupId(), request.getSlotStart(), now));
 
         log.info("Held unit {} for user {} at locked price {}", unit.getUnitNumber(), request.getUserId(), payload.getLockedPrice());
 
         return HoldSlotResponse.builder()
-                .reservationId(reservation.getId())
+                .reservationId(reservationId)
                 .unitId(unit.getId())
                 .unitNumber(unit.getUnitNumber())
-                .slotId(timeSlot.getId())
+                .groupId(request.getGroupId())
+                .slotStart(request.getSlotStart())
                 .userId(request.getUserId())
                 .lockedPrice(payload.getLockedPrice())
-                .status(reservation.getStatus().name())
+                .status("HELD")
                 .holdExpiresAt(holdExpiresAt)
                 .build();
     }
 
     @Transactional
     public void confirmReservation(UUID reservationId) {
-        Reservation reservation = reservationRepository.findById(reservationId)
+        Reservation reservation = reservationRepository.findByReservationId(reservationId)
                 .orElseThrow(() -> new ResourceNotFoundException("Reservation not found: " + reservationId));
 
-        if (reservation.getStatus() != ReservationStatus.HELD) {
+        if (!"HELD".equals(reservation.getStatus())) {
             throw new IllegalStateException("Reservation is not in HELD status: " + reservation.getStatus());
         }
 
-        reservation.setStatus(ReservationStatus.CONFIRMED);
+        reservation.setStatus("CONFIRMED");
+        reservation.setConfirmedAt(Instant.now());
         reservation.setHoldExpiresAt(null);
         reservationRepository.save(reservation);
+
+        // Đổi khóa HOLD thành BOOKING
+        unitTimeLockRepository.findByReservationId(reservationId).ifPresent(lock -> {
+            lock.setKind("BOOKING");
+            lock.setExpiresAt(null);
+            unitTimeLockRepository.save(lock);
+        });
+
+        // Điều chỉnh held_count - 1, confirmed_count + 1
+        slotInventoryRepository.confirmHold(reservation.getGroupId(), reservation.getSlotStart());
+
         log.info("Confirmed reservation: {}", reservationId);
     }
 
     @Transactional
     public void cancelReservation(UUID reservationId) {
-        Reservation reservation = reservationRepository.findById(reservationId)
+        Reservation reservation = reservationRepository.findByReservationId(reservationId)
                 .orElseThrow(() -> new ResourceNotFoundException("Reservation not found: " + reservationId));
 
-        if (reservation.getStatus() == ReservationStatus.CANCELLED || reservation.getStatus() == ReservationStatus.EXPIRED) {
+        if ("CANCELLED".equals(reservation.getStatus()) || "EXPIRED".equals(reservation.getStatus())) {
             return;
         }
 
-        reservation.setStatus(ReservationStatus.CANCELLED);
+        reservation.setStatus("CANCELLED");
+        reservation.setCancelledAt(Instant.now());
         reservationRepository.save(reservation);
 
-        TimeSlot timeSlot = reservation.getTimeSlot();
-        if (timeSlot.getReservedCount() > 0) {
-            timeSlot.setReservedCount(timeSlot.getReservedCount() - 1);
-            timeSlotRepository.save(timeSlot);
-        }
+        // Xóa khóa unit_time_locks
+        unitTimeLockRepository.findByReservationId(reservationId).ifPresent(unitTimeLockRepository::delete);
 
-        eventPublisher.publishEvent(new SlotOccupancyChangedEvent(timeSlot.getId(), timeSlot.getResourceGroup().getId(), Instant.now()));
+        // Nhả slot_inventory
+        slotInventoryRepository.releaseHold(reservation.getGroupId(), reservation.getSlotStart());
+
+        eventPublisher.publishEvent(new SlotOccupancyChangedEvent(reservation.getGroupId(), reservation.getSlotStart(), Instant.now()));
         log.info("Cancelled reservation: {}", reservationId);
     }
 }

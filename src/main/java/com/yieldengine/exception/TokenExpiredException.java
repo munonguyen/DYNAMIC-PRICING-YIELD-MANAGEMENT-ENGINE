@@ -7,3 +7,4 @@ public class TokenExpiredException extends AppException {
         super(message, HttpStatus.GONE);
     }
 }
+

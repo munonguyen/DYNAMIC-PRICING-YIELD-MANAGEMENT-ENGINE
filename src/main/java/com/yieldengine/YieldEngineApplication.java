@@ -18,3 +18,4 @@ public class YieldEngineApplication {
         SpringApplication.run(YieldEngineApplication.class, args);
     }
 }
+

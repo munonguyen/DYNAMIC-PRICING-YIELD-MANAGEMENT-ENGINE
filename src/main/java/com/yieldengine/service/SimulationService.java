@@ -1,14 +1,13 @@
 package com.yieldengine.service;
 
-import com.yieldengine.dto.SimulationRequest;
-import com.yieldengine.dto.SimulationResultResponse;
+import com.yieldengine.dto.request.SimulationRequest;
+import com.yieldengine.dto.response.SimulationResultResponse;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
-import java.util.Random;
 
 @Slf4j
 @Service
@@ -82,3 +81,4 @@ public class SimulationService {
                 .build();
     }
 }
+

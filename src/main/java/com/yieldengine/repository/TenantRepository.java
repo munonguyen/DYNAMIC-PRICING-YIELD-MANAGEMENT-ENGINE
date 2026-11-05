@@ -1,11 +1,13 @@
 package com.yieldengine.repository;
 
-import com.yieldengine.entity.SlotPriceSnapshot;
+import com.yieldengine.entity.Tenant;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 
+import java.util.Optional;
 import java.util.UUID;
 
 @Repository
-public interface SlotPriceSnapshotRepository extends JpaRepository<SlotPriceSnapshot, UUID> {
+public interface TenantRepository extends JpaRepository<Tenant, UUID> {
+    Optional<Tenant> findByCode(String code);
 }

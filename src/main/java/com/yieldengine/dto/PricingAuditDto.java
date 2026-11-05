@@ -1,9 +1,6 @@
 package com.yieldengine.dto;
 
-import lombok.AllArgsConstructor;
-import lombok.Builder;
-import lombok.Data;
-import lombok.NoArgsConstructor;
+import lombok.*;
 
 import java.math.BigDecimal;
 import java.time.Instant;
@@ -15,12 +12,12 @@ import java.util.Map;
 @NoArgsConstructor
 @AllArgsConstructor
 public class PricingAuditDto {
-    private BigDecimal basePrice;
+    private Long basePrice;
     private BigDecimal timeMultiplier;
     private BigDecimal matrixMultiplier;
     private BigDecimal contextMultiplier;
     private BigDecimal rawPrice;
-    private BigDecimal clampedPrice;
+    private Long clampedPrice;
     private BigDecimal occupancyPercentage;
     private BigDecimal leadHours;
     private Instant calculatedAt;

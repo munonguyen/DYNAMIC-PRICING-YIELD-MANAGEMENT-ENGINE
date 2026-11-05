@@ -7,3 +7,4 @@ public class InvalidTokenSignatureException extends AppException {
         super(message, HttpStatus.BAD_REQUEST);
     }
 }
+

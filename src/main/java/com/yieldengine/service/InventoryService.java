@@ -1,15 +1,10 @@
 package com.yieldengine.service;
 
-import com.yieldengine.dto.CreateTimeSlotRequest;
-import com.yieldengine.dto.ResourceGroupRequest;
-import com.yieldengine.entity.ResourceGroup;
-import com.yieldengine.entity.TimeSlot;
-import com.yieldengine.entity.Unit;
-import com.yieldengine.entity.UnitStatus;
+import com.yieldengine.dto.request.CreateTimeSlotRequest;
+import com.yieldengine.dto.request.ResourceGroupRequest;
+import com.yieldengine.entity.*;
 import com.yieldengine.exception.ResourceNotFoundException;
-import com.yieldengine.repository.ResourceGroupRepository;
-import com.yieldengine.repository.TimeSlotRepository;
-import com.yieldengine.repository.UnitRepository;
+import com.yieldengine.repository.*;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -25,20 +20,39 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class InventoryService {
 
+    private final TenantRepository tenantRepository;
     private final ResourceGroupRepository resourceGroupRepository;
     private final UnitRepository unitRepository;
     private final TimeSlotRepository timeSlotRepository;
+    private final SlotInventoryRepository slotInventoryRepository;
     private final PricingEngineService pricingEngineService;
 
     @Transactional
     public ResourceGroup createResourceGroup(ResourceGroupRequest request) {
+        UUID tenantId = request.getTenantId();
+        Tenant tenant;
+        if (tenantId != null) {
+            tenant = tenantRepository.findById(tenantId)
+                    .orElseThrow(() -> new ResourceNotFoundException("Tenant not found: " + tenantId));
+        } else {
+            tenant = tenantRepository.findAll().stream().findFirst()
+                    .orElseGet(() -> tenantRepository.save(Tenant.builder()
+                            .code("DEFAULT_TENANT")
+                            .name("Default System Tenant")
+                            .status("ACTIVE")
+                            .build()));
+        }
+
         ResourceGroup group = ResourceGroup.builder()
+                .tenant(tenant)
                 .code(request.getCode())
                 .name(request.getName())
-                .totalUnits(request.getTotalUnits())
+                .slotMinutes(request.getSlotMinutes() != null ? request.getSlotMinutes() : 60)
+                .holdTtlSeconds(request.getHoldTtlSeconds() != null ? request.getHoldTtlSeconds() : 600)
                 .basePrice(request.getBasePrice())
                 .minPrice(request.getMinPrice())
                 .maxPrice(request.getMaxPrice())
+                .status("ACTIVE")
                 .build();
 
         group = resourceGroupRepository.save(group);
@@ -48,15 +62,16 @@ public class InventoryService {
         for (int i = 1; i <= request.getTotalUnits(); i++) {
             String unitNumber = String.format("SAN_%02d", i);
             Unit unit = Unit.builder()
+                    .tenantId(tenant.getId())
                     .resourceGroup(group)
                     .unitNumber(unitNumber)
-                    .status(UnitStatus.ACTIVE)
+                    .status("ACTIVE")
                     .build();
             units.add(unit);
         }
         unitRepository.saveAll(units);
 
-        log.info("Created ResourceGroup {} with {} units", group.getCode(), group.getTotalUnits());
+        log.info("Created ResourceGroup {} with {} units for tenant {}", group.getCode(), request.getTotalUnits(), tenant.getCode());
         return group;
     }
 
@@ -71,18 +86,30 @@ public class InventoryService {
         ResourceGroup group = getResourceGroup(request.getGroupId());
         int capacity = (request.getTotalCapacity() != null && request.getTotalCapacity() > 0)
                 ? request.getTotalCapacity()
-                : group.getTotalUnits();
+                : 10;
+
+        SlotId slotId = new SlotId(group.getId(), request.getSlotStart());
 
         TimeSlot timeSlot = TimeSlot.builder()
-                .resourceGroup(group)
-                .slotStart(request.getSlotStart())
+                .id(slotId)
+                .tenantId(group.getTenant().getId())
                 .slotEnd(request.getSlotEnd())
                 .totalCapacity(capacity)
-                .reservedCount(0)
                 .contextMultiplier(request.getContextMultiplier())
+                .status("OPEN")
                 .build();
 
         timeSlot = timeSlotRepository.save(timeSlot);
+
+        // Initialize slot_inventory
+        SlotInventory inventory = SlotInventory.builder()
+                .id(slotId)
+                .tenantId(group.getTenant().getId())
+                .heldCount(0)
+                .confirmedCount(0)
+                .totalCapacity(capacity)
+                .build();
+        slotInventoryRepository.save(inventory);
 
         // Snapshot initial price
         pricingEngineService.recalculateAndSnapshot(timeSlot);

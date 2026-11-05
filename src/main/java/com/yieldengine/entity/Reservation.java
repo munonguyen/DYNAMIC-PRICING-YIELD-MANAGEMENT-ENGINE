@@ -7,7 +7,6 @@ import org.hibernate.annotations.CreationTimestamp;
 import org.hibernate.annotations.Type;
 import org.hibernate.annotations.UpdateTimestamp;
 
-import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.HashMap;
 import java.util.Map;
@@ -22,40 +21,53 @@ import java.util.UUID;
 @Builder
 public class Reservation {
 
-    @Id
-    @GeneratedValue(strategy = GenerationType.UUID)
-    private UUID id;
+    @EmbeddedId
+    private ReservationId id;
+
+    @Column(name = "tenant_id", nullable = false)
+    private UUID tenantId;
+
+    @Column(name = "booking_id")
+    private UUID bookingId;
+
+    @Column(name = "group_id", nullable = false)
+    private UUID groupId;
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "unit_id", nullable = false)
     private Unit unit;
 
-    @ManyToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "slot_id", nullable = false)
-    private TimeSlot timeSlot;
+    @Column(nullable = false, length = 20)
+    @Builder.Default
+    private String status = "HELD";
 
-    @ManyToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "group_id", nullable = false)
-    private ResourceGroup resourceGroup;
-
-    @Column(name = "user_id", nullable = false, length = 100)
-    private String userId;
-
-    @Column(name = "locked_price", nullable = false, precision = 12, scale = 2)
-    private BigDecimal lockedPrice;
+    @Column(name = "locked_price", nullable = false)
+    private Long lockedPrice;
 
     @Type(JsonType.class)
     @Column(name = "pricing_audit", columnDefinition = "jsonb", nullable = false)
     @Builder.Default
     private Map<String, Object> pricingAudit = new HashMap<>();
 
-    @Enumerated(EnumType.STRING)
-    @Column(nullable = false, length = 20)
-    @Builder.Default
-    private ReservationStatus status = ReservationStatus.HELD;
+    @Column(name = "token_jti")
+    private UUID tokenJti;
 
     @Column(name = "hold_expires_at")
     private Instant holdExpiresAt;
+
+    @Column(name = "confirmed_at")
+    private Instant confirmedAt;
+
+    @Column(name = "cancelled_at")
+    private Instant cancelledAt;
+
+    @Column(name = "cancel_reason", length = 100)
+    private String cancelReason;
+
+    @Version
+    @Column(nullable = false)
+    @Builder.Default
+    private Long version = 0L;
 
     @CreationTimestamp
     @Column(name = "created_at", nullable = false, updatable = false)
@@ -64,4 +76,12 @@ public class Reservation {
     @UpdateTimestamp
     @Column(name = "updated_at", nullable = false)
     private Instant updatedAt;
+
+    public UUID getReservationId() {
+        return id != null ? id.getId() : null;
+    }
+
+    public Instant getSlotStart() {
+        return id != null ? id.getSlotStart() : null;
+    }
 }

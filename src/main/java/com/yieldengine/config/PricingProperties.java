@@ -34,3 +34,4 @@ public class PricingProperties {
         private String caffeineSpec = "maximumSize=10000,expireAfterWrite=60s";
     }
 }
+

@@ -14,7 +14,6 @@ import org.springframework.stereotype.Service;
 
 import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;
-import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
 import java.security.InvalidKeyException;
 import java.security.MessageDigest;
@@ -37,19 +36,25 @@ public class PriceLockTokenService {
     @NoArgsConstructor
     @AllArgsConstructor
     public static class TokenPayload {
+        private String kid;
         private UUID tokenJti;
+        private UUID tenantId;
         private String userId;
-        private UUID slotId;
-        private BigDecimal lockedPrice;
+        private UUID groupId;
+        private Instant slotStart;
+        private Long lockedPrice;
         private Instant expiresAt;
     }
 
-    public String generateToken(UUID tokenJti, String userId, UUID slotId, BigDecimal lockedPrice, Instant expiresAt) {
+    public String generateToken(String kid, UUID tokenJti, UUID tenantId, String userId, UUID groupId, Instant slotStart, Long lockedPrice, Instant expiresAt) {
         try {
             TokenPayload payload = TokenPayload.builder()
+                    .kid(kid)
                     .tokenJti(tokenJti)
+                    .tenantId(tenantId)
                     .userId(userId)
-                    .slotId(slotId)
+                    .groupId(groupId)
+                    .slotStart(slotStart)
                     .lockedPrice(lockedPrice)
                     .expiresAt(expiresAt)
                     .build();

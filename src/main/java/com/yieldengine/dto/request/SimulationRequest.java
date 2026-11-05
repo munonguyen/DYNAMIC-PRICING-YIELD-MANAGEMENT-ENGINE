@@ -1,4 +1,4 @@
-package com.yieldengine.dto;
+package com.yieldengine.dto.request;
 
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -24,3 +24,4 @@ public class SimulationRequest {
     @Builder.Default
     private int totalCourts = 10;
 }
+

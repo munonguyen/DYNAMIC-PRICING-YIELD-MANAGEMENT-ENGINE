@@ -2,15 +2,14 @@ package com.yieldengine.entity;
 
 import jakarta.persistence.*;
 import lombok.*;
+import org.hibernate.annotations.CreationTimestamp;
 
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.UUID;
 
 @Entity
-@Table(name = "time_slots", uniqueConstraints = {
-        @UniqueConstraint(columnNames = {"group_id", "slot_start", "slot_end"})
-})
+@Table(name = "time_slots")
 @Getter
 @Setter
 @NoArgsConstructor
@@ -18,16 +17,11 @@ import java.util.UUID;
 @Builder
 public class TimeSlot {
 
-    @Id
-    @GeneratedValue(strategy = GenerationType.UUID)
-    private UUID id;
+    @EmbeddedId
+    private SlotId id;
 
-    @ManyToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "group_id", nullable = false)
-    private ResourceGroup resourceGroup;
-
-    @Column(name = "slot_start", nullable = false)
-    private Instant slotStart;
+    @Column(name = "tenant_id", nullable = false)
+    private UUID tenantId;
 
     @Column(name = "slot_end", nullable = false)
     private Instant slotEnd;
@@ -35,26 +29,23 @@ public class TimeSlot {
     @Column(name = "total_capacity", nullable = false)
     private Integer totalCapacity;
 
-    @Column(name = "reserved_count", nullable = false)
+    @Column(name = "context_multiplier", nullable = false, precision = 6, scale = 4)
     @Builder.Default
-    private Integer reservedCount = 0;
+    private BigDecimal contextMultiplier = BigDecimal.valueOf(1.0000);
 
-    @Column(name = "context_multiplier", nullable = false, precision = 5, scale = 3)
+    @Column(nullable = false, length = 20)
     @Builder.Default
-    private BigDecimal contextMultiplier = BigDecimal.valueOf(1.000);
+    private String status = "OPEN";
 
-    @Version
-    @Column(nullable = false)
-    @Builder.Default
-    private Long version = 0L;
+    @CreationTimestamp
+    @Column(name = "created_at", nullable = false, updatable = false)
+    private Instant createdAt;
 
-    @OneToOne(mappedBy = "timeSlot", cascade = CascadeType.ALL, orphanRemoval = true)
-    private SlotPriceSnapshot slotPriceSnapshot;
+    public UUID getGroupId() {
+        return id != null ? id.getGroupId() : null;
+    }
 
-    public double getOccupancyPercentage() {
-        if (totalCapacity == null || totalCapacity == 0) {
-            return 0.0;
-        }
-        return (double) (reservedCount != null ? reservedCount : 0) / totalCapacity * 100.0;
+    public Instant getSlotStart() {
+        return id != null ? id.getSlotStart() : null;
     }
 }
