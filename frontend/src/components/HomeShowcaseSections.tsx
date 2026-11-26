@@ -10,6 +10,7 @@ import type {
 import { formatSlotWindow, formatVnd } from '../api/marketplaceApi';
 import { EXPO_EASE, ScrollReveal } from './motionPrimitives';
 import { ActionButton } from './FairwayControls';
+import { AmbientVideoLayer } from './AmbientVideoLayer';
 
 interface HomeShowcaseSectionsProps {
   sports: SportTypeItem[];
@@ -34,6 +35,12 @@ interface SportSpotlightItem {
   proShopPerk: string;
   priceFrom: string;
   image: string;
+  video: {
+    webm: string;
+    mp4: string;
+    startSec?: number;
+    endSec?: number;
+  };
   highlights: string[];
 }
 
@@ -51,6 +58,12 @@ const SPORT_SPOTLIGHTS: SportSpotlightItem[] = [
     proShopPerk: 'Thùng nước ướp lạnh, áo bib khử khuẩn, trọng tài & quay Highlight AI',
     priceFrom: 'Từ 280.000₫/ca',
     image: '/images/sport-football-pitch.jpg',
+    video: {
+      webm: '/videos/hero-multisport.webm',
+      mp4: '/videos/hero-multisport.mp4',
+      startSec: 4.0,
+      endSec: 8.5,
+    },
     highlights: [
       'Cụm 6 sân liên hoàn tại Mỹ Đình hỗ trợ ghép sân 11v11 cho giải doanh nghiệp',
       'Hoàn tiền cọc 100% tự động nếu trời mưa bão không thể thi đấu',
@@ -70,6 +83,12 @@ const SPORT_SPOTLIGHTS: SportSpotlightItem[] = [
     proShopPerk: 'Thuê vợt Carbon T700 / Joola Pro, bóng Franklin X-40 & HLV kèm riêng',
     priceFrom: 'Từ 120.000₫/ca',
     image: '/images/court-pickleball-padel.jpg',
+    video: {
+      webm: '/videos/hero-multisport.webm',
+      mp4: '/videos/hero-multisport.mp4',
+      startSec: 12.25,
+      endSec: 16.0,
+    },
     highlights: [
       '10 sân mái vòm tại Bách Khoa & cụm sân ven sông Thủ Thiêm thông thoáng',
       'Khoảng lùi cuối sân rộng 2.8m an toàn cho các pha cứu bóng tốc độ cao',
@@ -89,6 +108,10 @@ const SPORT_SPOTLIGHTS: SportSpotlightItem[] = [
     proShopPerk: 'Ống cầu Thành Công / Yonex AS-30, máy căng vợt điện tử lấy ngay',
     priceFrom: 'Từ 95.000₫/ca',
     image: '/images/court-badminton-arena.jpg',
+    video: {
+      webm: '/videos/login-ambient.webm',
+      mp4: '/videos/login-ambient.mp4',
+    },
     highlights: [
       'Hệ thống tường tiêu âm kết hợp thông gió đối lưu mát mẻ quanh năm',
       'Cho thuê giày cầu lông đế kếp khử khuẩn UV đủ size ngay tại sảnh',
@@ -108,6 +131,12 @@ const SPORT_SPOTLIGHTS: SportSpotlightItem[] = [
     proShopPerk: 'Hộp bóng Wilson US Open, máy bắn bóng 60 quả & Ball Boy nhặt bóng',
     priceFrom: 'Từ 220.000₫/ca',
     image: '/images/sport-tennis-sunny.jpg',
+    video: {
+      webm: '/videos/hero-multisport.webm',
+      mp4: '/videos/hero-multisport.mp4',
+      startSec: 0,
+      endSec: 4.0,
+    },
     highlights: [
       'Mái hiên nghỉ vận động viên riêng biệt kèm xô đá lạnh & khăn mát từng sân',
       'Hỗ trợ đặt Sparring Partner bán chuyên tập luyện theo giờ',
@@ -127,6 +156,12 @@ const SPORT_SPOTLIGHTS: SportSpotlightItem[] = [
     proShopPerk: 'Bóng da Molten BG4500, nhân sự bấm bảng điểm 24s & băng keo thể thao',
     priceFrom: 'Từ 240.000₫/ca',
     image: '/images/sport-basketball-ocean.jpg',
+    video: {
+      webm: '/videos/hero-multisport.webm',
+      mp4: '/videos/hero-multisport.mp4',
+      startSec: 8.5,
+      endSec: 12.25,
+    },
     highlights: [
       'Tích hợp đồng thời sân 5v5 tiêu chuẩn và khu đấu 3x3 sôi động tại Thủ Thiêm',
       'Hỗ trợ xuất hóa đơn VAT điện tử cho giải đấu CLB, trường học & doanh nghiệp',
@@ -229,16 +264,16 @@ export const HomeShowcaseSections: React.FC<HomeShowcaseSectionsProps> = ({
         </ScrollReveal>
 
         <div className="mt-8 grid grid-cols-1 gap-5 lg:grid-cols-12">
-          {/* Bento Card 1 (7 cols): Flagship Architectural Complex */}
+          {/* Bento Card 1 (7 cols): Flagship Architectural Complex with Live Ambient Video */}
           <ScrollReveal className="group relative overflow-hidden rounded-[30px] bg-[#0B2217] text-white lg:col-span-7 min-h-[360px] flex flex-col justify-between p-6 sm:p-8 shadow-[0_24px_60px_rgba(11,34,23,0.16)]">
-            <img
-              src="/images/hero-fairway-complex.jpg"
+            <AmbientVideoLayer
+              posterSrc="/images/hero-fairway-complex.jpg"
               alt="Kiến trúc tổ hợp sân thể thao ArenaPulse"
-              loading="lazy"
-              decoding="async"
-              className="absolute inset-0 h-full w-full object-cover transition-transform duration-700 ease-out group-hover:scale-105"
+              webmSrc="/videos/login-ambient.webm"
+              mp4Src="/videos/login-ambient.mp4"
+              className="transition-transform duration-700 ease-out group-hover:scale-105"
             />
-            <div className="absolute inset-0 bg-gradient-to-t from-[#06150E]/92 via-[#092116]/45 to-black/20" />
+            <div className="absolute inset-0 bg-gradient-to-t from-[#06150E]/92 via-[#092116]/45 to-black/25" />
 
             <div className="relative z-10 flex flex-wrap items-center justify-between gap-2">
               <span className="rounded-full bg-white/15 px-3.5 py-1 text-[11px] font-semibold text-[#E7F7D4] backdrop-blur-md border border-white/15">
@@ -707,10 +742,14 @@ export const HomeShowcaseSections: React.FC<HomeShowcaseSectionsProps> = ({
                 transition={{ duration: 0.3, ease: EXPO_EASE }}
                 className="group relative h-[320px] sm:h-[430px] w-full overflow-hidden rounded-[28px] bg-[#0F172A] shadow-[0_24px_60px_rgba(15,23,42,0.12)]"
               >
-                <img
-                  src={activeSpotlight.image}
+                <AmbientVideoLayer
+                  posterSrc={activeSpotlight.image}
                   alt={activeSpotlight.name}
-                  className="h-full w-full object-cover transition-transform duration-700 group-hover:scale-105"
+                  webmSrc={activeSpotlight.video.webm}
+                  mp4Src={activeSpotlight.video.mp4}
+                  startSec={activeSpotlight.video.startSec}
+                  endSec={activeSpotlight.video.endSec}
+                  className="transition-transform duration-700 group-hover:scale-105"
                 />
                 <div className="absolute inset-0 bg-gradient-to-t from-black/82 via-black/15 to-transparent" />
 
@@ -720,6 +759,10 @@ export const HomeShowcaseSections: React.FC<HomeShowcaseSectionsProps> = ({
                   </span>
                   <span className="rounded-full bg-[#E7F7D4] px-3.5 py-1 tabular-nums text-[11px] font-bold text-[#204E18]">
                     {activeSpotlight.priceFrom}
+                  </span>
+                  <span className="inline-flex items-center gap-1.5 rounded-full bg-slate-950/75 px-3 py-1 text-[10.5px] font-semibold text-white backdrop-blur-md border border-white/15">
+                    <span className="h-1.5 w-1.5 rounded-full bg-[#84CC16] animate-pulse" />
+                    Video thực tế mặt sân
                   </span>
                 </div>
 
@@ -887,8 +930,18 @@ export const HomeShowcaseSections: React.FC<HomeShowcaseSectionsProps> = ({
 
           {/* Dual Ecosystem Finale: For Players & For Partner Lessors */}
           <ScrollReveal className="grid grid-cols-1 gap-5 lg:grid-cols-12">
-            <div className="flex flex-col justify-between rounded-[30px] bg-gradient-to-br from-[#0B2217] via-[#123624] to-[#16422C] p-7 sm:p-9 text-white shadow-[0_24px_60px_rgba(11,34,23,0.2)] lg:col-span-7">
-              <div className="space-y-3">
+            <div className="relative overflow-hidden flex flex-col justify-between rounded-[30px] bg-[#0B2217] p-7 sm:p-9 text-white shadow-[0_24px_60px_rgba(11,34,23,0.2)] lg:col-span-7">
+              <AmbientVideoLayer
+                posterSrc="/images/sunlit-action-athlete.jpg"
+                alt="Không khí thi đấu tại hệ thống sân ArenaPulse"
+                webmSrc="/videos/hero-multisport.webm"
+                mp4Src="/videos/hero-multisport.mp4"
+                startSec={0}
+                endSec={16}
+                videoOpacityClass="opacity-35"
+              />
+              <div className="absolute inset-0 bg-gradient-to-br from-[#0B2217]/95 via-[#123624]/82 to-[#16422C]/75" />
+              <div className="relative z-10 space-y-3">
                 <span className="inline-block rounded-full bg-[#E7F7D4] px-3 py-0.5 text-[10.5px] font-bold uppercase tracking-wider text-[#0B2217]">
                   Dành cho Người chơi &amp; CLB Thể thao
                 </span>
@@ -901,7 +954,7 @@ export const HomeShowcaseSections: React.FC<HomeShowcaseSectionsProps> = ({
                 </p>
               </div>
 
-              <div className="mt-7 flex flex-wrap items-center gap-3">
+              <div className="relative z-10 mt-7 flex flex-wrap items-center gap-3">
                 <button
                   type="button"
                   onClick={() => onNavigate('courts')}
