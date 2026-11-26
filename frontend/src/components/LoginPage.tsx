@@ -8,9 +8,11 @@ import { ActionButton } from './FairwayControls';
 
 interface LoginPageProps {
   session: AuthSession | null;
+  bookingPendingCourtName?: string | null;
   onAuthenticated: (session: AuthSession, preferredRole?: RoleCode) => void;
   onLogout: () => void;
   onBack: () => void;
+  onOpenPartnerPortal?: () => void;
 }
 
 function shouldSkipAutoVideo(): boolean {
@@ -25,9 +27,11 @@ function shouldSkipAutoVideo(): boolean {
 
 export const LoginPage: React.FC<LoginPageProps> = ({
   session,
+  bookingPendingCourtName,
   onAuthenticated,
   onLogout,
   onBack,
+  onOpenPartnerPortal,
 }) => {
   const prefersReduced = useReducedMotion();
   const videoRef = useRef<HTMLVideoElement | null>(null);
@@ -96,8 +100,12 @@ export const LoginPage: React.FC<LoginPageProps> = ({
       };
       const primaryRole = enrichedAuth.roles?.[0]?.roleCode ?? 'USER';
       onAuthenticated(enrichedAuth, primaryRole);
-    } catch {
-      setErrorMsg('Không thể khởi tạo phiên đăng nhập. Vui lòng thử lại.');
+    } catch (err) {
+      setErrorMsg(
+        err instanceof Error && err.message
+          ? err.message
+          : 'Không thể khởi tạo phiên đăng nhập. Vui lòng thử lại.'
+      );
     } finally {
       setSubmitting(false);
     }
@@ -201,24 +209,47 @@ export const LoginPage: React.FC<LoginPageProps> = ({
                 </div>
 
                 <div className="flex flex-col gap-2.5 pt-1">
+                  {session.roles.some((r) => r.roleCode !== 'USER') && onOpenPartnerPortal && (
+                    <button
+                      type="button"
+                      onClick={onOpenPartnerPortal}
+                      className="fairway-interactive w-full rounded-full bg-[#16422C] py-3 text-sm font-semibold text-white hover:bg-[#0F172A]"
+                    >
+                      Mở Hệ thống Quản trị Cho thuê →
+                    </button>
+                  )}
                   <button
                     type="button"
                     onClick={onBack}
-                    className="fairway-interactive w-full rounded-full bg-[#16422C] py-3 text-sm font-semibold text-white hover:bg-[#0F172A]"
+                    className={`fairway-interactive w-full rounded-full py-3 text-sm font-semibold ${
+                      session.roles.some((r) => r.roleCode !== 'USER')
+                        ? 'border border-neutral-200 bg-[#F8FAFC] text-[#0F172A] hover:bg-neutral-100'
+                        : 'bg-[#16422C] text-white hover:bg-[#0F172A]'
+                    }`}
                   >
-                    Tiếp tục vào hệ thống →
+                    Tiếp tục vào trang trước →
                   </button>
                   <button
                     type="button"
                     onClick={onLogout}
                     className="w-full rounded-full border border-neutral-200 bg-white py-2.5 text-xs font-semibold text-neutral-600 hover:border-neutral-400 hover:text-[#0F172A]"
                   >
-                    Đăng xuất tài khoản hiện tại
+                    Đăng xuất để đổi tài khoản khác
                   </button>
                 </div>
               </div>
             ) : (
               <>
+                {bookingPendingCourtName && (
+                  <div className="mb-4 rounded-2xl border border-[#16422C]/25 bg-[#F4F8F4] px-3.5 py-2.5 text-xs text-[#16422C]">
+                    <div className="font-bold">🔒 Yêu cầu đăng nhập để đặt sân</div>
+                    <p className="mt-0.5 text-[11px] leading-relaxed text-neutral-600">
+                      Đã giữ sẵn lựa chọn tại <strong>{bookingPendingCourtName}</strong>. Vui lòng
+                      đăng nhập hoặc tạo tài khoản mới để tiếp tục đặt cọc &amp; nhận vé QR.
+                    </p>
+                  </div>
+                )}
+
                 <div className="flex items-center justify-between gap-3">
                   <div>
                     <h2 className="text-xl sm:text-2xl font-semibold tracking-[-0.02em] text-[#0F172A]">

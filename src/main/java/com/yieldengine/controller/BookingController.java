@@ -44,6 +44,7 @@ public class BookingController {
     public ResponseEntity<HoldSlotResponse> holdSlot(
             @RequestHeader(value = SystemConstant.HEADER_IDEMPOTENCY_KEY, required = false) String idempotencyKey,
             @Valid @RequestBody HoldSlotRequest request) {
+        rbacGuard.requireAuthenticated();
         HoldSlotResponse response = bookingOrchestratorService.holdSlot(request, idempotencyKey);
         return ResponseEntity.status(HttpStatus.CREATED).body(response);
     }
@@ -51,6 +52,7 @@ public class BookingController {
     @Operation(summary = "Direct confirm reservation deposit")
     @PostMapping("/bookings/{reservationId}/confirm")
     public ResponseEntity<Void> confirmReservation(@PathVariable UUID reservationId) {
+        rbacGuard.requireAuthenticated();
         bookingOrchestratorService.confirmReservation(reservationId);
         return ResponseEntity.ok().build();
     }
@@ -69,6 +71,7 @@ public class BookingController {
     public ResponseEntity<MoMoPaymentSessionResponse> createMoMoPaymentSession(
             @Valid @RequestBody CreateMoMoPaymentRequest request
     ) {
+        rbacGuard.requireAuthenticated();
         bookingOrchestratorService.updateBookingContactDetails(
                 request.reservationId(),
                 request.customerName(),
@@ -118,6 +121,7 @@ public class BookingController {
     public ResponseEntity<CancelBookingResponse> cancelReservation(
             @PathVariable UUID reservationId,
             @RequestBody(required = false) CancelBookingRequest request) {
+        rbacGuard.requireAuthenticated();
         CancelBookingResponse response = bookingOrchestratorService.cancelReservationWithPolicy(
                 reservationId,
                 request != null ? request.slotStart() : null,
@@ -128,6 +132,7 @@ public class BookingController {
     @Operation(summary = "Issue or retrieve signed single-use QR code for confirmed booking (UC-15)")
     @GetMapping("/bookings/{reservationId}/qr")
     public ResponseEntity<QrCodeResponse> getBookingQr(@PathVariable UUID reservationId) {
+        rbacGuard.requireAuthenticated();
         return ResponseEntity.ok(checkInService.issueOrGetQrCode(reservationId));
     }
 
@@ -137,6 +142,7 @@ public class BookingController {
             @PathVariable UUID reservationId,
             @Valid @RequestBody ResendQrEmailRequest request
     ) {
+        rbacGuard.requireAuthenticated();
         return ResponseEntity.ok(qrTicketEmailService.sendQrTicketEmailForReservation(
                 reservationId, request.recipientEmail(), null
         ));

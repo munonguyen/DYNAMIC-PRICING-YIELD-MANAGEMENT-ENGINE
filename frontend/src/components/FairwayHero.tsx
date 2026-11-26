@@ -11,8 +11,10 @@ import { CircleArrowButton } from './FairwayControls';
 
 interface FairwayHeroProps {
   sports: SportTypeItem[];
+  totalOpenCourts?: number;
   onNavigate: (page: AppPageId) => void;
   onBrowseSportPage: (sportCode: string) => void;
+  onQuickSearch?: (sportCode: string, city: string) => void;
   activeQuote: PriceQuote | null;
 }
 
@@ -75,9 +77,6 @@ const BottomLeftCutoutFillet: React.FC<{ className: string }> = ({ className }) 
   </svg>
 );
 
-/**
- * Detects Data-Saver mode or 2G network so low-bandwidth devices never download video bytes.
- */
 function shouldSkipAutoVideo(): boolean {
   if (typeof navigator === 'undefined') return false;
   const conn = (navigator as unknown as {
@@ -90,7 +89,9 @@ function shouldSkipAutoVideo(): boolean {
 
 export const FairwayHero: React.FC<FairwayHeroProps> = ({
   sports,
+  totalOpenCourts = 48,
   onBrowseSportPage,
+  onQuickSearch,
   activeQuote,
 }) => {
   const prefersReduced = useReducedMotion();
@@ -103,7 +104,9 @@ export const FairwayHero: React.FC<FairwayHeroProps> = ({
   const [now, setNow] = useState(() => new Date());
   const [cardsCrystallized, setCardsCrystallized] = useState<boolean>(false);
 
-  // Defer video attachment until after initial paint so LCP poster renders in 0ms
+  const [quickSport, setQuickSport] = useState<string>('ALL');
+  const [quickCity, setQuickCity] = useState<string>('ALL');
+
   useEffect(() => {
     if (prefersReduced || shouldSkipAutoVideo()) {
       setEnableVideoStream(false);
@@ -114,7 +117,7 @@ export const FairwayHero: React.FC<FairwayHeroProps> = ({
   }, [prefersReduced]);
 
   useEffect(() => {
-    const t = window.setTimeout(() => setCardsCrystallized(true), prefersReduced ? 0 : 680);
+    const t = window.setTimeout(() => setCardsCrystallized(true), prefersReduced ? 0 : 540);
     const clockInterval = window.setInterval(() => setNow(new Date()), 30_000);
     return () => {
       window.clearTimeout(t);
@@ -122,7 +125,6 @@ export const FairwayHero: React.FC<FairwayHeroProps> = ({
     };
   }, [prefersReduced]);
 
-  // IntersectionObserver + Visibility API: 0% GPU/CPU video decoding when scrolled past Hero or tab hidden
   useEffect(() => {
     const video = videoRef.current;
     const container = heroContainerRef.current;
@@ -192,19 +194,31 @@ export const FairwayHero: React.FC<FairwayHeroProps> = ({
 
   const liveDisplayPrice = activeQuote?.currentPrice ?? currentChapter.priceHint;
 
+  const handleQuickSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (onQuickSearch) {
+      onQuickSearch(quickSport, quickCity);
+    } else {
+      onBrowseSportPage(quickSport);
+    }
+  };
+
   return (
-    <section id="hero" className="bg-white px-2.5 pb-2.5 pt-20 sm:px-4 sm:pb-4 sm:pt-22 lg:px-5 lg:pb-5">
+    <section
+      id="hero"
+      className="bg-white px-2.5 pb-2.5 pt-20 sm:px-4 sm:pb-4 sm:pt-22 lg:px-5 lg:pb-5"
+    >
       <div
         ref={heroContainerRef}
-        className="relative mx-auto min-h-[600px] lg:h-[calc(100vh-108px)] lg:min-h-[620px] max-h-[850px] w-full max-w-[1440px] overflow-hidden rounded-[26px] sm:rounded-[32px] bg-[#0F3828]"
+        className="relative mx-auto min-h-[640px] lg:h-[calc(100vh-104px)] lg:min-h-[660px] max-h-[870px] w-full max-w-[1440px] overflow-hidden rounded-[26px] sm:rounded-[34px] bg-[#0B2A1E] ring-1 ring-black/5"
       >
         {/* =================================================================== */}
-        {/* 1. NATIVE 1080P DUAL-CODEC VIDEO + INSTANT LCP POSTER               */}
+        {/* 1. NATIVE 1080P DUAL-CODEC VIDEO + EDITORIAL ATMOSPHERIC SCRIM      */}
         {/* =================================================================== */}
         <div className="absolute inset-0 z-0">
           <img
             src="/videos/hero-poster.jpg"
-            alt="Toàn cảnh tổ hợp sân thể thao đa môn từ trên cao"
+            alt="Toàn cảnh tổ hợp sân thể thao đa môn ArenaPulse từ trên cao"
             fetchPriority="high"
             decoding="async"
             className="h-full w-full object-cover object-center"
@@ -230,102 +244,177 @@ export const FairwayHero: React.FC<FairwayHeroProps> = ({
             </video>
           )}
 
-          {/* Balanced editorial contrast overlays */}
+          {/* Multi-layer architectural contrast scrims */}
           <div
-            className="absolute inset-x-0 top-0 h-44 bg-gradient-to-b from-[#081F17]/65 via-[#0B2B20]/30 to-transparent"
+            className="absolute inset-x-0 top-0 h-52 bg-gradient-to-b from-[#061811]/78 via-[#082117]/38 to-transparent"
             aria-hidden="true"
           />
           <div
-            className="absolute inset-0 bg-gradient-to-r from-black/20 via-black/10 to-[#071D15]/48"
+            className="absolute inset-0 bg-gradient-to-r from-[#061811]/35 via-black/15 to-[#061811]/62"
             aria-hidden="true"
           />
           <div
-            className="absolute inset-x-0 bottom-0 h-44 bg-gradient-to-t from-black/48 via-transparent to-transparent"
+            className="absolute inset-x-0 bottom-0 h-56 bg-gradient-to-t from-[#05130D]/80 via-[#05130D]/28 to-transparent"
             aria-hidden="true"
           />
         </div>
 
         {/* =================================================================== */}
-        {/* 2. HERO HEADLINE + VIDEO CHAPTER PILLS + BOTTOM ACTION CARDS        */}
+        {/* 2. HERO EDITORIAL STAGE + QUICK CONCIERGE + CORNER GLASS CARDS      */}
         {/* =================================================================== */}
-        <div className="relative z-20 flex h-full flex-col justify-between px-6 pb-6 pt-7 sm:px-10 sm:pb-8 sm:pt-9 lg:pt-10">
-          <div className="flex flex-col lg:items-end lg:pr-6">
-            <div className="lg:w-[64%] xl:w-[60%]">
+        <div className="relative z-20 flex h-full flex-col justify-between px-5 pb-6 pt-6 sm:px-10 sm:pb-8 sm:pt-9 lg:pt-10">
+          {/* Top-Right Focal Content */}
+          <div className="flex flex-col lg:items-end lg:pr-4">
+            <div className="lg:w-[68%] xl:w-[63%]">
+              {/* Live Telemetry + Video Chapter Switcher */}
               <motion.div
                 initial={prefersReduced ? false : { opacity: 0, y: 12 }}
                 animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.7, delay: 0.14, ease: EXPO_EASE }}
-                role="tablist"
-                aria-label="Chuyển cảnh video theo lĩnh vực thể thao"
-                className="mb-4 flex flex-wrap items-center gap-1.5"
+                transition={{ duration: 0.65, delay: 0.1, ease: EXPO_EASE }}
+                className="mb-4 flex flex-wrap items-center gap-2"
               >
-                {VIDEO_CHAPTERS.map((c, idx) => {
-                  const active = idx === chapterIdx;
-                  return (
-                    <button
-                      key={c.sportCode}
-                      role="tab"
-                      aria-selected={active}
-                      type="button"
-                      onClick={() => seekToChapter(idx)}
-                      className={`inline-flex items-center gap-2 rounded-full pl-1.5 pr-3.5 py-1 text-xs font-medium backdrop-blur-md transition-colors ${
-                        active
-                          ? 'bg-white text-[#0F172A] font-semibold shadow-sm'
-                          : 'bg-white/16 text-white/92 border border-white/24 hover:bg-white/26'
-                      }`}
-                    >
-                      <img
-                        src={c.thumb}
-                        alt=""
-                        loading="lazy"
-                        decoding="async"
-                        className="h-5 w-5 rounded-full object-cover"
-                      />
-                      <span>{c.label}</span>
-                    </button>
-                  );
-                })}
+                <span className="inline-flex items-center gap-2 rounded-full border border-[#E7F7D4]/30 bg-[#0B2217]/75 px-3 py-1 text-[11px] font-semibold text-[#E7F7D4] backdrop-blur-md">
+                  <span className="relative flex h-2 w-2">
+                    <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
+                    <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-400" />
+                  </span>
+                  <span className="tabular-nums">{totalOpenCourts}+ sân trống trực tuyến</span>
+                </span>
+
+                <div
+                  role="tablist"
+                  aria-label="Chuyển cảnh video theo lĩnh vực thể thao"
+                  className="flex flex-wrap items-center gap-1.5"
+                >
+                  {VIDEO_CHAPTERS.map((c, idx) => {
+                    const active = idx === chapterIdx;
+                    return (
+                      <button
+                        key={c.sportCode}
+                        role="tab"
+                        aria-selected={active}
+                        type="button"
+                        onClick={() => seekToChapter(idx)}
+                        className={`inline-flex items-center gap-2 rounded-full pl-1.5 pr-3 py-1 text-xs font-medium backdrop-blur-md transition-all ${
+                          active
+                            ? 'bg-white text-[#0F172A] font-semibold shadow-sm'
+                            : 'bg-white/14 text-white/90 border border-white/20 hover:bg-white/24'
+                        }`}
+                      >
+                        <img
+                          src={c.thumb}
+                          alt=""
+                          loading="lazy"
+                          decoding="async"
+                          className="h-5 w-5 rounded-full object-cover"
+                        />
+                        <span>{c.label}</span>
+                      </button>
+                    );
+                  })}
+                </div>
               </motion.div>
 
+              {/* Editorial Headline */}
               <motion.div
-                initial={prefersReduced ? false : { opacity: 0, y: 20 }}
+                initial={prefersReduced ? false : { opacity: 0, y: 18 }}
                 animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.75, delay: 0.2, ease: EXPO_EASE }}
-                className="mt-5 sm:mt-6 select-none"
+                transition={{ duration: 0.72, delay: 0.18, ease: EXPO_EASE }}
+                className="mt-4 sm:mt-5 select-none"
               >
-                <div className="mb-3 flex items-center gap-3">
+                <div className="mb-2.5 flex items-center gap-3">
                   <span className="h-[2px] w-8 rounded-full bg-[#E7F7D4]" aria-hidden="true" />
-                  <span className="text-[11px] sm:text-xs font-semibold uppercase tracking-[0.2em] text-[#E7F7D4]">
-                    ArenaPulse Sports Complex
+                  <span className="text-[11px] font-bold uppercase tracking-[0.22em] text-[#E7F7D4]">
+                    ArenaPulse.vn • Dynamic Sports Marketplace
                   </span>
                 </div>
 
-                <h1 className="text-[34px] sm:text-[48px] lg:text-[54px] xl:text-[62px] font-semibold tracking-[-0.03em] leading-[1.14] text-white drop-shadow-[0_6px_26px_rgba(0,0,0,0.45)]">
-                  <span className="block sm:whitespace-nowrap">Chuẩn mực sân đấu,</span>
-                  <span className="block sm:whitespace-nowrap">trọn vẹn từng trận cầu.</span>
+                <h1 className="text-[32px] sm:text-[46px] lg:text-[54px] xl:text-[60px] font-semibold tracking-[-0.032em] leading-[1.1] text-white drop-shadow-[0_8px_28px_rgba(0,0,0,0.45)]">
+                  <span className="block">Chuẩn mực sân đấu quốc tế,</span>
+                  <span className="block text-[#E7F7D4]">khóa giá minh bạch từng ca.</span>
                 </h1>
+
+                <p className="mt-3.5 max-w-xl text-xs sm:text-sm leading-relaxed text-white/82">
+                  Đặt lịch sân Bóng đá, Pickleball, Cầu lông, Tennis &amp; Bóng rổ tại các tổ hợp đã
+                  xác thực KYC — giữ giá cố định 10 phút, bảo lãnh cọc 100% qua VNPAY / MoMo và nhận
+                  vé QR một chạm.
+                </p>
               </motion.div>
+
+              {/* Executive Quick-Search Concierge Bar */}
+              <motion.form
+                initial={prefersReduced ? false : { opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.72, delay: 0.26, ease: EXPO_EASE }}
+                onSubmit={handleQuickSubmit}
+                className="mt-6 flex flex-col gap-2 rounded-3xl sm:rounded-full border border-white/25 bg-white/95 p-2 shadow-[0_24px_60px_rgba(0,0,0,0.3)] backdrop-blur-2xl sm:flex-row sm:items-center max-w-2xl"
+              >
+                <div className="flex-1 px-3.5 py-1.5 sm:border-r sm:border-neutral-200/80">
+                  <label
+                    htmlFor="hero-quick-sport"
+                    className="block text-[10px] font-bold uppercase tracking-wider text-neutral-400"
+                  >
+                    Bộ môn thi đấu
+                  </label>
+                  <select
+                    id="hero-quick-sport"
+                    value={quickSport}
+                    onChange={(e) => setQuickSport(e.target.value)}
+                    className="mt-0.5 w-full bg-transparent text-xs sm:text-[13px] font-semibold text-[#0F172A] focus:outline-none"
+                  >
+                    <option value="ALL">Tất cả 5 bộ môn</option>
+                    {sports.map((s) => (
+                      <option key={s.code} value={s.code}>
+                        {s.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="flex-1 px-3.5 py-1.5">
+                  <label
+                    htmlFor="hero-quick-city"
+                    className="block text-[10px] font-bold uppercase tracking-wider text-neutral-400"
+                  >
+                    Thành phố / Khu vực
+                  </label>
+                  <select
+                    id="hero-quick-city"
+                    value={quickCity}
+                    onChange={(e) => setQuickCity(e.target.value)}
+                    className="mt-0.5 w-full bg-transparent text-xs sm:text-[13px] font-semibold text-[#0F172A] focus:outline-none"
+                  >
+                    <option value="ALL">Toàn quốc (HN • HCM • ĐN)</option>
+                    <option value="Hà Nội">Hà Nội (Mỹ Đình, Bách Khoa, Tây Hồ)</option>
+                    <option value="TP. Hồ Chí Minh">TP. Hồ Chí Minh (Thủ Thiêm, Q.7)</option>
+                    <option value="Đà Nẵng">Đà Nẵng (Hải Châu)</option>
+                  </select>
+                </div>
+
+                <button
+                  type="submit"
+                  className="shrink-0 inline-flex items-center justify-center gap-2 rounded-full bg-[#16422C] px-6 py-3.5 text-xs sm:text-[13px] font-bold text-[#E7F7D4] shadow-sm transition-all hover:bg-[#0F172A] hover:text-white"
+                >
+                  <span>Tìm ca trống</span>
+                  <span aria-hidden="true">→</span>
+                </button>
+              </motion.form>
             </div>
           </div>
 
           {/* Bottom Row: Sport Summary Card + Next Video Chapter Card */}
-          <div className="mt-10 flex flex-col gap-4 sm:mt-0 sm:flex-row sm:items-end sm:justify-between sm:pl-14 lg:pl-16">
+          <div className="mt-8 flex flex-col gap-4 sm:mt-0 sm:flex-row sm:items-end sm:justify-between sm:pl-14 lg:pl-16">
             <motion.div
-              initial={prefersReduced ? false : { opacity: 0, y: 26 }}
+              initial={prefersReduced ? false : { opacity: 0, y: 24 }}
               animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.75, delay: 0.28, ease: EXPO_EASE }}
-              className={`w-full sm:w-[308px] rounded-[24px] p-5 shadow-[0_20px_50px_rgba(0,0,0,0.2)] transition-colors duration-700 ${
+              transition={{ duration: 0.72, delay: 0.32, ease: EXPO_EASE }}
+              className={`w-full sm:w-[312px] rounded-[24px] p-5 ring-1 ring-black/5 shadow-[0_20px_50px_rgba(0,0,0,0.22)] transition-colors duration-700 ${
                 cardsCrystallized
-                  ? 'bg-white text-[#111827]'
-                  : 'bg-white/55 backdrop-blur-xl text-[#111827]/80'
+                  ? 'bg-white/96 backdrop-blur-xl text-[#111827]'
+                  : 'bg-white/60 backdrop-blur-xl text-[#111827]/80'
               }`}
             >
-              <motion.div
-                initial={prefersReduced ? false : { opacity: 0, scale: 0.94 }}
-                animate={{ opacity: cardsCrystallized ? 1 : 0.25, scale: 1 }}
-                transition={{ duration: 0.5 }}
-                className="flex items-center"
-              >
+              <div className="flex items-center justify-between">
                 <div className="flex -space-x-2.5">
                   {VIDEO_CHAPTERS.map((sp) => (
                     <img
@@ -335,47 +424,46 @@ export const FairwayHero: React.FC<FairwayHeroProps> = ({
                       title={sp.label}
                       loading="lazy"
                       decoding="async"
-                      className="h-10 w-10 rounded-full object-cover ring-2 ring-white"
+                      className="h-9 w-9 rounded-full object-cover ring-2 ring-white"
                     />
                   ))}
+                  <span className="inline-flex h-9 px-2.5 items-center justify-center rounded-full bg-[#E7F7D4] tabular-nums text-[11px] font-bold text-[#204E18] ring-2 ring-white">
+                    6 đối tác
+                  </span>
                 </div>
-                <span className="-ml-2 inline-flex h-10 px-3 items-center justify-center rounded-full bg-[#E7F7D4] tabular-nums text-xs font-semibold text-[#204E18] ring-2 ring-white">
-                  +52
+                <span className="rounded-full bg-[#F4F8F4] px-2.5 py-0.5 text-[10px] font-bold text-[#16422C]">
+                  KYC 100%
                 </span>
-              </motion.div>
+              </div>
 
               <div className="mt-4 flex items-end justify-between gap-3">
                 <div>
-                  <div className="text-[15px] font-semibold tracking-tight text-[#111827]">
-                    {sports.length} Lĩnh Vực Sân Thể Thao
+                  <div className="text-[14.5px] font-bold tracking-tight text-[#0F172A]">
+                    Hệ sinh thái {sports.length} bộ môn chuẩn quốc tế
                   </div>
-                  <div className="mt-0.5 text-xs text-neutral-500">
-                    Bóng đá, Pickleball, Cầu lông, Tennis, Bóng rổ
+                  <div className="mt-0.5 text-[11.5px] text-neutral-500">
+                    Kèm nước điện giải, vợt Carbon &amp; trọng tài tại sân
                   </div>
                 </div>
 
                 <CircleArrowButton
                   onClick={() => onBrowseSportPage('ALL')}
-                  aria-label="Cuộn tới danh sách sân đa môn"
+                  aria-label="Mở danh sách cụm sân đa môn"
                 />
               </div>
             </motion.div>
 
             <motion.div
-              initial={prefersReduced ? false : { opacity: 0, y: 26 }}
+              initial={prefersReduced ? false : { opacity: 0, y: 24 }}
               animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.78, delay: 0.36, ease: EXPO_EASE }}
-              className={`w-full sm:w-[326px] self-end rounded-[26px] p-3.5 shadow-[0_22px_54px_rgba(0,0,0,0.24)] transition-colors duration-700 ${
+              transition={{ duration: 0.74, delay: 0.38, ease: EXPO_EASE }}
+              className={`w-full sm:w-[328px] self-end rounded-[26px] p-3.5 ring-1 ring-black/5 shadow-[0_22px_54px_rgba(0,0,0,0.26)] transition-colors duration-700 ${
                 cardsCrystallized
-                  ? 'bg-white text-[#111827]'
-                  : 'bg-white/50 backdrop-blur-xl text-[#111827]/80'
+                  ? 'bg-white/96 backdrop-blur-xl text-[#111827]'
+                  : 'bg-white/55 backdrop-blur-xl text-[#111827]/80'
               }`}
             >
-              <motion.div
-                animate={{ opacity: cardsCrystallized ? 1 : 0.2 }}
-                transition={{ duration: 0.55 }}
-                className="relative h-28 sm:h-32 w-full overflow-hidden rounded-[18px] bg-neutral-200"
-              >
+              <div className="relative h-28 w-full overflow-hidden rounded-[18px] bg-neutral-200">
                 <img
                   src={nextChapter.thumb}
                   alt={`Sân ${nextChapter.label}`}
@@ -384,20 +472,20 @@ export const FairwayHero: React.FC<FairwayHeroProps> = ({
                   className="h-full w-full object-cover transition-transform duration-500 hover:scale-105"
                 />
                 <span className="absolute left-2.5 top-2.5 rounded-full bg-black/65 px-2.5 py-0.5 text-[10px] font-medium text-white backdrop-blur-xs">
-                  Cảnh kế: {nextChapter.label}
+                  Tiếp theo: {nextChapter.label}
                 </span>
-                <span className="absolute right-2.5 top-2.5 rounded-full bg-white/95 px-2.5 py-0.5 tabular-nums text-[11px] font-semibold text-[#16422C] shadow-xs">
+                <span className="absolute right-2.5 top-2.5 rounded-full bg-white/95 px-2.5 py-0.5 tabular-nums text-[11px] font-bold text-[#16422C] shadow-xs">
                   {formatVnd(liveDisplayPrice)}/ca
                 </span>
-              </motion.div>
+              </div>
 
-              <div className="mt-3.5 flex items-end justify-between gap-3 px-1 pb-0.5">
+              <div className="mt-3 flex items-end justify-between gap-3 px-1 pb-0.5">
                 <div>
-                  <div className="text-[14.5px] font-semibold leading-snug text-[#111827]">
-                    Chuyển sang {nextChapter.label.toLowerCase()}.
+                  <div className="text-[14px] font-bold leading-snug text-[#0F172A]">
+                    Khám phá {nextChapter.label.toLowerCase()}
                   </div>
-                  <div className="mt-1 text-[11.5px] leading-relaxed text-neutral-500">
-                    Tua nhanh phân cảnh video hoặc cuộn xuống chọn khung giờ trống.
+                  <div className="mt-0.5 text-[11px] text-neutral-500">
+                    Chuyển nhanh cảnh quay hoặc cuộn xem bảng sân thực tế
                   </div>
                 </div>
 

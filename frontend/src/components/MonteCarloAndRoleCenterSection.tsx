@@ -3,16 +3,23 @@ import { AnimatePresence, motion } from 'framer-motion';
 import type {
   AppPageId,
   AuthSession,
+  CourtServiceOption,
   LessorApplicationRecord,
+  PublishedListing,
   ReconciliationSummary,
   RoleCode,
+  SlotListingQuote,
   SportTypeItem,
+  VenueProviderInfo,
 } from '../types/marketplace';
 import { formatVnd, marketplaceApi } from '../api/marketplaceApi';
 import { EXPO_EASE, ScrollReveal } from './motionPrimitives';
 import { ArenaPulseLogo } from './ArenaPulseLogo';
 import { ActionButton } from './FairwayControls';
 import { LessorOnboardingSection } from './LessorOnboardingSection';
+import { LessorPartnerPortal, type LessorPortalTabId } from './LessorPartnerPortal';
+import { LessorAnalyticsDashboard } from './LessorAnalyticsDashboard';
+import type { AdminHeaderTabId } from './FairwayHeader';
 
 interface MonteCarloAndRoleCenterSectionProps {
   activeRole: RoleCode;
@@ -27,11 +34,42 @@ interface MonteCarloAndRoleCenterSectionProps {
   modalOnly?: boolean;
   onCloseAuthModal: () => void;
   onAuthenticated: (s: AuthSession) => void;
+  onLogout?: () => void;
   onOpenInternalLogin?: () => void;
   onNavigate?: (page: AppPageId) => void;
+  onOpenPublicShop?: (providerId: string) => void;
+  lessorTab?: LessorPortalTabId;
+  onSelectLessorTab?: (tab: LessorPortalTabId) => void;
+  controlledAdminTab?: AdminHeaderTabId;
+  onSelectAdminTab?: (tab: AdminHeaderTabId) => void;
+  listings?: PublishedListing[];
+  onUpdateListingServices?: (groupId: string, nextServices: CourtServiceOption[]) => void;
+  onUpdateListingPricing?: (
+    groupId: string,
+    patch: { basePrice: number; minPrice: number; maxPrice: number; depositPercent: number }
+  ) => void;
+  onToggleListingPublished?: (groupId: string) => void;
+  onUpdateListingSlots?: (groupId: string, nextSlots: SlotListingQuote[]) => void;
+  onCreateNewListing?: (newListing: PublishedListing) => void;
+  onUpdateProviderProfile?: (
+    providerId: string,
+    patch: Partial<Pick<VenueProviderInfo, 'shopSlogan' | 'voucherLabel' | 'responseTimeLabel'>>
+  ) => void;
+  onUploadCourtPhoto?: (
+    groupId: string,
+    file: File,
+    caption: string,
+    isCover: boolean
+  ) => Promise<{ persistedToBackend: boolean }>;
+  onPreviewCourt?: (listing: PublishedListing) => void;
 }
 
-type InternalTab = 'OPERATIONS' | 'RBAC_MATRIX' | 'FINANCE_LEDGER' | 'ADMIN_KYC';
+type InternalTab =
+  | 'OPERATIONS'
+  | 'LESSOR_INSPECTOR'
+  | 'RBAC_MATRIX'
+  | 'FINANCE_LEDGER'
+  | 'ADMIN_KYC';
 
 const INTERNAL_ROLES: RoleCode[] = ['MANAGER', 'STAFF', 'ACCOUNTANT', 'ADMIN'];
 
@@ -155,10 +193,30 @@ export const MonteCarloAndRoleCenterSection: React.FC<MonteCarloAndRoleCenterSec
   modalOnly = false,
   onCloseAuthModal,
   onAuthenticated,
+  onLogout,
   onOpenInternalLogin,
   onNavigate,
+  onOpenPublicShop,
+  lessorTab,
+  onSelectLessorTab,
+  controlledAdminTab,
+  onSelectAdminTab,
+  listings = [],
+  onUpdateListingServices,
+  onUpdateListingPricing,
+  onToggleListingPublished,
+  onUpdateListingSlots,
+  onCreateNewListing,
+  onUpdateProviderProfile,
+  onUploadCourtPhoto,
+  onPreviewCourt,
 }) => {
-  const [internalTab, setInternalTab] = useState<InternalTab>('OPERATIONS');
+  const [internalAdminTab, setInternalAdminTab] = useState<InternalTab>('OPERATIONS');
+  const internalTab = controlledAdminTab ?? internalAdminTab;
+  const setInternalTab = (tab: InternalTab) => {
+    setInternalAdminTab(tab);
+    onSelectAdminTab?.(tab);
+  };
   const [venueCheckinMode, setVenueCheckinMode] = useState<'QR_STAFF' | 'MANUAL'>('QR_STAFF');
   const [venuePublished, setVenuePublished] = useState<boolean>(true);
   const [reconciliation, setReconciliation] = useState<ReconciliationSummary | null>(null);
@@ -213,7 +271,10 @@ export const MonteCarloAndRoleCenterSection: React.FC<MonteCarloAndRoleCenterSec
   };
 
   const availableTabs: { id: InternalTab; label: string }[] = [
-    { id: 'OPERATIONS', label: activeRole === 'ADMIN' ? 'Điều hành Hệ thống' : 'Vận hành Cụm sân' },
+    { id: 'OPERATIONS', label: 'Điều hành Toàn Sàn' },
+    ...(activeRole === 'ADMIN'
+      ? [{ id: 'LESSOR_INSPECTOR' as InternalTab, label: 'Giám sát Hệ thống Cho thuê Đối tác' }]
+      : []),
     { id: 'RBAC_MATRIX', label: 'Phân quyền RBAC' },
     { id: 'FINANCE_LEDGER', label: 'Sổ cái & Đối soát' },
     ...(canReviewKyc ? [{ id: 'ADMIN_KYC' as InternalTab, label: `Duyệt Hồ sơ KYC (${kycQueue.length})` }] : []),
@@ -224,41 +285,39 @@ export const MonteCarloAndRoleCenterSection: React.FC<MonteCarloAndRoleCenterSec
       {!modalOnly &&
         (!session ? (
           <section id="command-center" className="py-16 sm:py-24">
-            <div className="mx-auto max-w-[920px] px-4 sm:px-8">
+            <div className="mx-auto max-w-[960px] px-4 sm:px-8">
               <ScrollReveal className="rounded-[30px] border border-neutral-200/90 bg-white p-7 sm:p-11 shadow-[0_24px_60px_rgba(15,23,42,0.06)] space-y-6">
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <span className="text-xs font-semibold uppercase tracking-[0.12em] text-[#16422C]">
-                    Yêu cầu Xác thực Tài khoản • ArenaPulse
+                    Cổng Đối tác Cho thuê Sân &amp; Quản trị • ArenaPulse
                   </span>
                   <span className="rounded-full bg-[#F4F8F4] border border-[#16422C]/20 px-3 py-1 text-[11px] font-semibold text-[#16422C]">
-                    Bảo mật 2 lớp (Account + KYC)
+                    Bảo mật Phiên &amp; Phân quyền Theo Cơ sở
                   </span>
                 </div>
 
                 <div>
                   <h2 className="text-2xl sm:text-[34px] font-semibold tracking-[-0.025em] leading-[1.15] text-[#0F172A]">
-                    Đăng nhập tài khoản để đăng ký Chủ sân hoặc truy cập Hệ thống Nội bộ
+                    Hệ thống Quản trị Người Cho Thuê Sân Thể Thao Chuyên Nghiệp
                   </h2>
                   <p className="mt-3 text-sm leading-relaxed text-neutral-600">
-                    Người chơi đã đăng nhập có thể nộp hồ sơ KYC trở thành Đối tác Cho thuê sân. Các
-                    tài khoản <strong>Chủ sân (MANAGER)</strong> và <strong>Quản trị viên (ADMIN)</strong> sau
-                    khi đăng nhập sẽ mở khóa toàn bộ bảng điều khiển nội bộ &amp; công cụ Định giá Động.
+                    Đăng nhập bằng tài khoản <strong>Chủ cụm sân (MANAGER)</strong> được cấp để mở trung tâm điều hành riêng của cơ sở: đăng sân mới, đóng/mở ca trống, thiết lập Nước uống &amp; Dịch vụ riêng từng sân, quét vé QR 1 lần và rút tiền ký quỹ. Người chơi thông thường sau khi đăng nhập có thể nộp hồ sơ KYC trở thành Đối tác Cho thuê mới.
                   </p>
                 </div>
 
                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-3 text-xs">
                   {[
                     {
-                      title: '1. Đăng nhập Tài khoản',
-                      desc: 'Xác thực phiên làm việc cá nhân hoặc tài khoản nội bộ MANAGER / ADMIN.',
+                      title: '1. Điều phối Lịch & Soát QR',
+                      desc: 'Theo dõi đơn đặt sân trực tuyến theo thời gian thực, xác thực vé QR 1 lần tại quầy.',
                     },
                     {
-                      title: '2. Nộp KYC 7 tiêu chuẩn',
-                      desc: 'Dành cho User muốn đăng ký làm Chủ cụm sân cho thuê trên ArenaPulse.vn.',
+                      title: '2. Đăng Sân & Dịch vụ Đi kèm',
+                      desc: 'Chủ động mở/ẩn cụm sân, chỉnh số sân trống và tạo menu nước uống/dụng cụ riêng.',
                     },
                     {
-                      title: '3. Quản trị Định giá & Sổ cái',
-                      desc: 'Chủ sân cấu hình giá sàn/trần (/pricing), Admin kiểm soát phân quyền & duyệt KYC.',
+                      title: '3. Định giá Giờ Vàng & Ví Ký quỹ',
+                      desc: 'Tối ưu giá sàn/trần tự động và rút tiền đối soát minh bạch về ngân hàng đã KYC.',
                     },
                   ].map((stepCard) => (
                     <div
@@ -275,7 +334,7 @@ export const MonteCarloAndRoleCenterSection: React.FC<MonteCarloAndRoleCenterSec
 
                 <div className="flex flex-wrap items-center justify-between gap-4 border-t border-neutral-100 pt-5">
                   <span className="text-xs text-neutral-500">
-                    Mẹo thử nhanh quyền nội bộ: đăng nhập tên chứa <code>manager</code> (Chủ sân) hoặc <code>admin</code> (Quản trị).
+                    Tài khoản Chủ sân &amp; nhân sự nội bộ được cấp riêng và bảo mật theo từng cơ sở sau khi thẩm định KYC.
                   </span>
                   <ActionButton
                     variant="forest"
@@ -283,7 +342,7 @@ export const MonteCarloAndRoleCenterSection: React.FC<MonteCarloAndRoleCenterSec
                     arrow="right"
                     onClick={() => onOpenInternalLogin?.()}
                   >
-                    Đăng nhập ngay để tiếp tục
+                    Đăng nhập Hệ thống Cho thuê
                   </ActionButton>
                 </div>
               </ScrollReveal>
@@ -293,6 +352,29 @@ export const MonteCarloAndRoleCenterSection: React.FC<MonteCarloAndRoleCenterSec
           <LessorOnboardingSection
             sports={sports}
             onNavigateInternalLogin={() => onOpenInternalLogin?.()}
+          />
+        ) : activeRole === 'MANAGER' || activeRole === 'STAFF' ? (
+          <LessorPartnerPortal
+            session={session}
+            activeRole={activeRole}
+            sports={sports}
+            listings={listings}
+            staffChatEnabled={staffChatEnabled}
+            onToggleStaffChat={onToggleStaffChat}
+            onOpenChatDrawer={onOpenChatDrawer}
+            onNavigate={onNavigate}
+            onOpenPublicShop={onOpenPublicShop}
+            onPreviewCourt={onPreviewCourt}
+            controlledTab={lessorTab}
+            onSelectTab={onSelectLessorTab}
+            onUpdateListingPricing={(gid, patch) => onUpdateListingPricing?.(gid, patch)}
+            onUpdateListingServices={(gid, srv) => onUpdateListingServices?.(gid, srv)}
+            onToggleListingPublished={(gid) => onToggleListingPublished?.(gid)}
+            onUpdateListingSlots={(gid, slots) => onUpdateListingSlots?.(gid, slots)}
+            onCreateNewListing={(item) => onCreateNewListing?.(item)}
+            onUpdateProviderProfile={(pid, patch) => onUpdateProviderProfile?.(pid, patch)}
+            onUploadCourtPhoto={onUploadCourtPhoto}
+            onLogout={onLogout}
           />
         ) : (
           <section id="command-center" className="py-12 sm:py-16">
@@ -312,9 +394,7 @@ export const MonteCarloAndRoleCenterSection: React.FC<MonteCarloAndRoleCenterSec
                     <h2 className="mt-3 text-3xl sm:text-[38px] font-semibold tracking-[-0.03em] leading-[1.12] text-[#0F172A]">
                       {activeRole === 'ADMIN'
                         ? 'Hệ thống Quản trị Sàn & Phân quyền (Admin Portal)'
-                        : activeRole === 'MANAGER'
-                          ? 'Hệ thống Nội bộ Chủ Cụm Sân (Lessor Workspace)'
-                          : 'Cổng Vận hành Nội bộ ArenaPulse.vn'}
+                        : 'Cổng Kế toán Đối soát & Sổ cái Kép ArenaPulse.vn'}
                     </h2>
                   </div>
 
@@ -336,6 +416,11 @@ export const MonteCarloAndRoleCenterSection: React.FC<MonteCarloAndRoleCenterSec
                         onClick={() => onNavigate('announcements')}
                       >
                         Phát Thông báo Admin →
+                      </ActionButton>
+                    )}
+                    {onLogout && (
+                      <ActionButton variant="outline" size="sm" onClick={onLogout}>
+                        Đăng xuất
                       </ActionButton>
                     )}
                   </div>
@@ -546,6 +631,20 @@ export const MonteCarloAndRoleCenterSection: React.FC<MonteCarloAndRoleCenterSec
                               </p>
                             </button>
                           )}
+                          {activeRole === 'ADMIN' && (
+                            <button
+                              type="button"
+                              onClick={() => setInternalTab('LESSOR_INSPECTOR')}
+                              className="rounded-2xl border border-[#16422C]/25 bg-white p-4 text-left transition-colors hover:bg-[#F4F8F4]"
+                            >
+                              <div className="font-semibold text-[#16422C]">
+                                05 • Giám sát Hệ thống Cho thuê Đối tác →
+                              </div>
+                              <p className="mt-1 text-neutral-600 leading-relaxed">
+                                Kiểm tra từng Chủ sân, danh sách cụm sân, menu nước uống/dịch vụ và lịch ca đang mở.
+                              </p>
+                            </button>
+                          )}
                         </div>
                       </div>
 
@@ -588,6 +687,43 @@ export const MonteCarloAndRoleCenterSection: React.FC<MonteCarloAndRoleCenterSec
                         </div>
                       )}
                     </div>
+                  </motion.div>
+                )}
+
+                {internalTab === 'OPERATIONS' && listings.length > 0 && (
+                  <div className="mt-6">
+                    <LessorAnalyticsDashboard mode="PLATFORM" listings={listings} />
+                  </div>
+                )}
+
+                {internalTab === 'LESSOR_INSPECTOR' && activeRole === 'ADMIN' && session && (
+                  <motion.div
+                    key="tab-lessor-inspector"
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -8 }}
+                    transition={{ duration: 0.25, ease: EXPO_EASE }}
+                  >
+                    <LessorPartnerPortal
+                      session={session}
+                      activeRole={activeRole}
+                      sports={sports}
+                      listings={listings}
+                      staffChatEnabled={staffChatEnabled}
+                      onToggleStaffChat={onToggleStaffChat}
+                      onOpenChatDrawer={onOpenChatDrawer}
+                      onNavigate={onNavigate}
+                      onOpenPublicShop={onOpenPublicShop}
+                      onPreviewCourt={onPreviewCourt}
+                      onUpdateListingPricing={(gid, patch) => onUpdateListingPricing?.(gid, patch)}
+                      onUpdateListingServices={(gid, srv) => onUpdateListingServices?.(gid, srv)}
+                      onToggleListingPublished={(gid) => onToggleListingPublished?.(gid)}
+                      onUpdateListingSlots={(gid, slots) => onUpdateListingSlots?.(gid, slots)}
+                      onCreateNewListing={(item) => onCreateNewListing?.(item)}
+                      onUpdateProviderProfile={(pid, patch) => onUpdateProviderProfile?.(pid, patch)}
+                      onUploadCourtPhoto={onUploadCourtPhoto}
+                      embeddedForAdmin
+                    />
                   </motion.div>
                 )}
 

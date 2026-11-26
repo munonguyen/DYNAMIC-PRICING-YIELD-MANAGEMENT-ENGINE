@@ -1,7 +1,10 @@
 import React, { useEffect, useState } from 'react';
 import { motion, useReducedMotion, useSpring } from 'framer-motion';
 
-export const EXPO_EASE: [number, number, number, number] = [0.16, 1, 0.3, 1];
+/**
+ * Refined architectural deceleration curve (velvety ease-out, zero bounce).
+ */
+export const EXPO_EASE: [number, number, number, number] = [0.22, 1, 0.36, 1];
 
 interface RevealProps {
   children: React.ReactNode;
@@ -15,7 +18,7 @@ export const ScrollReveal: React.FC<RevealProps> = ({
   children,
   delay = 0,
   className = '',
-  yOffset = 20,
+  yOffset = 24,
   direction = 'up',
 }) => {
   const prefersReduced = useReducedMotion();
@@ -24,16 +27,15 @@ export const ScrollReveal: React.FC<RevealProps> = ({
     return <div className={className}>{children}</div>;
   }
 
-  const initialX = direction === 'left' ? -20 : direction === 'right' ? 20 : 0;
+  const initialX = direction === 'left' ? -22 : direction === 'right' ? 22 : 0;
   const initialY = direction === 'up' ? yOffset : 0;
 
   return (
     <motion.div
-      initial={{ opacity: 0, x: initialX, y: initialY, scale: 0.988 }}
-      whileInView={{ opacity: 1, x: 0, y: 0, scale: 1 }}
-      viewport={{ once: true, amount: 0.08, margin: '0px 0px -32px 0px' }}
-      transition={{ duration: 0.58, delay, ease: EXPO_EASE }}
-      style={{ willChange: 'transform, opacity' }}
+      initial={{ opacity: 0, x: initialX, y: initialY }}
+      whileInView={{ opacity: 1, x: 0, y: 0 }}
+      viewport={{ once: true, amount: 'some', margin: '0px 0px -56px 0px' }}
+      transition={{ duration: 0.68, delay, ease: EXPO_EASE }}
       className={className}
     >
       {children}

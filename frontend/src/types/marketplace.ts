@@ -49,6 +49,27 @@ export interface CourtSpecsInfo {
   amenities: string[];
 }
 
+export type CourtServiceCategory = 'DRINKS' | 'EQUIPMENT' | 'SUPPORT' | 'FACILITY';
+
+export interface CourtServiceOption {
+  id: string;
+  sportCode: string;
+  category: CourtServiceCategory;
+  name: string;
+  description: string;
+  unitLabel: string;
+  unitPrice: number;
+  maxQty: number;
+  imageUrl: string;
+  popular?: boolean;
+  enabled?: boolean;
+}
+
+export interface SelectedCourtServiceItem {
+  service: CourtServiceOption;
+  quantity: number;
+}
+
 export interface CourtMediaItem {
   mediaId: string;
   groupId: string;
@@ -89,6 +110,8 @@ export interface PublishedListing {
   reviewCount?: number;
   provider?: VenueProviderInfo;
   specs?: CourtSpecsInfo;
+  addOnServices?: CourtServiceOption[];
+  published?: boolean;
   upcomingSlots: SlotListingQuote[];
 }
 
@@ -282,7 +305,65 @@ export interface AuthSession {
   username: string;
   email: string;
   fullName: string;
+  managedProviderId?: string | null;
   roles: { roleCode: RoleCode; scope: 'PLATFORM' | 'TENANT'; tenantId?: string | null }[];
+}
+
+export interface ProvisionedAccountHint {
+  username: string;
+  passwordHint: string;
+  fullName: string;
+  roleCode: RoleCode;
+  roleLabel: string;
+  providerId?: string;
+  providerName?: string;
+  badgeColor: 'forest' | 'ocean' | 'amber' | 'slate';
+}
+
+export interface LessorBookingOrder {
+  orderId: string;
+  reservationId: string;
+  providerId: string;
+  groupId: string;
+  groupName: string;
+  venueName: string;
+  sportName: string;
+  unitNumber: string;
+  slotLabel: string;
+  customerName: string;
+  customerPhone: string;
+  courtPrice: number;
+  addOnSummary?: string;
+  addOnTotal: number;
+  paidEscrow: number;
+  remainingAtVenue: number;
+  paymentGateway: string;
+  qrCode: string;
+  status: 'CONFIRMED' | 'HELD' | 'COMPLETED' | 'NO_SHOW' | 'CANCELLED';
+  createdAtLabel: string;
+}
+
+export interface LessorStaffMember {
+  id: string;
+  providerId: string;
+  username: string;
+  passwordPlain: string;
+  fullName: string;
+  phone: string;
+  shiftLabel: string;
+  active: boolean;
+  createdAt: string;
+}
+
+export interface LessorPayoutRecord {
+  payoutId: string;
+  providerId: string;
+  requestedAt: string;
+  grossAmount: number;
+  commissionAmount: number;
+  netReceived: number;
+  bankLabel: string;
+  status: 'SETTLED' | 'PROCESSING';
 }
 
 export type AppPageId =

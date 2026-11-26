@@ -1,19 +1,25 @@
-import React, { useEffect, useLayoutEffect, useState } from 'react';
+import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { motion } from 'framer-motion';
 import type {
   CourtMediaItem,
+  CourtServiceCategory,
   PriceQuote,
   PublishedListing,
   RoleCode,
   SlotListingQuote,
 } from '../types/marketplace';
 import { formatSlotWindow, formatVnd } from '../api/marketplaceApi';
+import {
+  COURT_SERVICE_CATEGORY_LABELS,
+  getActiveLessorServices,
+} from '../data/courtServicesData';
 import { EXPO_EASE, ScrollReveal } from './motionPrimitives';
 import { ActionButton } from './FairwayControls';
 
 interface CourtDetailViewProps {
   listing: PublishedListing;
   activeRole?: RoleCode;
+  isAuthenticated?: boolean;
   activeSlotStart: string | null;
   activeQuote: PriceQuote | null;
   quoteLoading: boolean;
@@ -24,6 +30,10 @@ interface CourtDetailViewProps {
   onOpenVenueChat: (listing: PublishedListing) => void;
   onFilterByProvider: (venueName: string) => void;
   onOpenLessorShop?: (providerId: string) => void;
+  selectedServiceQuantities?: Record<string, number>;
+  onChangeServiceQuantity?: (serviceId: string, nextQty: number) => void;
+  onClearServices?: () => void;
+  onOpenManageServicesInternal?: () => void;
   onUploadCourtPhoto?: (
     groupId: string,
     file: File,
@@ -43,6 +53,7 @@ const PERIOD_LABELS: Record<'MORNING' | 'AFTERNOON' | 'EVENING', string> = {
 export const CourtDetailView: React.FC<CourtDetailViewProps> = ({
   listing,
   activeRole = 'USER',
+  isAuthenticated = false,
   activeSlotStart,
   activeQuote,
   quoteLoading,
@@ -53,6 +64,10 @@ export const CourtDetailView: React.FC<CourtDetailViewProps> = ({
   onOpenVenueChat,
   onFilterByProvider,
   onOpenLessorShop,
+  selectedServiceQuantities = {},
+  onChangeServiceQuantity,
+  onClearServices,
+  onOpenManageServicesInternal,
   onUploadCourtPhoto,
   onSetCoverCourtPhoto,
   onDeleteCourtPhoto,
@@ -82,6 +97,39 @@ export const CourtDetailView: React.FC<CourtDetailViewProps> = ({
   const [markAsCover, setMarkAsCover] = useState<boolean>(true);
   const [uploadingPhoto, setUploadingPhoto] = useState<boolean>(false);
   const [uploadNotice, setUploadNotice] = useState<string | null>(null);
+  const [serviceCatFilter, setServiceCatFilter] = useState<CourtServiceCategory | 'ALL'>('ALL');
+  const [localServiceQty, setLocalServiceQty] = useState<Record<string, number>>({});
+  const servicesTrackRef = useRef<HTMLDivElement | null>(null);
+
+  const scrollServicesBy = (deltaX: number) => {
+    servicesTrackRef.current?.scrollBy({ left: deltaX, behavior: 'smooth' });
+  };
+
+  const effectiveServiceQty = onChangeServiceQuantity
+    ? selectedServiceQuantities
+    : localServiceQty;
+
+  const updateServiceQty = (serviceId: string, nextQty: number) => {
+    const safeQty = Math.max(0, nextQty);
+    if (onChangeServiceQuantity) {
+      onChangeServiceQuantity(serviceId, safeQty);
+    } else {
+      setLocalServiceQty((prev) => {
+        const next = { ...prev };
+        if (safeQty === 0) delete next[serviceId];
+        else next[serviceId] = safeQty;
+        return next;
+      });
+    }
+  };
+
+  const clearAllSelectedServices = () => {
+    if (onClearServices) {
+      onClearServices();
+    } else {
+      setLocalServiceQty({});
+    }
+  };
 
   const canManagePhotos =
     Boolean(onUploadCourtPhoto) &&
@@ -161,6 +209,24 @@ export const CourtDetailView: React.FC<CourtDetailViewProps> = ({
       : selectedSlotObj?.currentDynamicPrice ?? listing.basePrice;
   const depositAmount = Math.floor((effectivePrice * listing.depositPercent) / 100);
   const platformFeeFromPartner = Math.floor((effectivePrice * commissionPct) / 100);
+
+  const availableServices = getActiveLessorServices(listing);
+  const filteredServices =
+    serviceCatFilter === 'ALL'
+      ? availableServices
+      : availableServices.filter((s) => s.category === serviceCatFilter);
+  const selectedServiceItems = availableServices
+    .map((service) => ({ service, quantity: effectiveServiceQty[service.id] ?? 0 }))
+    .filter((entry) => entry.quantity > 0);
+  const totalSelectedServiceCount = selectedServiceItems.reduce(
+    (sum, item) => sum + item.quantity,
+    0
+  );
+  const addOnsTotal = selectedServiceItems.reduce(
+    (sum, item) => sum + item.service.unitPrice * item.quantity,
+    0
+  );
+  const grandTotal = effectivePrice + addOnsTotal;
 
   return (
     <motion.div
@@ -421,18 +487,20 @@ export const CourtDetailView: React.FC<CourtDetailViewProps> = ({
               {listing.checkinMode === 'QR_STAFF' ? 'Nhân viên quét vé QR 1 lần' : 'Tự check-in tại cổng'}
             </p>
 
-            {/* Shopee-style Price Box */}
+            {/* Shopee-style Price Box (Court + Add-on Services Live Total) */}
             <div className="mt-5 rounded-2xl border border-[#16422C]/20 bg-[#F4F8F4] p-4 sm:p-5">
               <div className="flex flex-wrap items-end justify-between gap-3">
                 <div>
                   <div className="text-xs font-medium text-neutral-500">
-                    Giá thuê ca đang chọn ({listing.slotMinutes} phút)
+                    {addOnsTotal > 0
+                      ? `Tổng tạm tính (Sân ${listing.slotMinutes}p + ${totalSelectedServiceCount} dịch vụ)`
+                      : `Giá thuê ca đang chọn (${listing.slotMinutes} phút)`}
                   </div>
                   <div className="mt-1 flex items-baseline gap-2.5">
                     <span className="tabular-nums text-3xl font-bold text-[#16422C]">
-                      {formatVnd(effectivePrice)}
+                      {formatVnd(grandTotal)}
                     </span>
-                    {effectivePrice !== listing.basePrice && (
+                    {addOnsTotal === 0 && effectivePrice !== listing.basePrice && (
                       <span className="tabular-nums text-xs text-neutral-400 line-through">
                         {formatVnd(listing.basePrice)}
                       </span>
@@ -445,11 +513,31 @@ export const CourtDetailView: React.FC<CourtDetailViewProps> = ({
                     {quoteLoading ? 'Đang tính giá…' : `Khóa giá ${countdownLabel}`}
                   </span>
                   <div className="mt-1 tabular-nums text-xs text-neutral-600">
-                    Đặt cọc {listing.depositPercent}%:{' '}
+                    Đặt cọc sân {listing.depositPercent}%:{' '}
                     <strong className="text-[#0F172A]">{formatVnd(depositAmount)}</strong>
                   </div>
                 </div>
               </div>
+
+              {addOnsTotal > 0 ? (
+                <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-[#16422C]/15 pt-2.5 text-xs">
+                  <span className="text-neutral-600">
+                    Tiền sân: <strong className="tabular-nums text-[#0F172A]">{formatVnd(effectivePrice)}</strong>
+                    {' '}• Dịch vụ đi kèm:{' '}
+                    <strong className="tabular-nums text-[#16422C]">+{formatVnd(addOnsTotal)}</strong>
+                  </span>
+                  <span className="text-[11px] font-medium text-[#0E4F7E]">
+                    Thanh toán trọn gói hoặc trả dịch vụ tại quầy
+                  </span>
+                </div>
+              ) : availableServices.length > 0 ? (
+                <div className="mt-2.5 text-[11px] text-neutral-500">
+                  Cơ sở có phục vụ <strong>{availableServices.length} sản phẩm/dịch vụ</strong> đi kèm — chọn thêm ở mục{' '}
+                  <a href="#court-addon-services" className="font-semibold text-[#16422C] hover:underline">
+                    Dịch vụ của chủ sân ↓
+                  </a>
+                </div>
+              ) : null}
             </div>
 
             {/* Interactive Slot Matrix Picker */}
@@ -549,25 +637,323 @@ export const CourtDetailView: React.FC<CourtDetailViewProps> = ({
           </div>
 
           {/* Primary Transaction CTA */}
-          <div className="flex flex-col gap-2.5 border-t border-neutral-100 pt-4 sm:flex-row">
-            <ActionButton
-              variant="forest"
-              size="lg"
-              arrow="right"
-              disabled={!hasAnyAvailable}
-              onClick={onProceedToHold}
-              className="flex-1"
-            >
-              {hasAnyAvailable
-                ? `Bước 2: Giữ sân & Đặt cọc ${formatVnd(depositAmount)}`
-                : 'Cụm sân đã kín hết ca hôm nay'}
-            </ActionButton>
-            <ActionButton variant="outline" size="lg" onClick={() => onOpenVenueChat(listing)}>
-              Chat hỏi bên cho thuê
-            </ActionButton>
+          <div className="space-y-2.5 border-t border-neutral-100 pt-4">
+            {!isAuthenticated && hasAnyAvailable && (
+              <div className="flex items-center justify-between gap-2 rounded-xl border border-amber-200/90 bg-amber-50/75 px-3.5 py-2 text-xs text-amber-950">
+                <span>
+                  🔒 <strong>Yêu cầu đăng nhập:</strong> Khách hàng cần đăng nhập tài khoản để giữ
+                  sân, thanh toán ký quỹ và nhận vé QR định danh.
+                </span>
+              </div>
+            )}
+
+            <div className="flex flex-col gap-2.5 sm:flex-row">
+              <ActionButton
+                variant="forest"
+                size="lg"
+                arrow="right"
+                disabled={!hasAnyAvailable}
+                onClick={onProceedToHold}
+                className="flex-1"
+              >
+                {hasAnyAvailable
+                  ? !isAuthenticated
+                    ? `Đăng nhập để Đặt sân (${formatVnd(grandTotal)})`
+                    : addOnsTotal > 0
+                      ? `Bước 2: Giữ sân & Cọc ${formatVnd(depositAmount)} (Tổng ${formatVnd(grandTotal)})`
+                      : `Bước 2: Giữ sân & Đặt cọc ${formatVnd(depositAmount)}`
+                  : 'Cụm sân đã kín hết ca hôm nay'}
+              </ActionButton>
+              <ActionButton variant="outline" size="lg" onClick={() => onOpenVenueChat(listing)}>
+                Chat hỏi bên cho thuê
+              </ActionButton>
+            </div>
           </div>
         </div>
       </div>
+
+      {/* ===================================================================== */}
+      {/* LESSOR-CONFIGURED ADD-ON SERVICES & QUANTITY CALCULATOR               */}
+      {/* ===================================================================== */}
+      {availableServices.length > 0 ? (
+      <ScrollReveal
+        delay={0.03}
+        className="rounded-[28px] border border-neutral-200/90 bg-white p-5 sm:p-7 shadow-xs space-y-5"
+      >
+        <div id="court-addon-services" className="scroll-mt-24 flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between border-b border-neutral-100 pb-5">
+          <div>
+            <div className="inline-flex flex-wrap items-center gap-2 text-[11px] font-bold uppercase tracking-[0.12em] text-[#16422C]">
+              <span>Dịch vụ &amp; Sản phẩm Đi kèm do Chủ sân Cung cấp</span>
+              {(activeRole === 'MANAGER' || activeRole === 'ADMIN') &&
+                onOpenManageServicesInternal && (
+                  <button
+                    type="button"
+                    onClick={onOpenManageServicesInternal}
+                    className="rounded-full border border-[#16422C]/30 bg-[#F4F8F4] px-2.5 py-0.5 text-[10px] font-bold normal-case tracking-normal text-[#16422C] hover:bg-[#16422C] hover:text-[#E7F7D4]"
+                  >
+                    ⚙ Chỉnh sửa danh mục trong Nội bộ →
+                  </button>
+                )}
+            </div>
+            <h3 className="mt-1 text-lg sm:text-xl font-bold tracking-[-0.015em] text-[#0F172A]">
+              Chọn thêm Nước uống, Dụng cụ &amp; Hỗ trợ tại cơ sở này
+            </h3>
+            <p className="mt-1 text-xs text-neutral-500">
+              Danh mục dưới đây do <strong>{provider?.providerName ?? listing.venueName}</strong> trực tiếp mở bán cho cụm sân này — chuẩn bị sẵn trước giờ nhận ca và cộng vào tổng hóa đơn.
+            </p>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2">
+            {(['ALL', 'DRINKS', 'EQUIPMENT', 'SUPPORT', 'FACILITY'] as const).map((cat) => {
+              const countInCat =
+                cat === 'ALL'
+                  ? availableServices.length
+                  : availableServices.filter((s) => s.category === cat).length;
+              if (cat !== 'ALL' && countInCat === 0) return null;
+              const active = serviceCatFilter === cat;
+              return (
+                <button
+                  key={cat}
+                  type="button"
+                  onClick={() => {
+                    setServiceCatFilter(cat);
+                    servicesTrackRef.current?.scrollTo({ left: 0, behavior: 'smooth' });
+                  }}
+                  className={`rounded-full px-3.5 py-1.5 text-xs font-semibold transition-all ${
+                    active
+                      ? 'bg-[#16422C] text-[#E7F7D4] shadow-2xs'
+                      : 'border border-neutral-200 bg-[#F8F9FA] text-neutral-600 hover:border-[#16422C]/40 hover:text-[#0F172A]'
+                  }`}
+                >
+                  {COURT_SERVICE_CATEGORY_LABELS[cat]}
+                </button>
+              );
+            })}
+
+            {/* Horizontal Carousel Controls */}
+            <div className="hidden sm:inline-flex items-center gap-1.5 pl-2 ml-1 border-l border-neutral-200">
+              <button
+                type="button"
+                aria-label="Cuộn dịch vụ sang trái"
+                onClick={() => scrollServicesBy(-340)}
+                className="flex h-8 w-8 items-center justify-center rounded-full border border-neutral-200 bg-white text-sm font-semibold text-[#0F172A] shadow-2xs hover:border-[#16422C] hover:text-[#16422C] transition-colors"
+              >
+                ←
+              </button>
+              <button
+                type="button"
+                aria-label="Cuộn dịch vụ sang phải"
+                onClick={() => scrollServicesBy(340)}
+                className="flex h-8 w-8 items-center justify-center rounded-full border border-neutral-200 bg-white text-sm font-semibold text-[#0F172A] shadow-2xs hover:border-[#16422C] hover:text-[#16422C] transition-colors"
+              >
+                →
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {/* Horizontal Snap-Scrolling Product Carousel with Real Product Photography */}
+        <div className="relative">
+          <div
+            ref={servicesTrackRef}
+            className="no-scrollbar flex gap-4 overflow-x-auto pb-2 pt-1 snap-x snap-mandatory scroll-smooth"
+          >
+            {filteredServices.map((srv) => {
+              const qty = effectiveServiceQty[srv.id] ?? 0;
+              const isSelected = qty > 0;
+              const lineSubtotal = qty * srv.unitPrice;
+              return (
+                <div
+                  key={srv.id}
+                  className={`group snap-start shrink-0 w-[268px] sm:w-[292px] flex flex-col justify-between overflow-hidden rounded-[22px] border transition-all duration-300 ${
+                    isSelected
+                      ? 'border-[#16422C] bg-[#F4F8F4]/70 shadow-[0_14px_32px_rgba(22,66,44,0.12)] ring-1 ring-[#16422C]/20'
+                      : 'border-neutral-200/90 bg-white hover:border-[#16422C]/45 hover:shadow-[0_12px_28px_rgba(15,23,42,0.07)]'
+                  }`}
+                >
+                  <div>
+                    {/* Product Photography Header */}
+                    <div className="relative aspect-[16/10] w-full overflow-hidden bg-[#F2F4F3]">
+                      <img
+                        src={srv.imageUrl}
+                        alt={srv.name}
+                        loading="lazy"
+                        decoding="async"
+                        className="h-full w-full object-cover transition-transform duration-500 ease-out group-hover:scale-105"
+                      />
+                      <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/35 via-transparent to-transparent" />
+
+                      <div className="absolute left-2.5 top-2.5 flex items-center gap-1.5">
+                        <span className="rounded-full bg-white/92 px-2.5 py-0.5 text-[10px] font-semibold text-[#0F172A] backdrop-blur-xs shadow-2xs">
+                          {COURT_SERVICE_CATEGORY_LABELS[srv.category]}
+                        </span>
+                      </div>
+
+                      {srv.popular && (
+                        <span className="absolute right-2.5 top-2.5 rounded-full bg-[#16422C] px-2.5 py-0.5 text-[10px] font-bold text-[#E7F7D4] shadow-xs">
+                          Phổ biến
+                        </span>
+                      )}
+
+                      {isSelected && (
+                        <span className="absolute bottom-2.5 right-2.5 rounded-full bg-[#E7F7D4] px-2.5 py-0.5 tabular-nums text-[10.5px] font-extrabold text-[#0B2217] shadow-xs">
+                          Đã chọn ×{qty}
+                        </span>
+                      )}
+                    </div>
+
+                    {/* Product Title & Description */}
+                    <div className="p-4 pb-3">
+                      <h4 className="line-clamp-2 min-h-[38px] text-[13.5px] font-semibold leading-snug text-[#0F172A]">
+                        {srv.name}
+                      </h4>
+                      <p className="mt-1 line-clamp-2 min-h-[34px] text-[11.5px] leading-relaxed text-neutral-500">
+                        {srv.description}
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Price & Quantity Stepper Footer */}
+                  <div className="flex items-center justify-between gap-2.5 border-t border-neutral-100 px-4 py-3 bg-[#FAFAFA]/70">
+                    <div className="min-w-0">
+                      <div className="tabular-nums text-[14.5px] font-bold text-[#16422C]">
+                        {formatVnd(srv.unitPrice)}
+                        <span className="text-[11px] font-normal text-neutral-400">
+                          /{srv.unitLabel}
+                        </span>
+                      </div>
+                      {isSelected ? (
+                        <div className="tabular-nums text-[11px] font-semibold text-[#0E4F7E]">
+                          = {formatVnd(lineSubtotal)}
+                        </div>
+                      ) : (
+                        <div className="text-[10.5px] text-neutral-400">
+                          Tối đa {srv.maxQty} {srv.unitLabel}
+                        </div>
+                      )}
+                    </div>
+
+                    {isSelected ? (
+                      <div className="inline-flex items-center gap-1 rounded-full border border-[#16422C]/30 bg-white p-0.5 shadow-2xs shrink-0">
+                        <button
+                          type="button"
+                          aria-label={`Giảm số lượng ${srv.name}`}
+                          onClick={() => updateServiceQty(srv.id, qty - 1)}
+                          className="flex h-7 w-7 items-center justify-center rounded-full bg-neutral-100 text-sm font-bold text-[#0F172A] hover:bg-neutral-200"
+                        >
+                          −
+                        </button>
+                        <span className="min-w-[22px] text-center tabular-nums text-xs font-bold text-[#16422C]">
+                          {qty}
+                        </span>
+                        <button
+                          type="button"
+                          aria-label={`Tăng số lượng ${srv.name}`}
+                          disabled={qty >= srv.maxQty}
+                          onClick={() => updateServiceQty(srv.id, Math.min(srv.maxQty, qty + 1))}
+                          className="flex h-7 w-7 items-center justify-center rounded-full bg-[#16422C] text-sm font-bold text-[#E7F7D4] hover:bg-[#0F172A] disabled:opacity-40"
+                        >
+                          +
+                        </button>
+                      </div>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => updateServiceQty(srv.id, 1)}
+                        className="shrink-0 rounded-full border border-[#16422C] bg-white px-3.5 py-1.5 text-xs font-semibold text-[#16422C] hover:bg-[#16422C] hover:text-[#E7F7D4] transition-colors"
+                      >
+                        + Thêm
+                      </button>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+          <div className="mt-1 flex items-center justify-between text-[11px] text-neutral-400 px-1">
+            <span>Vuốt ngang hoặc bấm ← / → để xem đầy đủ {filteredServices.length} sản phẩm dịch vụ</span>
+            <span className="hidden sm:inline tabular-nums font-medium text-neutral-500">
+              {totalSelectedServiceCount > 0
+                ? `Đang chọn ${totalSelectedServiceCount} sản phẩm`
+                : 'Chưa chọn dịch vụ'}
+            </span>
+          </div>
+        </div>
+
+        {/* Live Total Bar (Court + Add-on Services) */}
+        <div className="flex flex-col gap-4 rounded-2xl border border-[#16422C]/20 bg-[#F4F8F4] p-4 sm:p-5 lg:flex-row lg:items-center lg:justify-between">
+          <div className="space-y-1">
+            <div className="flex flex-wrap items-center gap-2 text-xs text-neutral-600">
+              <span>
+                Giá thuê sân:{' '}
+                <strong className="tabular-nums text-[#0F172A]">{formatVnd(effectivePrice)}</strong>
+              </span>
+              <span>+</span>
+              <span>
+                Dịch vụ đi kèm ({totalSelectedServiceCount} món):{' '}
+                <strong className="tabular-nums text-[#16422C]">{formatVnd(addOnsTotal)}</strong>
+              </span>
+              {totalSelectedServiceCount > 0 && (
+                <button
+                  type="button"
+                  onClick={clearAllSelectedServices}
+                  className="ml-1 text-[11px] font-semibold text-rose-600 hover:underline"
+                >
+                  Xóa dịch vụ
+                </button>
+              )}
+            </div>
+            <div className="flex flex-wrap items-baseline gap-2">
+              <span className="text-xs font-semibold uppercase tracking-wider text-neutral-500">
+                Tổng cộng đơn sân + dịch vụ:
+              </span>
+              <span className="tabular-nums text-2xl font-bold text-[#16422C]">
+                {formatVnd(grandTotal)}
+              </span>
+            </div>
+          </div>
+
+          <ActionButton
+            variant="forest"
+            size="md"
+            arrow="right"
+            disabled={!hasAnyAvailable}
+            onClick={onProceedToHold}
+            className="shrink-0"
+          >
+            {hasAnyAvailable
+              ? isAuthenticated
+                ? `Đặt sân & dịch vụ (${formatVnd(grandTotal)})`
+                : `Đăng nhập để Đặt sân (${formatVnd(grandTotal)})`
+              : 'Đã kín lịch hôm nay'}
+          </ActionButton>
+        </div>
+      </ScrollReveal>
+      ) : (activeRole === 'MANAGER' || activeRole === 'ADMIN') && onOpenManageServicesInternal ? (
+        <ScrollReveal
+          delay={0.03}
+          className="flex flex-col gap-3 rounded-[24px] border border-dashed border-[#16422C]/35 bg-[#F4F8F4]/70 p-5 sm:flex-row sm:items-center sm:justify-between text-xs"
+        >
+          <div>
+            <div className="font-bold text-[#16422C]">
+              Cụm sân này chưa bật bán sản phẩm / dịch vụ đi kèm trực tuyến
+            </div>
+            <p className="mt-0.5 text-neutral-600">
+              Là Chủ sân / Admin, bạn có thể thêm nước uống, bóng, vợt hoặc trọng tài riêng cho cụm
+              sân này trong Hệ thống Nội bộ.
+            </p>
+          </div>
+          <ActionButton
+            variant="forest"
+            size="sm"
+            arrow="right"
+            onClick={onOpenManageServicesInternal}
+            className="shrink-0"
+          >
+            Thiết lập Nước &amp; Dịch vụ Sân
+          </ActionButton>
+        </ScrollReveal>
+      ) : null}
 
       {/* ===================================================================== */}
       {/* SHOPEE-STYLE PROVIDER / LESSOR SHOP PROFILE CARD                      */}

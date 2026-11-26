@@ -1,10 +1,11 @@
-import React, { Suspense, lazy, useCallback, useEffect, useState } from 'react';
+import React, { Suspense, lazy, useCallback, useEffect, useMemo, useState } from 'react';
 import { AnimatePresence, MotionConfig, motion } from 'framer-motion';
 import type {
   AppPageId,
   AuthSession,
   CancelBookingResult,
   CheckInResult,
+  CourtServiceOption,
   HoldSlotResult,
   NewsArticleItem,
   PaymentGatewayCode,
@@ -14,8 +15,10 @@ import type {
   PublishedListing,
   QrCodeTicket,
   RoleCode,
+  SlotListingQuote,
   SportTypeItem,
   VenueAnnouncement,
+  VenueProviderInfo,
 } from './types/marketplace';
 import {
   CURATED_SPORTS,
@@ -23,10 +26,21 @@ import {
   createCuratedListings,
   marketplaceApi,
   mergeOfflineMediaIntoListings,
+  readSavedAuthSession,
+  saveAuthSessionToStorage,
 } from './api/marketplaceApi';
 import { INITIAL_ANNOUNCEMENTS, VENUE_LOCATIONS } from './data/announcementsData';
 import { INITIAL_NEWS_ARTICLES } from './data/newsAndRankingsData';
-import { FairwayHeader, PAGE_NAV_ITEMS } from './components/FairwayHeader';
+import {
+  hydrateListingsWithLessorServices,
+  savePersistedLessorServicesForGroup,
+} from './data/courtServicesData';
+import {
+  FairwayHeader,
+  PAGE_NAV_ITEMS,
+  type AdminHeaderTabId,
+} from './components/FairwayHeader';
+import type { LessorPortalTabId } from './components/LessorPartnerPortal';
 import { FloatingChatWidget } from './components/FloatingChatWidget';
 import { HomePage } from './pages/HomePage';
 import { EXPO_EASE, ScrollReveal } from './components/motionPrimitives';
@@ -75,6 +89,64 @@ function resolveProviderIdFromPath(pathname: string): string | null {
   return null;
 }
 
+const LESSOR_CUSTOM_LISTINGS_KEY = 'arenapulse_lessor_custom_listings_v1';
+const LESSOR_LISTING_OVERRIDES_KEY = 'arenapulse_lessor_listing_overrides_v1';
+const LESSOR_PROVIDER_OVERRIDES_KEY = 'arenapulse_lessor_provider_overrides_v1';
+
+interface PersistedListingOverride {
+  published?: boolean;
+  basePrice?: number;
+  minPrice?: number;
+  maxPrice?: number;
+  depositPercent?: number;
+  upcomingSlots?: SlotListingQuote[];
+}
+
+function readJsonStorage<T>(key: string, fallback: T): T {
+  if (typeof window === 'undefined') return fallback;
+  try {
+    const raw = window.localStorage.getItem(key);
+    return raw ? (JSON.parse(raw) as T) : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+function writeJsonStorage<T>(key: string, value: T): void {
+  if (typeof window === 'undefined') return;
+  try {
+    window.localStorage.setItem(key, JSON.stringify(value));
+  } catch {
+    // ignore storage quota errors
+  }
+}
+
+function hydrateAllLessorCustomizations(baseListings: PublishedListing[]): PublishedListing[] {
+  const customListings = readJsonStorage<PublishedListing[]>(LESSOR_CUSTOM_LISTINGS_KEY, []);
+  const listingOverrides = readJsonStorage<Record<string, PersistedListingOverride>>(
+    LESSOR_LISTING_OVERRIDES_KEY,
+    {}
+  );
+  const providerOverrides = readJsonStorage<
+    Record<string, Partial<VenueProviderInfo>>
+  >(LESSOR_PROVIDER_OVERRIDES_KEY, {});
+
+  const combined = [
+    ...customListings.filter((c) => !baseListings.some((b) => b.groupId === c.groupId)),
+    ...baseListings,
+  ];
+
+  return hydrateListingsWithLessorServices(combined).map((item) => {
+    const ov = listingOverrides[item.groupId];
+    const pOv = item.provider ? providerOverrides[item.provider.providerId] : undefined;
+    return {
+      ...item,
+      ...(ov ?? {}),
+      provider: item.provider && pOv ? { ...item.provider, ...pOv } : item.provider,
+    };
+  });
+}
+
 export function App() {
   const [currentPage, setCurrentPage] = useState<AppPageId>(() =>
     resolvePageFromPath(window.location.pathname)
@@ -82,7 +154,12 @@ export function App() {
 
   const [sports, setSports] = useState<SportTypeItem[]>(CURATED_SPORTS);
   const [listings, setListings] = useState<PublishedListing[]>(() =>
-    mergeOfflineMediaIntoListings(createCuratedListings())
+    hydrateAllLessorCustomizations(mergeOfflineMediaIntoListings(createCuratedListings()))
+  );
+
+  const publicListings = useMemo(
+    () => listings.filter((l) => l.published !== false),
+    [listings]
   );
 
   const [selectedLocationId, setSelectedLocationId] = useState<string>('ALL');
@@ -92,7 +169,9 @@ export function App() {
 
   const [selectedSport, setSelectedSport] = useState<string>('ALL');
   const [checkinFilter, setCheckinFilter] = useState<'ALL' | 'QR_STAFF' | 'MANUAL'>('ALL');
-  const [activeRole, setActiveRole] = useState<RoleCode>('USER');
+  const [activeRole, setActiveRole] = useState<RoleCode>(
+    () => readSavedAuthSession()?.activeRole ?? 'USER'
+  );
 
   const [activeListing, setActiveListing] = useState<PublishedListing | null>(null);
   const [activeSlotStart, setActiveSlotStart] = useState<string | null>(null);
@@ -107,7 +186,14 @@ export function App() {
   const [busyStep, setBusyStep] = useState<string | null>(null);
   const [remainingSeconds, setRemainingSeconds] = useState<number>(600);
 
-  const [session, setSession] = useState<AuthSession | null>(null);
+  const [session, setSession] = useState<AuthSession | null>(() => {
+    const saved = readSavedAuthSession();
+    if (saved?.session?.accessToken) {
+      marketplaceApi.setAccessToken(saved.session.accessToken);
+      return saved.session;
+    }
+    return null;
+  });
   const [returnPageAfterLogin, setReturnPageAfterLogin] = useState<AppPageId>('home');
   const [chatOpen, setChatOpen] = useState<boolean>(false);
   const [staffChatEnabled, setStaffChatEnabled] = useState<boolean>(true);
@@ -125,6 +211,11 @@ export function App() {
   const [activeChatProviderId, setActiveChatProviderId] = useState<string | null>(null);
   const [chatContextListing, setChatContextListing] = useState<PublishedListing | null>(null);
   const [requestedCourtDetailId, setRequestedCourtDetailId] = useState<string | null>(null);
+  const [selectedServiceQuantities, setSelectedServiceQuantities] = useState<
+    Record<string, number>
+  >({});
+  const [lessorTab, setLessorTab] = useState<LessorPortalTabId>('OVERVIEW');
+  const [adminTab, setAdminTab] = useState<AdminHeaderTabId>('OPERATIONS');
 
   const navigateTo = useCallback(
     (page: AppPageId) => {
@@ -143,7 +234,6 @@ export function App() {
         window.history.pushState({}, '', targetPath);
       }
       setCurrentPage(page);
-      window.scrollTo({ top: 0, behavior: 'instant' as ScrollBehavior });
     },
     [currentPage, selectedProviderId]
   );
@@ -159,7 +249,12 @@ export function App() {
   }, []);
 
   const selectSlotAndQuote = useCallback(async (listing: PublishedListing, slotStart: string) => {
-    setActiveListing(listing);
+    setActiveListing((prev) => {
+      if (prev && prev.groupId !== listing.groupId) {
+        setSelectedServiceQuantities({});
+      }
+      return listing;
+    });
     setActiveSlotStart(slotStart);
     setQuoteLoading(true);
     setHoldResult(null);
@@ -178,10 +273,12 @@ export function App() {
     let mounted = true;
     marketplaceApi.checkBackendAndLoadCatalogue().then(({ sports: sp, listings: ls }) => {
       if (!mounted) return;
+      const hydrated = hydrateAllLessorCustomizations(ls);
       setSports(sp);
-      setListings(ls);
-      if (ls.length > 0 && ls[0].upcomingSlots.length > 0) {
-        selectSlotAndQuote(ls[0], ls[0].upcomingSlots[0].slotStart);
+      setListings(hydrated);
+      const firstOpen = hydrated.find((l) => l.published !== false) ?? hydrated[0];
+      if (firstOpen && firstOpen.upcomingSlots.length > 0) {
+        selectSlotAndQuote(firstOpen, firstOpen.upcomingSlots[0].slotStart);
       }
     });
     return () => {
@@ -201,13 +298,29 @@ export function App() {
   const countdownLabel = remainingSeconds === 0 ? 'HẾT HẠN' : `${mm}:${ss}`;
   const isHoldExpired = remainingSeconds === 0 && !qrTicket && !cancelResult;
 
+  const handleProceedToBooking = () => {
+    if (!session) {
+      setReturnPageAfterLogin('checkout');
+      if (window.location.pathname !== '/login') {
+        window.history.pushState({}, '', '/login');
+      }
+      setCurrentPage('login');
+      return;
+    }
+    navigateTo('checkout');
+  };
+
   const handleHoldSlot = async () => {
+    if (!session) {
+      handleProceedToBooking();
+      return;
+    }
     if (!activeListing || !activeQuote || remainingSeconds === 0) return;
     setBusyStep('HOLD');
     const { hold } = await marketplaceApi.holdCourtSlot(
       activeListing,
       activeQuote,
-      session?.username || 'player_arenapulse'
+      session.username
     );
     setHoldResult(hold);
     setRemainingSeconds(600);
@@ -228,6 +341,10 @@ export function App() {
     vatTaxCode: string;
     note: string;
   }) => {
+    if (!session) {
+      handleProceedToBooking();
+      return;
+    }
     if (!holdResult || remainingSeconds === 0) return;
     setBusyStep('PAY');
     try {
@@ -346,7 +463,6 @@ export function App() {
       window.history.pushState({}, '', targetPath);
     }
     setCurrentPage('lessors');
-    window.scrollTo({ top: 0, behavior: 'instant' as ScrollBehavior });
   };
 
   const handleToggleFollowProvider = (providerId: string) => {
@@ -358,6 +474,50 @@ export function App() {
         window.localStorage.setItem('arenapulse_followed_providers', JSON.stringify(next));
       } catch {
         // ignore storage quota errors
+      }
+      return next;
+    });
+  };
+
+  const handleUpdateListingServices = (
+    groupId: string,
+    nextServices: CourtServiceOption[]
+  ) => {
+    savePersistedLessorServicesForGroup(groupId, nextServices);
+    setListings((prev) =>
+      prev.map((item) =>
+        item.groupId === groupId ? { ...item, addOnServices: nextServices } : item
+      )
+    );
+    setActiveListing((prev) =>
+      prev && prev.groupId === groupId ? { ...prev, addOnServices: nextServices } : prev
+    );
+    if (activeListing?.groupId === groupId) {
+      const validIds = new Set(
+        nextServices.filter((s) => s.enabled !== false).map((s) => s.id)
+      );
+      setSelectedServiceQuantities((prev) => {
+        const cleaned: Record<string, number> = {};
+        for (const [k, v] of Object.entries(prev)) {
+          if (validIds.has(k)) cleaned[k] = v;
+        }
+        return cleaned;
+      });
+    }
+  };
+
+  const handleClearServices = () => {
+    setSelectedServiceQuantities({});
+  };
+
+  const handleChangeServiceQuantity = (serviceId: string, nextQty: number) => {
+    const safeQty = Math.max(0, nextQty);
+    setSelectedServiceQuantities((prev) => {
+      const next = { ...prev };
+      if (safeQty === 0) {
+        delete next[serviceId];
+      } else {
+        next[serviceId] = safeQty;
       }
       return next;
     });
@@ -411,16 +571,41 @@ export function App() {
     navigateTo('courts');
   };
 
+  const persistListingOverride = (groupId: string, patch: PersistedListingOverride) => {
+    const existing = readJsonStorage<Record<string, PersistedListingOverride>>(
+      LESSOR_LISTING_OVERRIDES_KEY,
+      {}
+    );
+    writeJsonStorage(LESSOR_LISTING_OVERRIDES_KEY, {
+      ...existing,
+      [groupId]: { ...(existing[groupId] ?? {}), ...patch },
+    });
+  };
+
   const handleUpdateListingPricing = (
     groupId: string,
     patch: { basePrice: number; minPrice: number; maxPrice: number; depositPercent: number }
   ) => {
     const applyPatch = (listing: PublishedListing): PublishedListing => {
       if (listing.groupId !== groupId) return listing;
+      const clamp = (raw: number) =>
+        Math.min(patch.maxPrice, Math.max(patch.minPrice, Math.round(raw / 1000) * 1000));
       const updatedUpcoming = listing.upcomingSlots.map((slot) => ({
         ...slot,
-        currentPrice: Math.min(patch.maxPrice, Math.max(patch.minPrice, patch.basePrice)),
+        currentDynamicPrice:
+          slot.timePeriod === 'MORNING'
+            ? clamp(patch.basePrice * 0.85)
+            : slot.timePeriod === 'EVENING'
+              ? clamp(patch.basePrice * 1.28)
+              : clamp(patch.basePrice),
       }));
+      persistListingOverride(groupId, {
+        basePrice: patch.basePrice,
+        minPrice: patch.minPrice,
+        maxPrice: patch.maxPrice,
+        depositPercent: patch.depositPercent,
+        upcomingSlots: updatedUpcoming,
+      });
       return {
         ...listing,
         basePrice: patch.basePrice,
@@ -440,6 +625,68 @@ export function App() {
       }
       return next;
     });
+  };
+
+  const handleToggleListingPublished = (groupId: string) => {
+    setListings((prev) =>
+      prev.map((item) => {
+        if (item.groupId !== groupId) return item;
+        const nextPublished = item.published === false ? true : false;
+        persistListingOverride(groupId, { published: nextPublished });
+        return { ...item, published: nextPublished };
+      })
+    );
+  };
+
+  const handleUpdateListingSlots = (groupId: string, nextSlots: SlotListingQuote[]) => {
+    persistListingOverride(groupId, { upcomingSlots: nextSlots });
+    setListings((prev) =>
+      prev.map((item) =>
+        item.groupId === groupId ? { ...item, upcomingSlots: nextSlots } : item
+      )
+    );
+    setActiveListing((prev) =>
+      prev && prev.groupId === groupId ? { ...prev, upcomingSlots: nextSlots } : prev
+    );
+  };
+
+  const handleCreateNewListing = (newListing: PublishedListing) => {
+    const savedCustom = readJsonStorage<PublishedListing[]>(LESSOR_CUSTOM_LISTINGS_KEY, []);
+    writeJsonStorage(LESSOR_CUSTOM_LISTINGS_KEY, [newListing, ...savedCustom]);
+    setListings((prev) => [newListing, ...prev]);
+  };
+
+  const handleUpdateProviderProfile = (
+    providerId: string,
+    patch: Partial<Pick<VenueProviderInfo, 'shopSlogan' | 'voucherLabel' | 'responseTimeLabel'>>
+  ) => {
+    const savedProv = readJsonStorage<Record<string, Partial<VenueProviderInfo>>>(
+      LESSOR_PROVIDER_OVERRIDES_KEY,
+      {}
+    );
+    writeJsonStorage(LESSOR_PROVIDER_OVERRIDES_KEY, {
+      ...savedProv,
+      [providerId]: { ...(savedProv[providerId] ?? {}), ...patch },
+    });
+    setListings((prev) =>
+      prev.map((item) =>
+        item.provider?.providerId === providerId
+          ? { ...item, provider: { ...item.provider, ...patch } }
+          : item
+      )
+    );
+    setActiveListing((prev) =>
+      prev && prev.provider?.providerId === providerId
+        ? { ...prev, provider: { ...prev.provider, ...patch } }
+        : prev
+    );
+  };
+
+  const handleLogoutSession = () => {
+    marketplaceApi.setAccessToken(null);
+    saveAuthSessionToStorage(null, 'USER');
+    setSession(null);
+    setActiveRole('USER');
   };
 
   const handleUploadCourtPhoto = async (
@@ -506,9 +753,19 @@ export function App() {
           currentPage={currentPage}
           onNavigate={navigateTo}
           activeRole={activeRole}
-          onSelectRole={setActiveRole}
+          onSelectRole={(role) => {
+            setActiveRole(role);
+            saveAuthSessionToStorage(session, role);
+          }}
           session={session}
           onOpenAuthModal={() => navigateTo('login')}
+          onLogout={handleLogoutSession}
+          lessorTab={lessorTab}
+          onSelectLessorTab={setLessorTab}
+          adminTab={adminTab}
+          onSelectAdminTab={setAdminTab}
+          onOpenPublicShop={handleOpenLessorShop}
+          onOpenChatDrawer={() => setChatOpen(true)}
         />
       )}
 
@@ -520,17 +777,23 @@ export function App() {
             </div>
           }
         >
-          <AnimatePresence mode="wait">
+          <AnimatePresence
+            mode="wait"
+            onExitComplete={() => {
+              window.scrollTo({ top: 0, behavior: 'instant' as ScrollBehavior });
+            }}
+          >
             {currentPage === 'home' && (
               <motion.div
                 key="page-home"
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0 }}
-                transition={{ duration: 0.2, ease: EXPO_EASE }}
+                transition={{ duration: 0.34, ease: EXPO_EASE }}
               >
                 <HomePage
                   sports={sports}
+                  listings={publicListings}
                   locations={VENUE_LOCATIONS}
                   activeQuote={activeQuote}
                   onNavigate={navigateTo}
@@ -538,7 +801,19 @@ export function App() {
                     setSelectedSport(sp);
                     navigateTo('courts');
                   }}
+                  onQuickSearch={(sportCode, city) => {
+                    setSelectedSport(sportCode);
+                    if (city === 'ALL') {
+                      setSelectedLocationId('ALL');
+                    } else {
+                      const loc = VENUE_LOCATIONS.find((l) => l.city === city);
+                      setSelectedLocationId(loc ? loc.locationId : 'ALL');
+                    }
+                    navigateTo('courts');
+                  }}
                   onBrowseVenueCourts={(venueName) => handleBrowseVenueCourts(venueName)}
+                  onSelectCourt={handleSelectCourtFromExternal}
+                  onOpenLessorShop={handleOpenLessorShop}
                 />
               </motion.div>
             )}
@@ -546,17 +821,18 @@ export function App() {
             {currentPage === 'courts' && (
               <motion.div
                 key="page-courts"
-                initial={{ opacity: 0, y: 10 }}
+                initial={{ opacity: 0, y: 12 }}
                 animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -6 }}
-                transition={{ duration: 0.22, ease: EXPO_EASE }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 0.34, ease: EXPO_EASE }}
               >
                 <CourtsPage
                   sports={sports}
-                  listings={listings}
+                  listings={publicListings}
                   locations={VENUE_LOCATIONS}
                   announcements={announcements}
                   activeRole={activeRole}
+                  isAuthenticated={Boolean(session)}
                   selectedLocationId={selectedLocationId}
                   onSelectLocationId={setSelectedLocationId}
                   onOpenAnnouncementsPage={() => navigateTo('announcements')}
@@ -570,11 +846,15 @@ export function App() {
                   quoteLoading={quoteLoading}
                   countdownLabel={countdownLabel}
                   onSelectSlot={selectSlotAndQuote}
-                  onProceedToHold={() => navigateTo('checkout')}
+                  onProceedToHold={handleProceedToBooking}
                   onOpenVenueChat={handleOpenVenueChat}
                   onOpenLessorShop={handleOpenLessorShop}
                   requestedDetailGroupId={requestedCourtDetailId}
                   onClearRequestedDetail={() => setRequestedCourtDetailId(null)}
+                  selectedServiceQuantities={selectedServiceQuantities}
+                  onChangeServiceQuantity={handleChangeServiceQuantity}
+                  onClearServices={handleClearServices}
+                  onOpenManageServicesInternal={() => navigateTo('governance')}
                   onUploadCourtPhoto={handleUploadCourtPhoto}
                   onSetCoverCourtPhoto={handleSetCoverCourtPhoto}
                   onDeleteCourtPhoto={handleDeleteCourtPhoto}
@@ -585,13 +865,13 @@ export function App() {
             {currentPage === 'lessors' && (
               <motion.div
                 key="page-lessors"
-                initial={{ opacity: 0, y: 10 }}
+                initial={{ opacity: 0, y: 12 }}
                 animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -6 }}
-                transition={{ duration: 0.22, ease: EXPO_EASE }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 0.34, ease: EXPO_EASE }}
               >
                 <LessorShopPage
-                  listings={listings}
+                  listings={publicListings}
                   selectedProviderId={selectedProviderId}
                   followedProviderIds={followedProviderIds}
                   onSelectProviderId={setSelectedProviderId}
@@ -606,10 +886,10 @@ export function App() {
             {currentPage === 'announcements' && (
               <motion.div
                 key="page-announcements"
-                initial={{ opacity: 0, y: 10 }}
+                initial={{ opacity: 0, y: 12 }}
                 animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -6 }}
-                transition={{ duration: 0.22, ease: EXPO_EASE }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 0.34, ease: EXPO_EASE }}
               >
                 <AnnouncementsRoutePage
                   locations={VENUE_LOCATIONS}
@@ -633,10 +913,10 @@ export function App() {
             {currentPage === 'news' && (
               <motion.div
                 key="page-news"
-                initial={{ opacity: 0, y: 10 }}
+                initial={{ opacity: 0, y: 12 }}
                 animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -6 }}
-                transition={{ duration: 0.22, ease: EXPO_EASE }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 0.34, ease: EXPO_EASE }}
               >
                 <NewsPage
                   articles={articles}
@@ -651,10 +931,10 @@ export function App() {
             {currentPage === 'rankings' && (
               <motion.div
                 key="page-rankings"
-                initial={{ opacity: 0, y: 10 }}
+                initial={{ opacity: 0, y: 12 }}
                 animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -6 }}
-                transition={{ duration: 0.22, ease: EXPO_EASE }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 0.34, ease: EXPO_EASE }}
               >
                 <RankingsPage
                   session={session}
@@ -674,10 +954,10 @@ export function App() {
             {currentPage === 'checkout' && (
               <motion.div
                 key="page-checkout"
-                initial={{ opacity: 0, y: 10 }}
+                initial={{ opacity: 0, y: 12 }}
                 animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -6 }}
-                transition={{ duration: 0.22, ease: EXPO_EASE }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 0.34, ease: EXPO_EASE }}
               >
                 <CheckoutPage
                   activeListing={activeListing}
@@ -687,6 +967,7 @@ export function App() {
                   isHoldExpired={isHoldExpired}
                   venueAnnouncements={announcements}
                   onBackToCourts={() => navigateTo('courts')}
+                  onRequireLogin={handleProceedToBooking}
                   onOpenAnnouncementsPage={() => navigateTo('announcements')}
                   holdResult={holdResult}
                   qrTicket={qrTicket}
@@ -700,6 +981,8 @@ export function App() {
                   onScanQr={handleScanQr}
                   onCancelBooking={handleCancelBooking}
                   onResetFlow={handleResetFlow}
+                  selectedServiceQuantities={selectedServiceQuantities}
+                  onChangeServiceQuantity={handleChangeServiceQuantity}
                 />
               </motion.div>
             )}
@@ -707,10 +990,10 @@ export function App() {
             {currentPage === 'pricing' && (
               <motion.div
                 key="page-pricing"
-                initial={{ opacity: 0, y: 10 }}
+                initial={{ opacity: 0, y: 12 }}
                 animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -6 }}
-                transition={{ duration: 0.22, ease: EXPO_EASE }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 0.34, ease: EXPO_EASE }}
               >
                 <PricingPage
                   activeListing={activeListing}
@@ -731,14 +1014,17 @@ export function App() {
             {currentPage === 'governance' && (
               <motion.div
                 key="page-governance"
-                initial={{ opacity: 0, y: 10 }}
+                initial={{ opacity: 0, y: 12 }}
                 animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -6 }}
-                transition={{ duration: 0.22, ease: EXPO_EASE }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 0.34, ease: EXPO_EASE }}
               >
                 <GovernancePage
                   activeRole={activeRole}
-                  onSelectRole={setActiveRole}
+                  onSelectRole={(r) => {
+                    setActiveRole(r);
+                    saveAuthSessionToStorage(session, r);
+                  }}
                   sports={sports}
                   onAddSportDemo={handleAddSportDemo}
                   staffChatEnabled={staffChatEnabled}
@@ -747,9 +1033,29 @@ export function App() {
                   session={session}
                   authModalOpen={false}
                   onCloseAuthModal={() => {}}
-                  onAuthenticated={setSession}
+                  onAuthenticated={(auth) => {
+                    const role = auth.roles?.[0]?.roleCode ?? 'USER';
+                    setSession(auth);
+                    setActiveRole(role);
+                    saveAuthSessionToStorage(auth, role);
+                  }}
+                  onLogout={handleLogoutSession}
                   onOpenInternalLogin={() => navigateTo('login')}
                   onNavigate={navigateTo}
+                  onOpenPublicShop={handleOpenLessorShop}
+                  lessorTab={lessorTab}
+                  onSelectLessorTab={setLessorTab}
+                  controlledAdminTab={adminTab}
+                  onSelectAdminTab={setAdminTab}
+                  listings={listings}
+                  onUpdateListingServices={handleUpdateListingServices}
+                  onUpdateListingPricing={handleUpdateListingPricing}
+                  onToggleListingPublished={handleToggleListingPublished}
+                  onUpdateListingSlots={handleUpdateListingSlots}
+                  onCreateNewListing={handleCreateNewListing}
+                  onUpdateProviderProfile={handleUpdateProviderProfile}
+                  onUploadCourtPhoto={handleUploadCourtPhoto}
+                  onPreviewCourt={(listing) => handleSelectCourtFromExternal(listing)}
                 />
               </motion.div>
             )}
@@ -764,17 +1070,29 @@ export function App() {
               >
                 <LoginPage
                   session={session}
+                  bookingPendingCourtName={
+                    returnPageAfterLogin === 'checkout' && activeListing
+                      ? activeListing.groupName
+                      : null
+                  }
                   onAuthenticated={(auth, preferredRole) => {
+                    const resolvedRole = preferredRole ?? auth.roles?.[0]?.roleCode ?? 'USER';
                     setSession(auth);
-                    if (preferredRole) setActiveRole(preferredRole);
-                    navigateTo(returnPageAfterLogin);
+                    setActiveRole(resolvedRole);
+                    saveAuthSessionToStorage(auth, resolvedRole);
+                    // Automatically direct Lessor / Staff / Admin into Partner & Governance Portal
+                    if (
+                      resolvedRole !== 'USER' &&
+                      (returnPageAfterLogin === 'home' || returnPageAfterLogin === 'login')
+                    ) {
+                      navigateTo('governance');
+                    } else {
+                      navigateTo(returnPageAfterLogin);
+                    }
                   }}
-                  onLogout={() => {
-                    marketplaceApi.setAccessToken(null);
-                    setSession(null);
-                    setActiveRole('USER');
-                  }}
+                  onLogout={handleLogoutSession}
                   onBack={() => navigateTo(returnPageAfterLogin)}
+                  onOpenPartnerPortal={() => navigateTo('governance')}
                 />
               </motion.div>
             )}
@@ -827,47 +1145,114 @@ export function App() {
           aria-label="Thanh điều hướng nhanh trên di động"
           className="fixed inset-x-0 bottom-0 z-40 grid grid-cols-5 border-t border-neutral-200/90 bg-white/95 px-1 py-1.5 backdrop-blur-lg md:hidden"
         >
-          {[
-            { id: 'home' as AppPageId, label: 'Trang chủ', icon: '⌂' },
-            { id: 'courts' as AppPageId, label: 'Thuê sân', icon: '◫' },
-            { id: 'announcements' as AppPageId, label: 'Thông báo', icon: '✦' },
-            { id: 'rankings' as AppPageId, label: 'Xếp hạng', icon: '★' },
-            {
-              id: (session && (activeRole === 'MANAGER' || activeRole === 'ADMIN')
-                ? 'pricing'
-                : 'governance') as AppPageId,
-              label:
-                session && (activeRole === 'MANAGER' || activeRole === 'ADMIN')
-                  ? 'Định giá'
-                  : 'Nội bộ',
-              icon: '⚙',
-            },
-          ].map((tab) => {
-            const active = currentPage === tab.id;
-            return (
-              <button
-                key={tab.id}
-                type="button"
-                onClick={() => navigateTo(tab.id)}
-                className="flex flex-col items-center justify-center gap-0.5 py-1 text-center"
-              >
-                <span
-                  className={`flex h-6 w-10 items-center justify-center rounded-full text-sm transition-colors ${
-                    active ? 'bg-[#16422C] text-[#E7F7D4]' : 'text-neutral-500'
-                  }`}
+          {Boolean(session && activeRole !== 'USER')
+            ? [
+                {
+                  key: 'm-overview',
+                  label: 'Biểu đồ',
+                  icon: '📊',
+                  active: currentPage === 'governance' && (activeRole === 'MANAGER' ? lessorTab === 'OVERVIEW' : adminTab === 'OPERATIONS'),
+                  onClick: () => {
+                    if (activeRole === 'MANAGER' || activeRole === 'STAFF') setLessorTab('OVERVIEW');
+                    else setAdminTab('OPERATIONS');
+                    navigateTo('governance');
+                  },
+                },
+                {
+                  key: 'm-courts',
+                  label: activeRole === 'ADMIN' ? 'Cho thuê' : 'Cụm sân',
+                  icon: '🏟',
+                  active: currentPage === 'governance' && (activeRole === 'MANAGER' ? lessorTab === 'COURTS_INVENTORY' : adminTab === 'LESSOR_INSPECTOR'),
+                  onClick: () => {
+                    if (activeRole === 'MANAGER' || activeRole === 'STAFF') setLessorTab('COURTS_INVENTORY');
+                    else setAdminTab('LESSOR_INSPECTOR');
+                    navigateTo('governance');
+                  },
+                },
+                {
+                  key: 'm-addons',
+                  label: activeRole === 'ADMIN' ? 'Duyệt KYC' : 'Dịch vụ',
+                  icon: '🥤',
+                  active: currentPage === 'governance' && (activeRole === 'MANAGER' ? lessorTab === 'ADDON_PRODUCTS' : adminTab === 'ADMIN_KYC'),
+                  onClick: () => {
+                    if (activeRole === 'MANAGER') setLessorTab('ADDON_PRODUCTS');
+                    else setAdminTab('ADMIN_KYC');
+                    navigateTo('governance');
+                  },
+                },
+                {
+                  key: 'm-pricing',
+                  label: 'Định giá',
+                  icon: '⚡',
+                  active: currentPage === 'pricing',
+                  onClick: () => navigateTo('pricing'),
+                },
+                {
+                  key: 'm-wallet',
+                  label: 'Ví tiền',
+                  icon: '💳',
+                  active: currentPage === 'governance' && (activeRole === 'MANAGER' ? lessorTab === 'ESCROW_WALLET' : adminTab === 'FINANCE_LEDGER'),
+                  onClick: () => {
+                    if (activeRole === 'MANAGER') setLessorTab('ESCROW_WALLET');
+                    else setAdminTab('FINANCE_LEDGER');
+                    navigateTo('governance');
+                  },
+                },
+              ].map((tab) => (
+                <button
+                  key={tab.key}
+                  type="button"
+                  onClick={tab.onClick}
+                  className="flex flex-col items-center justify-center gap-0.5 py-1 text-center"
                 >
-                  {tab.icon}
-                </span>
-                <span
-                  className={`text-[10px] font-semibold leading-none ${
-                    active ? 'text-[#16422C]' : 'text-neutral-500'
-                  }`}
-                >
-                  {tab.label}
-                </span>
-              </button>
-            );
-          })}
+                  <span
+                    className={`flex h-6 w-10 items-center justify-center rounded-full text-xs transition-colors ${
+                      tab.active ? 'bg-[#16422C] text-[#E7F7D4]' : 'text-neutral-500'
+                    }`}
+                  >
+                    {tab.icon}
+                  </span>
+                  <span
+                    className={`text-[10px] font-semibold leading-none ${
+                      tab.active ? 'text-[#16422C]' : 'text-neutral-500'
+                    }`}
+                  >
+                    {tab.label}
+                  </span>
+                </button>
+              ))
+            : [
+                { id: 'home' as AppPageId, label: 'Trang chủ', icon: '⌂' },
+                { id: 'courts' as AppPageId, label: 'Thuê sân', icon: '◫' },
+                { id: 'announcements' as AppPageId, label: 'Thông báo', icon: '✦' },
+                { id: 'rankings' as AppPageId, label: 'Xếp hạng', icon: '★' },
+                { id: 'governance' as AppPageId, label: 'Chủ sân', icon: '⚙' },
+              ].map((tab) => {
+                const active = currentPage === tab.id;
+                return (
+                  <button
+                    key={tab.id}
+                    type="button"
+                    onClick={() => navigateTo(tab.id)}
+                    className="flex flex-col items-center justify-center gap-0.5 py-1 text-center"
+                  >
+                    <span
+                      className={`flex h-6 w-10 items-center justify-center rounded-full text-sm transition-colors ${
+                        active ? 'bg-[#16422C] text-[#E7F7D4]' : 'text-neutral-500'
+                      }`}
+                    >
+                      {tab.icon}
+                    </span>
+                    <span
+                      className={`text-[10px] font-semibold leading-none ${
+                        active ? 'text-[#16422C]' : 'text-neutral-500'
+                      }`}
+                    >
+                      {tab.label}
+                    </span>
+                  </button>
+                );
+              })}
         </nav>
       )}
 

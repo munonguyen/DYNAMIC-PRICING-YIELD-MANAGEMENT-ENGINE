@@ -19,6 +19,7 @@ interface MarketplaceExplorerSectionProps {
   locations: VenueLocationInfo[];
   announcements: VenueAnnouncement[];
   activeRole?: RoleCode;
+  isAuthenticated?: boolean;
   selectedLocationId: string;
   onSelectLocationId: (id: string) => void;
   onOpenAnnouncementsPage: () => void;
@@ -37,6 +38,10 @@ interface MarketplaceExplorerSectionProps {
   onOpenLessorShop?: (providerId: string) => void;
   requestedDetailGroupId?: string | null;
   onClearRequestedDetail?: () => void;
+  selectedServiceQuantities?: Record<string, number>;
+  onChangeServiceQuantity?: (serviceId: string, nextQty: number) => void;
+  onClearServices?: () => void;
+  onOpenManageServicesInternal?: () => void;
   onUploadCourtPhoto?: (
     groupId: string,
     file: File,
@@ -53,6 +58,7 @@ export const MarketplaceExplorerSection: React.FC<MarketplaceExplorerSectionProp
   locations,
   announcements,
   activeRole = 'USER',
+  isAuthenticated = false,
   selectedLocationId,
   onSelectLocationId,
   onOpenAnnouncementsPage,
@@ -71,6 +77,10 @@ export const MarketplaceExplorerSection: React.FC<MarketplaceExplorerSectionProp
   onOpenLessorShop,
   requestedDetailGroupId,
   onClearRequestedDetail,
+  selectedServiceQuantities,
+  onChangeServiceQuantity,
+  onClearServices,
+  onOpenManageServicesInternal,
   onUploadCourtPhoto,
   onSetCoverCourtPhoto,
   onDeleteCourtPhoto,
@@ -219,6 +229,7 @@ export const MarketplaceExplorerSection: React.FC<MarketplaceExplorerSectionProp
           <CourtDetailView
             listing={detailListing}
             activeRole={activeRole}
+            isAuthenticated={isAuthenticated}
             activeSlotStart={activeSlotStart}
             activeQuote={activeQuote}
             quoteLoading={quoteLoading}
@@ -231,6 +242,10 @@ export const MarketplaceExplorerSection: React.FC<MarketplaceExplorerSectionProp
             onProceedToHold={onProceedToHold}
             onOpenVenueChat={onOpenVenueChat}
             onOpenLessorShop={onOpenLessorShop}
+            selectedServiceQuantities={selectedServiceQuantities}
+            onChangeServiceQuantity={onChangeServiceQuantity}
+            onClearServices={onClearServices}
+            onOpenManageServicesInternal={onOpenManageServicesInternal}
             onUploadCourtPhoto={onUploadCourtPhoto}
             onSetCoverCourtPhoto={onSetCoverCourtPhoto}
             onDeleteCourtPhoto={onDeleteCourtPhoto}
@@ -743,7 +758,9 @@ export const MarketplaceExplorerSection: React.FC<MarketplaceExplorerSectionProp
                     arrow="right"
                     onClick={onProceedToHold}
                   >
-                    Tiếp tục thanh toán &amp; Nhận vé QR
+                    {isAuthenticated
+                      ? 'Tiếp tục thanh toán & Nhận vé QR'
+                      : 'Đăng nhập để Đặt sân & Nhận vé QR'}
                   </ActionButton>
                 </div>
               </motion.div>

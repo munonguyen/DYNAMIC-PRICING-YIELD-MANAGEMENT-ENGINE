@@ -19,6 +19,7 @@ import type {
   VenueAnnouncement,
 } from '../types/marketplace';
 import { formatSlotWindow, formatVnd, marketplaceApi } from '../api/marketplaceApi';
+import { getActiveLessorServices } from '../data/courtServicesData';
 import { isValidVietnamTaxCode } from '../utils/lessorLegalValidator';
 import { EXPO_EASE, ScrollReveal } from './motionPrimitives';
 import { ActionButton } from './FairwayControls';
@@ -31,6 +32,7 @@ interface BookingPipelineAndQrSectionProps {
   isHoldExpired?: boolean;
   venueAnnouncements: VenueAnnouncement[];
   onBackToCourts: () => void;
+  onRequireLogin?: () => void;
   onOpenAnnouncementsPage: () => void;
   holdResult: HoldSlotResult | null;
   qrTicket: QrCodeTicket | null;
@@ -57,6 +59,8 @@ interface BookingPipelineAndQrSectionProps {
   onScanQr: () => void;
   onCancelBooking: (hoursBefore: number, venueInitiated: boolean) => void;
   onResetFlow: () => void;
+  selectedServiceQuantities?: Record<string, number>;
+  onChangeServiceQuantity?: (serviceId: string, nextQty: number) => void;
 }
 
 const GATEWAYS: {
@@ -189,6 +193,7 @@ export const BookingPipelineAndQrSection: React.FC<BookingPipelineAndQrSectionPr
   isHoldExpired = false,
   venueAnnouncements,
   onBackToCourts,
+  onRequireLogin,
   onOpenAnnouncementsPage,
   holdResult,
   qrTicket,
@@ -202,6 +207,8 @@ export const BookingPipelineAndQrSection: React.FC<BookingPipelineAndQrSectionPr
   onScanQr,
   onCancelBooking,
   onResetFlow,
+  selectedServiceQuantities = {},
+  onChangeServiceQuantity,
 }) => {
   const [planMode, setPlanMode] = useState<PaymentPlanMode>('DEPOSIT_ESCROW');
   const [gateway, setGateway] = useState<PaymentGatewayCode>('VIETQR_NAPAS');
@@ -232,6 +239,13 @@ export const BookingPipelineAndQrSection: React.FC<BookingPipelineAndQrSectionPr
   const [vnpaySession, setVnpaySession] = useState<VnPayPaymentUrlResult | null>(null);
   const [vnpayBusy, setVnpayBusy] = useState<boolean>(false);
   const [vnpayCallbackStatus, setVnpayCallbackStatus] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (session) {
+      setCustomerName((prev) => prev || session.fullName);
+      setCustomerEmail((prev) => prev || session.email);
+    }
+  }, [session]);
 
   useEffect(() => {
     setMomoSession(null);
@@ -388,14 +402,24 @@ export const BookingPipelineAndQrSection: React.FC<BookingPipelineAndQrSectionPr
   const depositPct = activeListing?.depositPercent ?? 35;
   const depositAmount = holdResult?.depositAmount ?? Math.floor((lockedPrice * depositPct) / 100);
 
+  const sportServices = getActiveLessorServices(activeListing);
+  const selectedServiceItems = sportServices
+    .map((service) => ({ service, quantity: selectedServiceQuantities[service.id] ?? 0 }))
+    .filter((entry) => entry.quantity > 0);
+  const addOnsTotal = selectedServiceItems.reduce(
+    (sum, item) => sum + item.service.unitPrice * item.quantity,
+    0
+  );
+  const grandTotal = lockedPrice + addOnsTotal;
+
   const payableNow = paymentReceipt
     ? paymentReceipt.paidAmount
     : planMode === 'FULL_ONLINE'
-      ? lockedPrice
+      ? grandTotal
       : depositAmount;
   const remainingAtVenue = paymentReceipt
     ? paymentReceipt.remainingAtVenue
-    : Math.max(0, lockedPrice - payableNow);
+    : Math.max(0, grandTotal - payableNow);
 
   const paymentLocked = Boolean(paymentReceipt || cancelResult);
   const canVenueOperate = activeRole === 'STAFF' || activeRole === 'MANAGER' || activeRole === 'ADMIN';
@@ -489,6 +513,74 @@ export const BookingPipelineAndQrSection: React.FC<BookingPipelineAndQrSectionPr
   const matchingVenueNotice =
     venueAnnouncements.find((a) => a.venueName === activeListing?.venueName) ??
     venueAnnouncements[0];
+
+  // Hard Authentication Gate: Customers MUST log in before holding a court or paying
+  if (!session) {
+    return (
+      <section id="booking-flow" className="bg-[#F6F8F6] py-16 sm:py-24">
+        <div className="mx-auto max-w-[820px] px-4 sm:px-8">
+          <ScrollReveal className="rounded-[30px] border border-neutral-200/90 bg-white p-7 sm:p-10 shadow-[0_24px_60px_rgba(15,23,42,0.06)] space-y-6">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <span className="text-xs font-bold uppercase tracking-[0.12em] text-[#16422C]">
+                Bắt buộc Xác thực Khách hàng • ArenaPulse
+              </span>
+              <span className="rounded-full bg-amber-50 border border-amber-200 px-3 py-1 text-[11px] font-semibold text-amber-900">
+                🔒 Chưa đăng nhập tài khoản
+              </span>
+            </div>
+
+            <div>
+              <h2 className="text-2xl sm:text-[32px] font-bold tracking-[-0.025em] leading-tight text-[#0F172A]">
+                Vui lòng đăng nhập tài khoản để giữ sân &amp; thanh toán đặt cọc
+              </h2>
+              <p className="mt-2.5 text-sm leading-relaxed text-neutral-600">
+                Để bảo vệ quyền lợi hoàn cọc hai chiều và cấp mã vé QR check-in một lần đúng danh
+                tính người đặt, hệ thống yêu cầu khách hàng đăng nhập trước khi khóa sân vật lý.
+              </p>
+            </div>
+
+            {activeListing && (
+              <div className="flex items-center gap-4 rounded-2xl border border-[#16422C]/20 bg-[#F4F8F4] p-4">
+                <img
+                  src={activeListing.imageUrl || '/images/real-pickleball-outdoor.jpg'}
+                  alt={activeListing.groupName}
+                  className="h-16 w-24 shrink-0 rounded-xl object-cover border border-neutral-200 bg-white"
+                />
+                <div className="min-w-0 text-xs">
+                  <span className="font-semibold text-[#16422C]">
+                    Lựa chọn đang được giữ tạm cho bạn:
+                  </span>
+                  <div className="mt-0.5 truncate text-sm font-bold text-[#0F172A]">
+                    {activeListing.groupName}
+                  </div>
+                  <div className="mt-0.5 text-neutral-600">
+                    {activeListing.venueName} • Tổng tạm tính:{' '}
+                    <strong className="tabular-nums text-[#16422C]">
+                      {formatVnd(grandTotal)}
+                    </strong>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            <div className="flex flex-wrap items-center justify-between gap-3 border-t border-neutral-100 pt-5">
+              <ActionButton variant="outline" size="md" arrow="back" onClick={onBackToCourts}>
+                Quay lại xem danh sách sân
+              </ActionButton>
+              <ActionButton
+                variant="forest"
+                size="lg"
+                arrow="right"
+                onClick={() => onRequireLogin?.()}
+              >
+                Đăng nhập / Đăng ký để đặt sân ngay
+              </ActionButton>
+            </div>
+          </ScrollReveal>
+        </div>
+      </section>
+    );
+  }
 
   return (
     <section id="booking-flow" className="bg-[#F6F8F6] py-16 sm:py-20">
@@ -610,7 +702,8 @@ export const BookingPipelineAndQrSection: React.FC<BookingPipelineAndQrSectionPr
                     {formatVnd(depositAmount)}
                   </div>
                   <p className="mt-1 text-xs text-neutral-500">
-                    Phần còn lại ({formatVnd(Math.max(0, lockedPrice - depositAmount))}) thanh toán tại quầy khi check-in.
+                    Phần còn lại ({formatVnd(Math.max(0, grandTotal - depositAmount))}) thanh toán tại quầy khi check-in
+                    {addOnsTotal > 0 ? ' (đã bao gồm dịch vụ đi kèm).' : '.'}
                   </p>
                 </button>
 
@@ -633,10 +726,12 @@ export const BookingPipelineAndQrSection: React.FC<BookingPipelineAndQrSectionPr
                     </span>
                   </div>
                   <div className="mt-2 tabular-nums text-xl font-bold text-[#0F172A]">
-                    {formatVnd(lockedPrice)}
+                    {formatVnd(grandTotal)}
                   </div>
                   <p className="mt-1 text-xs text-neutral-500">
-                    Không cần thanh toán thêm tại sân; phần hủy cọc (nếu có) chỉ khấu trừ trên phần {depositPct}% cọc.
+                    {addOnsTotal > 0
+                      ? `Trọn gói tiền sân (${formatVnd(lockedPrice)}) + dịch vụ (${formatVnd(addOnsTotal)}); phần hủy chỉ tính trên ${depositPct}% cọc sân.`
+                      : `Không cần thanh toán thêm tại sân; phần hủy cọc (nếu có) chỉ khấu trừ trên phần ${depositPct}% cọc.`}
                   </p>
                 </button>
               </div>
@@ -1314,9 +1409,64 @@ export const BookingPipelineAndQrSection: React.FC<BookingPipelineAndQrSectionPr
                   </div>
                 )}
 
+                {selectedServiceItems.length > 0 && (
+                  <div className="rounded-xl border border-[#16422C]/20 bg-[#F4F8F4]/70 p-3 space-y-2">
+                    <div className="flex items-center justify-between text-[11px] font-semibold text-[#16422C]">
+                      <span>Dịch vụ đi kèm đã chọn ({selectedServiceItems.length} loại)</span>
+                      <span className="tabular-nums">+{formatVnd(addOnsTotal)}</span>
+                    </div>
+                    <div className="space-y-1.5">
+                      {selectedServiceItems.map(({ service, quantity }) => (
+                        <div
+                          key={service.id}
+                          className="flex items-center justify-between gap-2 text-[11px]"
+                        >
+                          <div className="min-w-0 flex-1 text-neutral-700 truncate">
+                            <span className="font-semibold text-[#0F172A]">{quantity}×</span>{' '}
+                            {service.name}
+                          </div>
+                          <div className="flex items-center gap-1.5 shrink-0">
+                            {!paymentLocked && onChangeServiceQuantity && (
+                              <div className="inline-flex items-center gap-1 rounded-full border border-neutral-200 bg-white px-1 py-0.5">
+                                <button
+                                  type="button"
+                                  aria-label={`Giảm ${service.name}`}
+                                  onClick={() => onChangeServiceQuantity(service.id, quantity - 1)}
+                                  className="h-4 w-4 rounded-full text-[10px] font-bold text-neutral-600 hover:bg-neutral-100"
+                                >
+                                  −
+                                </button>
+                                <button
+                                  type="button"
+                                  aria-label={`Tăng ${service.name}`}
+                                  disabled={quantity >= service.maxQty}
+                                  onClick={() =>
+                                    onChangeServiceQuantity(
+                                      service.id,
+                                      Math.min(service.maxQty, quantity + 1)
+                                    )
+                                  }
+                                  className="h-4 w-4 rounded-full text-[10px] font-bold text-[#16422C] hover:bg-[#E7F7D4] disabled:opacity-40"
+                                >
+                                  +
+                                </button>
+                              </div>
+                            )}
+                            <span className="tabular-nums font-semibold text-[#0F172A]">
+                              {formatVnd(service.unitPrice * quantity)}
+                            </span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
                 <div className="flex justify-between pt-1.5 text-sm font-semibold text-[#0F172A]">
-                  <span>Tổng giá ca thuê đã khóa</span>
-                  <span className="tabular-nums">{formatVnd(lockedPrice)}</span>
+                  <span>
+                    {addOnsTotal > 0 ? 'Tổng cộng (Sân + Dịch vụ)' : 'Tổng giá ca thuê đã khóa'}
+                  </span>
+                  <span className="tabular-nums">{formatVnd(grandTotal)}</span>
                 </div>
               </div>
 

@@ -13,9 +13,11 @@ import type {
   VnPayReturnResult,
   OtpChallengeResult,
   PriceQuote,
+  ProvisionedAccountHint,
   PublishedListing,
   QrCodeTicket,
   ReconciliationSummary,
+  RoleCode,
   SimulationResult,
   SlotListingQuote,
   SportTypeItem,
@@ -190,6 +192,55 @@ const PROVIDERS: Record<string, VenueProviderInfo> = {
       'Sàn trung gian ArenaPulse đứng ra bảo vệ giao dịch đặt cọc ký quỹ và phát hành hóa đơn VAT đối soát chuẩn.',
   },
 };
+
+export const ALL_LESSOR_PROVIDERS: VenueProviderInfo[] = Object.values(PROVIDERS);
+
+export function buildFreshListingSlots(
+  basePrice: number,
+  minPrice: number,
+  maxPrice: number,
+  slotMinutes: number,
+  totalCapacity: number
+): SlotListingQuote[] {
+  const morning = buildSlotAtLocalHour(0, 8, slotMinutes);
+  const afternoon = buildSlotAtLocalHour(0, 15, slotMinutes);
+  const evening = buildSlotAtLocalHour(0, 19, slotMinutes);
+
+  const clamp = (raw: number) => Math.min(maxPrice, Math.max(minPrice, Math.round(raw / 1000) * 1000));
+
+  return [
+    {
+      slotStart: morning.start,
+      slotEnd: morning.end,
+      totalCapacity,
+      availableCourts: Math.max(1, totalCapacity - 1),
+      currentDynamicPrice: clamp(basePrice * 0.85),
+      timePeriod: morning.period,
+      occupancyPct: Math.round((1 / Math.max(1, totalCapacity)) * 100),
+      demandTag: 'OFF_PEAK',
+    },
+    {
+      slotStart: afternoon.start,
+      slotEnd: afternoon.end,
+      totalCapacity,
+      availableCourts: Math.max(1, Math.ceil(totalCapacity * 0.65)),
+      currentDynamicPrice: clamp(basePrice),
+      timePeriod: afternoon.period,
+      occupancyPct: 35,
+      demandTag: 'STANDARD',
+    },
+    {
+      slotStart: evening.start,
+      slotEnd: evening.end,
+      totalCapacity,
+      availableCourts: Math.max(1, Math.min(3, totalCapacity)),
+      currentDynamicPrice: clamp(basePrice * 1.28),
+      timePeriod: evening.period,
+      occupancyPct: 78,
+      demandTag: 'PRIME_SURGE',
+    },
+  ];
+}
 
 export function createCuratedListings(): PublishedListing[] {
   const m1 = buildSlotAtLocalHour(0, 8, 60);
@@ -1625,6 +1676,10 @@ class MarketplaceApiClient {
     password: string,
     mode: 'LOGIN' | 'REGISTER' = 'LOGIN'
   ): Promise<AuthSession> {
+    const cleanUser = username.trim();
+    const lower = cleanUser.toLowerCase();
+
+    // Try live Spring Boot backend first
     const endpoint = mode === 'REGISTER' ? '/api/v1/auth/register' : '/api/v1/auth/login';
     try {
       const res = await fetch(endpoint, {
@@ -1633,48 +1688,130 @@ class MarketplaceApiClient {
         body: JSON.stringify(
           mode === 'REGISTER'
             ? {
-                username,
+                username: cleanUser,
                 password,
-                email: `${username}@arenapulse.vn`,
-                fullName: username,
+                email: `${cleanUser}@arenapulse.vn`,
+                firstName: 'Đối tác',
+                lastName: cleanUser,
               }
-            : { username, password }
+            : { username: cleanUser, password }
         ),
       });
       if (res.ok && mode === 'LOGIN') {
         const auth: AuthSession = await res.json();
-        this.setAccessToken(auth.accessToken);
-        return auth;
+        const mapped = findProvisionedAccount(lower);
+        const enriched: AuthSession = {
+          ...auth,
+          managedProviderId: mapped?.providerId ?? auth.managedProviderId ?? null,
+        };
+        this.setAccessToken(enriched.accessToken);
+        return enriched;
       }
     } catch {
-      // Fallback
+      // Backend offline -> proceed to verified account directory
     }
 
-    const lower = username.trim().toLowerCase();
-    const internalRoles: AuthSession['roles'] =
-      mode === 'REGISTER'
-        ? [{ roleCode: 'USER', scope: 'PLATFORM', tenantId: null }]
-        : lower.includes('admin')
-          ? [{ roleCode: 'ADMIN', scope: 'PLATFORM', tenantId: null }]
-          : lower.includes('accountant') || lower.includes('ketoan')
-            ? [{ roleCode: 'ACCOUNTANT', scope: 'PLATFORM', tenantId: null }]
-            : lower.includes('staff') || lower.includes('nhanvien')
-              ? [{ roleCode: 'STAFF', scope: 'TENANT', tenantId: DEFAULT_TENANT_ID }]
-              : lower.includes('manager') || lower.includes('chusan')
-                ? [{ roleCode: 'MANAGER', scope: 'TENANT', tenantId: DEFAULT_TENANT_ID }]
-                : [{ roleCode: 'USER', scope: 'PLATFORM', tenantId: null }];
+    if (mode === 'REGISTER') {
+      if (findProvisionedAccount(lower) || findCustomStaffAccount(lower)) {
+        throw new Error('Tên đăng nhập này đã thuộc hệ thống đối tác. Vui lòng chọn tên khác.');
+      }
+      const registered = readRegisteredAccounts();
+      if (registered.some((u) => u.username.toLowerCase() === lower)) {
+        throw new Error('Tên đăng nhập đã tồn tại. Vui lòng chuyển sang tab Đăng nhập.');
+      }
+      const newEntry: LocalRegisteredUser = {
+        username: cleanUser,
+        password,
+        fullName: cleanUser,
+        email: `${cleanUser}@arenapulse.vn`,
+      };
+      writeRegisteredAccounts([newEntry, ...registered]);
+      const regSession: AuthSession = {
+        accessToken: `redis_sess_${crypto.randomUUID().slice(0, 12)}`,
+        expiresAt: new Date(Date.now() + 8 * 3600_000).toISOString(),
+        userId: crypto.randomUUID(),
+        username: cleanUser,
+        email: newEntry.email,
+        fullName: newEntry.fullName,
+        managedProviderId: null,
+        roles: [{ roleCode: 'USER', scope: 'PLATFORM', tenantId: null }],
+      };
+      this.setAccessToken(regSession.accessToken);
+      return regSession;
+    }
 
-    const demoSession: AuthSession = {
-      accessToken: `redis_sess_${crypto.randomUUID().slice(0, 12)}`,
-      expiresAt: new Date(Date.now() + 8 * 3600_000).toISOString(),
-      userId: crypto.randomUUID(),
-      username,
-      email: `${username}@arenapulse.vn`,
-      fullName: username,
-      roles: internalRoles,
-    };
-    this.setAccessToken(demoSession.accessToken);
-    return demoSession;
+    // 1. Check Official Provisioned Accounts (Lessor, Staff, Admin, Accountant, Player)
+    const official = findProvisionedAccount(lower);
+    if (official) {
+      if (password !== official.password) {
+        throw new Error('Mật khẩu không chính xác. Vui lòng kiểm tra lại thông tin tài khoản được cấp.');
+      }
+      const session: AuthSession = {
+        accessToken: `redis_sess_${crypto.randomUUID().slice(0, 12)}`,
+        expiresAt: new Date(Date.now() + 8 * 3600_000).toISOString(),
+        userId: official.userId,
+        username: official.username,
+        email: official.email,
+        fullName: official.fullName,
+        managedProviderId: official.providerId ?? null,
+        roles: [
+          {
+            roleCode: official.roleCode,
+            scope: official.scope,
+            tenantId: official.tenantId,
+          },
+        ],
+      };
+      this.setAccessToken(session.accessToken);
+      return session;
+    }
+
+    // 2. Check Custom Venue Staff Accounts created inside Lessor Partner Portal
+    const staffAcc = findCustomStaffAccount(lower);
+    if (staffAcc) {
+      if (!staffAcc.active) {
+        throw new Error('Tài khoản nhân viên trực sân này hiện đang tạm khóa bởi Chủ sân.');
+      }
+      if (password !== staffAcc.passwordPlain) {
+        throw new Error('Mật khẩu nhân viên không chính xác.');
+      }
+      const staffSession: AuthSession = {
+        accessToken: `redis_sess_${crypto.randomUUID().slice(0, 12)}`,
+        expiresAt: new Date(Date.now() + 8 * 3600_000).toISOString(),
+        userId: staffAcc.id,
+        username: staffAcc.username,
+        email: `${staffAcc.username}@arenapulse.vn`,
+        fullName: staffAcc.fullName,
+        managedProviderId: staffAcc.providerId,
+        roles: [{ roleCode: 'STAFF', scope: 'TENANT', tenantId: DEFAULT_TENANT_ID }],
+      };
+      this.setAccessToken(staffSession.accessToken);
+      return staffSession;
+    }
+
+    // 3. Check User-Registered Accounts
+    const regUser = readRegisteredAccounts().find((u) => u.username.toLowerCase() === lower);
+    if (regUser) {
+      if (password !== regUser.password) {
+        throw new Error('Mật khẩu tài khoản không chính xác.');
+      }
+      const userSession: AuthSession = {
+        accessToken: `redis_sess_${crypto.randomUUID().slice(0, 12)}`,
+        expiresAt: new Date(Date.now() + 8 * 3600_000).toISOString(),
+        userId: crypto.randomUUID(),
+        username: regUser.username,
+        email: regUser.email,
+        fullName: regUser.fullName,
+        managedProviderId: null,
+        roles: [{ roleCode: 'USER', scope: 'PLATFORM', tenantId: null }],
+      };
+      this.setAccessToken(userSession.accessToken);
+      return userSession;
+    }
+
+    throw new Error(
+      'Tài khoản không tồn tại. Vui lòng sử dụng tài khoản Chủ sân / Nội bộ đã được cấp hoặc chuyển sang Đăng ký nhanh.'
+    );
   }
 
   async requestLessorOtp(contactPhone: string, contactEmail: string): Promise<OtpChallengeResult> {
@@ -1941,6 +2078,237 @@ class MarketplaceApiClient {
 
 const LESSOR_APPLICATIONS_STORAGE_KEY = 'arenapulse_lessor_applications_v1';
 const MY_TICKETS_STORAGE_KEY = 'arenapulse_my_tickets_v1';
+const SAVED_SESSION_STORAGE_KEY = 'arenapulse_auth_session_v1';
+const REGISTERED_USERS_STORAGE_KEY = 'arenapulse_registered_users_v1';
+export const CUSTOM_STAFF_STORAGE_KEY = 'arenapulse_custom_staff_accounts_v1';
+
+interface ProvisionedCredentialRecord {
+  userId: string;
+  username: string;
+  password: string;
+  fullName: string;
+  email: string;
+  roleCode: RoleCode;
+  roleLabel: string;
+  scope: 'PLATFORM' | 'TENANT';
+  tenantId: string | null;
+  providerId?: string;
+  providerName?: string;
+  badgeColor: 'forest' | 'ocean' | 'amber' | 'slate';
+}
+
+const PROVISIONED_ACCOUNTS: ProvisionedCredentialRecord[] = [
+  {
+    userId: '10000000-0000-0000-0000-000000000001',
+    username: 'chusan.bachkhoa',
+    password: '123456',
+    fullName: 'Trần Minh Đức (Chủ sân Bách Khoa)',
+    email: 'chusan.bachkhoa@arenapulse.vn',
+    roleCode: 'MANAGER',
+    roleLabel: 'Người cho thuê • Bách Khoa SportHub',
+    scope: 'TENANT',
+    tenantId: DEFAULT_TENANT_ID,
+    providerId: 'PROV_HN_01',
+    providerName: 'Công ty Thể Thao Bách Khoa SportHub',
+    badgeColor: 'forest',
+  },
+  {
+    userId: '10000000-0000-0000-0000-000000000002',
+    username: 'chusan.mydinh',
+    password: '123456',
+    fullName: 'Nguyễn Hoàng Hải (Chủ sân Mỹ Đình)',
+    email: 'chusan.mydinh@arenapulse.vn',
+    roleCode: 'MANAGER',
+    roleLabel: 'Người cho thuê • Mỹ Đình Arena JSC',
+    scope: 'TENANT',
+    tenantId: DEFAULT_TENANT_ID,
+    providerId: 'PROV_HN_02',
+    providerName: 'Tập đoàn Vận hành Mỹ Đình Arena JSC',
+    badgeColor: 'forest',
+  },
+  {
+    userId: '10000000-0000-0000-0000-000000000003',
+    username: 'chusan.westlake',
+    password: '123456',
+    fullName: 'Lê Bảo Ngọc (Chủ sân Westlake)',
+    email: 'chusan.westlake@arenapulse.vn',
+    roleCode: 'MANAGER',
+    roleLabel: 'Người cho thuê • Westlake Prestige',
+    scope: 'TENANT',
+    tenantId: DEFAULT_TENANT_ID,
+    providerId: 'PROV_HN_03',
+    providerName: 'Westlake Prestige Sports Club',
+    badgeColor: 'forest',
+  },
+  {
+    userId: '10000000-0000-0000-0000-000000000004',
+    username: 'chusan.saigon',
+    password: '123456',
+    fullName: 'Phạm Quốc Tuấn (Chủ sân Quận 7)',
+    email: 'chusan.saigon@arenapulse.vn',
+    roleCode: 'MANAGER',
+    roleLabel: 'Người cho thuê • Saigon South Athletic',
+    scope: 'TENANT',
+    tenantId: DEFAULT_TENANT_ID,
+    providerId: 'PROV_HCM_02',
+    providerName: 'Saigon South Athletic Group',
+    badgeColor: 'forest',
+  },
+  {
+    userId: '10000000-0000-0000-0000-000000000005',
+    username: 'nhanvien.san01',
+    password: '123456',
+    fullName: 'Vũ Tuấn Kiệt (Trực quầy QR)',
+    email: 'nhanvien.san01@arenapulse.vn',
+    roleCode: 'STAFF',
+    roleLabel: 'Nhân viên trực sân • Quét QR',
+    scope: 'TENANT',
+    tenantId: DEFAULT_TENANT_ID,
+    providerId: 'PROV_HN_01',
+    providerName: 'Công ty Thể Thao Bách Khoa SportHub',
+    badgeColor: 'ocean',
+  },
+  {
+    userId: '10000000-0000-0000-0000-000000000006',
+    username: 'admin.arenapulse',
+    password: '123456',
+    fullName: 'Ban Quản Trị ArenaPulse.vn',
+    email: 'admin@arenapulse.vn',
+    roleCode: 'ADMIN',
+    roleLabel: 'Super Admin • Quản trị Toàn Sàn',
+    scope: 'PLATFORM',
+    tenantId: null,
+    badgeColor: 'amber',
+  },
+  {
+    userId: '10000000-0000-0000-0000-000000000007',
+    username: 'ketoan.san',
+    password: '123456',
+    fullName: 'Đặng Thu Hà (Kế toán Đối soát)',
+    email: 'ketoan@arenapulse.vn',
+    roleCode: 'ACCOUNTANT',
+    roleLabel: 'Kế toán Sàn • Sổ cái & Ký quỹ',
+    scope: 'PLATFORM',
+    tenantId: null,
+    badgeColor: 'ocean',
+  },
+  {
+    userId: '10000000-0000-0000-0000-000000000008',
+    username: 'khach.thuesan',
+    password: '123456',
+    fullName: 'Nguyễn Minh Quân (Khách đặt sân)',
+    email: 'khach.thuesan@arenapulse.vn',
+    roleCode: 'USER',
+    roleLabel: 'Người chơi • Đặt sân & Vé QR',
+    scope: 'PLATFORM',
+    tenantId: null,
+    badgeColor: 'slate',
+  },
+];
+
+export const PROVISIONED_ACCOUNT_HINTS: ProvisionedAccountHint[] = PROVISIONED_ACCOUNTS.map((a) => ({
+  username: a.username,
+  passwordHint: a.password,
+  fullName: a.fullName,
+  roleCode: a.roleCode,
+  roleLabel: a.roleLabel,
+  providerId: a.providerId,
+  providerName: a.providerName,
+  badgeColor: a.badgeColor,
+}));
+
+function findProvisionedAccount(lowerUsername: string): ProvisionedCredentialRecord | undefined {
+  return PROVISIONED_ACCOUNTS.find((a) => a.username.toLowerCase() === lowerUsername);
+}
+
+interface LocalRegisteredUser {
+  username: string;
+  password: string;
+  fullName: string;
+  email: string;
+}
+
+function readRegisteredAccounts(): LocalRegisteredUser[] {
+  if (typeof window === 'undefined') return [];
+  try {
+    const raw = window.localStorage.getItem(REGISTERED_USERS_STORAGE_KEY);
+    return raw ? (JSON.parse(raw) as LocalRegisteredUser[]) : [];
+  } catch {
+    return [];
+  }
+}
+
+function writeRegisteredAccounts(items: LocalRegisteredUser[]): void {
+  if (typeof window === 'undefined') return;
+  try {
+    window.localStorage.setItem(REGISTERED_USERS_STORAGE_KEY, JSON.stringify(items));
+  } catch {
+    // ignore storage quota errors
+  }
+}
+
+function findCustomStaffAccount(lowerUsername: string): {
+  id: string;
+  providerId: string;
+  username: string;
+  passwordPlain: string;
+  fullName: string;
+  active: boolean;
+} | undefined {
+  if (typeof window === 'undefined') return undefined;
+  try {
+    const raw = window.localStorage.getItem(CUSTOM_STAFF_STORAGE_KEY);
+    if (!raw) return undefined;
+    const list = JSON.parse(raw) as {
+      id: string;
+      providerId: string;
+      username: string;
+      passwordPlain: string;
+      fullName: string;
+      active: boolean;
+    }[];
+    return list.find((s) => s.username.toLowerCase() === lowerUsername);
+  } catch {
+    return undefined;
+  }
+}
+
+export function readSavedAuthSession(): { session: AuthSession; activeRole: RoleCode } | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    const raw = window.localStorage.getItem(SAVED_SESSION_STORAGE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as { session: AuthSession; activeRole: RoleCode };
+    if (!parsed?.session?.accessToken) return null;
+    if (parsed.session.expiresAt && new Date(parsed.session.expiresAt).getTime() < Date.now()) {
+      window.localStorage.removeItem(SAVED_SESSION_STORAGE_KEY);
+      return null;
+    }
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+export function saveAuthSessionToStorage(session: AuthSession | null, activeRole: RoleCode): void {
+  if (typeof window === 'undefined') return;
+  try {
+    if (!session) {
+      window.localStorage.removeItem(SAVED_SESSION_STORAGE_KEY);
+      return;
+    }
+    window.localStorage.setItem(
+      SAVED_SESSION_STORAGE_KEY,
+      JSON.stringify({ session, activeRole })
+    );
+  } catch {
+    // ignore storage quota errors
+  }
+}
+
+export function getStoredTicketsForLessor(): MyTicketRecord[] {
+  return readOfflineTickets();
+}
 
 function readOfflineTickets(): MyTicketRecord[] {
   if (typeof window === 'undefined') return [];
