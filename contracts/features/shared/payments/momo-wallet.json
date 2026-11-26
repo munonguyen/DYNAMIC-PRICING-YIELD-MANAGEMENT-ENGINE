@@ -1,0 +1,31 @@
+{
+  "branch": "service/shared/payments/momo-wallet",
+  "title": "Cổng MoMo",
+  "scope": "Khởi tạo giao dịch MoMo và nhận xác nhận IPN.",
+  "operations": [
+    {
+      "method": "POST",
+      "path": "/api/v1/payments/momo/create",
+      "operationId": "createMoMoPaymentSession"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/payments/momo/ipn",
+      "operationId": "handleMoMoIpnCallback"
+    }
+  ],
+  "source": [
+    {
+      "file": "src/main/java/com/yieldengine/controller/customer/CustomerPaymentController.java",
+      "anchors": [
+        "createMoMoPaymentSession("
+      ]
+    },
+    {
+      "file": "src/main/java/com/yieldengine/controller/publicapi/PaymentWebhookController.java",
+      "anchors": [
+        "handleMoMoIpnCallback("
+      ]
+    }
+  ]
+}
