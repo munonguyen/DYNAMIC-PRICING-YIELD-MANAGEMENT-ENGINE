@@ -1,6 +1,17 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
-import { KeyRound, QrCode } from 'lucide-react';
+import {
+  Camera,
+  ExternalLink,
+  KeyRound,
+  PauseCircle,
+  PlayCircle,
+  Plus,
+  QrCode,
+  Search,
+  SlidersHorizontal,
+  Sparkles,
+} from 'lucide-react';
 import type {
   AnalyticsDashboardData,
   AppPageId,
@@ -19,7 +30,6 @@ import type {
 import {
   ALL_LESSOR_PROVIDERS,
   CUSTOM_STAFF_STORAGE_KEY,
-  buildFreshListingSlots,
   ensureSeededOperationalOrdersMap,
   formatSlotWindow,
   formatVnd,
@@ -37,6 +47,7 @@ import { ActionButton, PillSelect } from './FairwayControls';
 import { LessorAddOnServicesManager } from './LessorAddOnServicesManager';
 import { LessorAnalyticsDashboard } from './LessorAnalyticsDashboard';
 import { QrCheckInScannerModal, type QrModalTabId } from './QrCheckInScannerModal';
+import { CreateCourtGroupModal } from './CreateCourtGroupModal';
 
 export type LessorPortalTabId =
   | 'OVERVIEW'
@@ -407,31 +418,10 @@ export const LessorPartnerPortal: React.FC<LessorPartnerPortalProps> = ({
     setQrModalOpen(true);
   };
 
-  // --- CREATE NEW COURT GROUP STATE ---
+  // --- CREATE NEW COURT GROUP MODAL & INVENTORY FILTER STATE ---
   const [showCreateCourtForm, setShowCreateCourtForm] = useState<boolean>(false);
-  const [newCourtName, setNewCourtName] = useState<string>('');
-  const [newCourtSport, setNewCourtSport] = useState<string>(sports[0]?.code ?? 'PICKLEBALL');
-  const [newCourtVenueName, setNewCourtVenueName] = useState<string>(
-    myListings[0]?.venueName ?? activeProvider.providerName
-  );
-  const [newCourtAddress, setNewCourtAddress] = useState<string>(
-    myListings[0]?.venueAddress ?? `${activeProvider.district}, ${activeProvider.city}`
-  );
-  const [newCourtCapacity, setNewCourtCapacity] = useState<number>(6);
-  const [newCourtDuration, setNewCourtDuration] = useState<number>(60);
-  const [newCourtBasePrice, setNewCourtBasePrice] = useState<number>(220000);
-  const [newCourtMinPrice, setNewCourtMinPrice] = useState<number>(140000);
-  const [newCourtMaxPrice, setNewCourtMaxPrice] = useState<number>(360000);
-  const [newCourtDepositPct, setNewCourtDepositPct] = useState<number>(35);
-  const [newCourtCheckinMode, setNewCourtCheckinMode] =
-    useState<CheckinVerificationMode>('QR_STAFF');
-  const [newCourtSurface, setNewCourtSurface] = useState<string>(
-    'Mặt sân tiêu chuẩn thi đấu chống trượt, thoát nước nhanh'
-  );
-  const [newCourtLighting, setNewCourtLighting] = useState<string>(
-    'Hệ thống đèn LED chống chói 500 Lux'
-  );
-  const [newCourtCoverUrl, setNewCourtCoverUrl] = useState<string>(PRESET_COURT_COVERS[0].url);
+  const [courtStatusFilter, setCourtStatusFilter] = useState<'ALL' | 'PUBLISHED' | 'PAUSED'>('ALL');
+  const [courtSearchQuery, setCourtSearchQuery] = useState<string>('');
 
   // Per-listing inline price editor
   const [editingPriceGroupId, setEditingPriceGroupId] = useState<string | null>(null);
@@ -440,72 +430,22 @@ export const LessorPartnerPortal: React.FC<LessorPartnerPortalProps> = ({
   const [editMax, setEditMax] = useState<number>(350000);
   const [editDeposit, setEditDeposit] = useState<number>(35);
 
-  const handleUploadNewCourtCover = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = () => {
-      if (typeof reader.result === 'string') {
-        setNewCourtCoverUrl(reader.result);
+  const filteredMyListings = useMemo(() => {
+    const q = courtSearchQuery.trim().toLowerCase();
+    return myListings.filter((c) => {
+      const isPub = c.published !== false;
+      if (courtStatusFilter === 'PUBLISHED' && !isPub) return false;
+      if (courtStatusFilter === 'PAUSED' && isPub) return false;
+      if (q) {
+        return (
+          c.groupName.toLowerCase().includes(q) ||
+          c.sportName.toLowerCase().includes(q) ||
+          c.venueAddress.toLowerCase().includes(q)
+        );
       }
-    };
-    reader.readAsDataURL(file);
-  };
-
-  const handleCreateCourtSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newCourtName.trim()) return;
-    const sportObj = sports.find((s) => s.code === newCourtSport) ?? sports[0];
-    const safeMin = Math.max(50_000, newCourtMinPrice);
-    const safeMax = Math.max(safeMin + 20_000, newCourtMaxPrice);
-    const safeBase = Math.min(safeMax, Math.max(safeMin, newCourtBasePrice));
-
-    const created: PublishedListing = {
-      groupId: `custom-group-${Date.now()}`,
-      groupCode: `${newCourtSport}_${Date.now().toString(36).toUpperCase()}`,
-      groupName: newCourtName.trim(),
-      tenantId: '00000000-0000-0000-0000-000000000001',
-      venueName: newCourtVenueName.trim() || activeProvider.providerName,
-      venueAddress: newCourtAddress.trim(),
-      city: activeProvider.city,
-      district: activeProvider.district,
-      sportCode: sportObj.code,
-      sportName: sportObj.name,
-      basePrice: safeBase,
-      minPrice: safeMin,
-      maxPrice: safeMax,
-      depositPercent: Math.min(100, Math.max(10, newCourtDepositPct)),
-      slotMinutes: newCourtDuration,
-      checkinMode: newCourtCheckinMode,
-      imageUrl: newCourtCoverUrl,
-      galleryImages: [newCourtCoverUrl],
-      galleryCaptions: [`Ảnh thực tế cụm sân ${newCourtName.trim()} do Chủ sân đăng tải`],
-      architecturalBadge: 'Cụm sân mới mở • Đã xác thực',
-      rating: 5.0,
-      reviewCount: 1,
-      provider: activeProvider,
-      specs: {
-        surface: newCourtSurface.trim(),
-        lighting: newCourtLighting.trim(),
-        dimensions: `Tiêu chuẩn ${sportObj.name} (${newCourtCapacity} sân vật lý)`,
-        amenities: ['Bãi đỗ xe rộng', 'Phòng thay đồ', 'Check-in mã QR nhanh'],
-      },
-      addOnServices: [],
-      published: true,
-      upcomingSlots: buildFreshListingSlots(
-        safeBase,
-        safeMin,
-        safeMax,
-        newCourtDuration,
-        newCourtCapacity
-      ),
-    };
-
-    onCreateNewListing(created);
-    setNewCourtName('');
-    setShowCreateCourtForm(false);
-    flashToast(`✓ Đã đăng cụm sân "${created.groupName}" lên sàn ArenaPulse thành công!`);
-  };
+      return true;
+    });
+  }, [myListings, courtStatusFilter, courtSearchQuery]);
 
   // --- SHOP PROFILE & STAFF ACCOUNTS STATE ---
   const [sloganDraft, setSloganDraft] = useState<string>(activeProvider.shopSlogan ?? '');
@@ -1570,525 +1510,275 @@ export const LessorPartnerPortal: React.FC<LessorPartnerPortalProps> = ({
                   animate={{ opacity: 1, y: 0 }}
                   exit={{ opacity: 0, y: -6 }}
                   transition={{ duration: 0.24, ease: EXPO_EASE }}
-                  className="space-y-6"
+                  className="space-y-5"
                 >
-                  <div className="flex flex-wrap items-center justify-between gap-3 rounded-[26px] border border-neutral-200/90 bg-white p-6 shadow-xs">
-                    <div>
-                      <span className="text-xs font-bold uppercase tracking-wider text-[#16422C]">
-                        Danh mục Sân Thuộc Sở Hữu
-                      </span>
-                      <h3 className="mt-0.5 text-xl font-bold text-[#0F172A]">
-                        Quản lý Cụm Sân, Số sân trống &amp; Đăng Sân Mới ({myListings.length} cụm sân)
-                      </h3>
+                  {/* CLEAN HEADER + QUICK FILTERS & SEARCH */}
+                  <div className="rounded-[26px] border border-neutral-200/90 bg-white p-5 sm:p-6 shadow-xs space-y-4">
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <div>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="text-xs font-bold uppercase tracking-wider text-[#16422C]">
+                            Quản lý Cụm Sân
+                          </span>
+                          <span className="rounded-full bg-[#F4F8F4] px-2.5 py-0.5 text-[11px] font-semibold text-[#16422C] tabular-nums">
+                            {myListings.filter((l) => l.published !== false).length}/{myListings.length} đang mở
+                          </span>
+                        </div>
+                        <h3 className="mt-0.5 text-xl font-bold text-[#0F172A]">
+                          Danh sách Cụm Sân &amp; Số Sân Trống
+                        </h3>
+                      </div>
+
+                      {!isStaffOnly && (
+                        <ActionButton
+                          variant="forest"
+                          size="sm"
+                          onClick={() => setShowCreateCourtForm(true)}
+                        >
+                          <Plus className="mr-1.5 h-3.5 w-3.5" />
+                          Thêm cụm sân mới
+                        </ActionButton>
+                      )}
                     </div>
 
-                    {!isStaffOnly && (
-                      <ActionButton
-                        variant={showCreateCourtForm ? 'outline' : 'forest'}
-                        size="sm"
-                        onClick={() => setShowCreateCourtForm((v) => !v)}
-                      >
-                        {showCreateCourtForm ? 'Đóng biểu mẫu đăng sân' : '+ Đăng Cụm Sân Mới lên Sàn'}
-                      </ActionButton>
-                    )}
+                    {/* Filter Tabs + Search Input */}
+                    <div className="flex flex-col gap-3 border-t border-neutral-100 pt-4 sm:flex-row sm:items-center sm:justify-between">
+                      <div className="flex flex-wrap items-center gap-2 text-xs">
+                        {[
+                          {
+                            id: 'ALL' as const,
+                            label: `Tất cả (${myListings.length})`,
+                          },
+                          {
+                            id: 'PUBLISHED' as const,
+                            label: `Đang mở (${myListings.filter((l) => l.published !== false).length})`,
+                          },
+                          {
+                            id: 'PAUSED' as const,
+                            label: `Tạm ngưng (${myListings.filter((l) => l.published === false).length})`,
+                          },
+                        ].map((chip) => {
+                          const active = courtStatusFilter === chip.id;
+                          return (
+                            <button
+                              key={chip.id}
+                              type="button"
+                              onClick={() => setCourtStatusFilter(chip.id)}
+                              className={`rounded-full px-3.5 py-1.5 font-semibold transition ${
+                                active
+                                  ? 'bg-[#16422C] text-white'
+                                  : 'border border-neutral-200 bg-[#F8FAFC] text-neutral-600 hover:bg-neutral-100'
+                              }`}
+                            >
+                              {chip.label}
+                            </button>
+                          );
+                        })}
+                      </div>
+
+                      <div className="relative w-full sm:w-64">
+                        <Search className="pointer-events-none absolute left-3 top-2.5 h-3.5 w-3.5 text-neutral-400" />
+                        <input
+                          type="search"
+                          value={courtSearchQuery}
+                          onChange={(e) => setCourtSearchQuery(e.target.value)}
+                          placeholder="Tìm tên sân, bộ môn..."
+                          className="w-full rounded-full border border-neutral-200 bg-[#F8FAFC] py-1.5 pl-8 pr-3.5 text-xs text-[#0F172A] placeholder:text-neutral-400 focus:border-[#16422C] focus:bg-white focus:outline-none"
+                        />
+                      </div>
+                    </div>
                   </div>
-
-                  {/* CREATE NEW COURT GROUP STUDIO FORM */}
-                  <AnimatePresence>
-                    {showCreateCourtForm && !isStaffOnly && (
-                      <motion.form
-                        initial={{ opacity: 0, height: 0 }}
-                        animate={{ opacity: 1, height: 'auto' }}
-                        exit={{ opacity: 0, height: 0 }}
-                        onSubmit={handleCreateCourtSubmit}
-                        className="overflow-hidden rounded-[26px] border-2 border-[#16422C]/30 bg-white p-6 sm:p-7 shadow-md space-y-5"
-                      >
-                        <div className="border-b border-neutral-100 pb-3">
-                          <span className="text-[11px] font-bold uppercase tracking-wider text-[#0E4F7E]">
-                            Khởi tạo Cụm sân mới trực tiếp lên Sàn Thuê Sân
-                          </span>
-                          <h4 className="text-lg font-bold text-[#0F172A]">
-                            Thông tin Cụm Sân Cho Thuê Mới — {activeProvider.providerName}
-                          </h4>
-                        </div>
-
-                        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 text-xs">
-                          <div className="sm:col-span-2">
-                            <label className="mb-1 block font-semibold text-neutral-700">
-                              Tên hiển thị cụm sân *
-                            </label>
-                            <input
-                              type="text"
-                              required
-                              value={newCourtName}
-                              onChange={(e) => setNewCourtName(e.target.value)}
-                              placeholder="VD: Cụm 6 Sân Pickleball Mái Che Chuẩn Quốc Tế Khu B..."
-                              className="w-full rounded-xl border border-neutral-200 bg-[#F8FAFC] px-3.5 py-2.5 text-[#0F172A] focus:border-[#16422C] focus:bg-white focus:outline-none"
-                            />
-                          </div>
-
-                          <div>
-                            <label className="mb-1 block font-semibold text-neutral-700">
-                              Bộ môn thể thao *
-                            </label>
-                            <select
-                              value={newCourtSport}
-                              onChange={(e) => setNewCourtSport(e.target.value)}
-                              className="w-full rounded-xl border border-neutral-200 bg-[#F8FAFC] px-3 py-2.5 text-[#0F172A]"
-                            >
-                              {sports.map((sp) => (
-                                <option key={sp.code} value={sp.code}>
-                                  {sp.name}
-                                </option>
-                              ))}
-                            </select>
-                          </div>
-
-                          <div>
-                            <label className="mb-1 block font-semibold text-neutral-700">
-                              Tên cơ sở thể thao
-                            </label>
-                            <input
-                              type="text"
-                              value={newCourtVenueName}
-                              onChange={(e) => setNewCourtVenueName(e.target.value)}
-                              className="w-full rounded-xl border border-neutral-200 bg-[#F8FAFC] px-3.5 py-2.5 text-[#0F172A]"
-                            />
-                          </div>
-
-                          <div className="sm:col-span-2">
-                            <label className="mb-1 block font-semibold text-neutral-700">
-                              Địa chỉ chi tiết cơ sở *
-                            </label>
-                            <input
-                              type="text"
-                              required
-                              value={newCourtAddress}
-                              onChange={(e) => setNewCourtAddress(e.target.value)}
-                              className="w-full rounded-xl border border-neutral-200 bg-[#F8FAFC] px-3.5 py-2.5 text-[#0F172A]"
-                            />
-                          </div>
-
-                          <div>
-                            <label className="mb-1 block font-semibold text-neutral-700">
-                              Tổng số sân vật lý (sân con)
-                            </label>
-                            <input
-                              type="number"
-                              min={1}
-                              max={40}
-                              value={newCourtCapacity}
-                              onChange={(e) => setNewCourtCapacity(Number(e.target.value) || 4)}
-                              className="w-full rounded-xl border border-neutral-200 bg-[#F8FAFC] px-3 py-2.5 tabular-nums font-semibold text-[#0F172A]"
-                            />
-                          </div>
-
-                          <div>
-                            <label className="mb-1 block font-semibold text-neutral-700">
-                              Thời lượng 1 ca (phút)
-                            </label>
-                            <select
-                              value={newCourtDuration}
-                              onChange={(e) => setNewCourtDuration(Number(e.target.value))}
-                              className="w-full rounded-xl border border-neutral-200 bg-[#F8FAFC] px-3 py-2.5 text-[#0F172A]"
-                            >
-                              <option value={60}>60 phút / ca</option>
-                              <option value={90}>90 phút / ca</option>
-                              <option value={120}>120 phút / ca</option>
-                            </select>
-                          </div>
-
-                          <div>
-                            <label className="mb-1 block font-semibold text-neutral-700">
-                              Tỷ lệ đặt cọc giữ sân (%)
-                            </label>
-                            <input
-                              type="number"
-                              min={15}
-                              max={100}
-                              value={newCourtDepositPct}
-                              onChange={(e) => setNewCourtDepositPct(Number(e.target.value) || 35)}
-                              className="w-full rounded-xl border border-neutral-200 bg-[#F8FAFC] px-3 py-2.5 tabular-nums font-semibold text-[#0F172A]"
-                            />
-                          </div>
-
-                          <div>
-                            <label className="mb-1 block font-semibold text-neutral-700">
-                              Giá sàn thấp điểm (VND)
-                            </label>
-                            <input
-                              type="number"
-                              step={10000}
-                              value={newCourtMinPrice}
-                              onChange={(e) => setNewCourtMinPrice(Number(e.target.value) || 100000)}
-                              className="w-full rounded-xl border border-neutral-200 bg-[#F8FAFC] px-3 py-2.5 tabular-nums font-semibold text-[#0F172A]"
-                            />
-                          </div>
-
-                          <div>
-                            <label className="mb-1 block font-semibold text-neutral-700">
-                              Giá cơ sở tiêu chuẩn (VND)
-                            </label>
-                            <input
-                              type="number"
-                              step={10000}
-                              value={newCourtBasePrice}
-                              onChange={(e) => setNewCourtBasePrice(Number(e.target.value) || 200000)}
-                              className="w-full rounded-xl border border-neutral-200 bg-[#F8FAFC] px-3 py-2.5 tabular-nums font-semibold text-[#16422C]"
-                            />
-                          </div>
-
-                          <div>
-                            <label className="mb-1 block font-semibold text-neutral-700">
-                              Giá trần giờ vàng (VND)
-                            </label>
-                            <input
-                              type="number"
-                              step={10000}
-                              value={newCourtMaxPrice}
-                              onChange={(e) => setNewCourtMaxPrice(Number(e.target.value) || 350000)}
-                              className="w-full rounded-xl border border-neutral-200 bg-[#F8FAFC] px-3 py-2.5 tabular-nums font-semibold text-[#0F172A]"
-                            />
-                          </div>
-
-                          <div>
-                            <label className="mb-1 block font-semibold text-neutral-700">
-                              Mặt sân &amp; Kết cấu
-                            </label>
-                            <input
-                              type="text"
-                              value={newCourtSurface}
-                              onChange={(e) => setNewCourtSurface(e.target.value)}
-                              className="w-full rounded-xl border border-neutral-200 bg-[#F8FAFC] px-3 py-2.5 text-[#0F172A]"
-                            />
-                          </div>
-
-                          <div>
-                            <label className="mb-1 block font-semibold text-neutral-700">
-                              Hệ thống Chiếu sáng
-                            </label>
-                            <input
-                              type="text"
-                              value={newCourtLighting}
-                              onChange={(e) => setNewCourtLighting(e.target.value)}
-                              className="w-full rounded-xl border border-neutral-200 bg-[#F8FAFC] px-3 py-2.5 text-[#0F172A]"
-                            />
-                          </div>
-
-                          <div className="md:col-span-3 space-y-2">
-                            <label className="block font-semibold text-neutral-700">
-                              Phương thức Xác thực Nhận sân (Chủ sân tự chọn theo thiết bị)
-                            </label>
-                            <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
-                              {[
-                                {
-                                  id: 'QR_STAFF' as const,
-                                  title: 'Có máy quét QR / Camera quầy',
-                                  desc: 'Khách xuất trình mã QR trong Email; quầy dùng Camera hoặc đầu đọc 2D để kiểm tra vé và hỏi 4 số cuối SĐT.',
-                                },
-                                {
-                                  id: 'PIN_COUNTER' as const,
-                                  title: 'Không có máy quét — Chỉ dùng Mã PIN 6 số',
-                                  desc: 'Không phát hành hay xử lý QR. Hệ thống chỉ gửi Mã PIN 6 số về Email khách để nhân viên đối chiếu cùng 4 số cuối SĐT.',
-                                },
-                              ].map((opt) => {
-                                const active = newCourtCheckinMode === opt.id;
-                                return (
-                                  <button
-                                    key={opt.id}
-                                    type="button"
-                                    onClick={() => setNewCourtCheckinMode(opt.id)}
-                                    className={`rounded-2xl border p-3.5 text-left transition cursor-pointer ${
-                                      active
-                                        ? 'border-[#16422C] bg-[#E7F7D4]/55 ring-2 ring-[#16422C]/25'
-                                        : 'border-neutral-200 bg-[#F8FAFC] hover:border-neutral-300'
-                                    }`}
-                                  >
-                                    <div className="inline-flex items-center gap-1.5 text-xs font-bold text-[#0F172A]">
-                                      {opt.id === 'QR_STAFF' ? (
-                                        <QrCode className="h-3.5 w-3.5 text-[#16422C]" />
-                                      ) : (
-                                        <KeyRound className="h-3.5 w-3.5 text-[#0E4F7E]" />
-                                      )}
-                                      {opt.title}
-                                    </div>
-                                    <p className="mt-1 text-[11px] leading-relaxed text-neutral-600">
-                                      {opt.desc}
-                                    </p>
-                                  </button>
-                                );
-                              })}
-                            </div>
-                          </div>
-                        </div>
-
-                        {/* Cover Photo Picker */}
-                        <div className="flex flex-col gap-3 rounded-2xl border border-neutral-200/80 bg-[#F8FAFC] p-4 sm:flex-row sm:items-center">
-                          <img
-                            src={newCourtCoverUrl}
-                            alt="Ảnh đại diện cụm sân mới"
-                            className="h-20 w-32 rounded-xl object-cover border border-neutral-200 bg-white shrink-0"
-                          />
-                          <div className="flex-1 space-y-2 text-xs">
-                            <div className="flex flex-wrap items-center justify-between gap-2">
-                              <span className="font-semibold text-[#0F172A]">
-                                Ảnh đại diện cụm sân hiển thị trên Sàn Thuê Sân
-                              </span>
-                              <label className="cursor-pointer rounded-full border border-[#16422C]/30 bg-white px-3 py-1 text-[11px] font-bold text-[#16422C] hover:bg-[#E7F7D4]/40">
-                                Tải ảnh thực tế từ máy…
-                                <input
-                                  type="file"
-                                  accept="image/*"
-                                  onChange={handleUploadNewCourtCover}
-                                  className="hidden"
-                                />
-                              </label>
-                            </div>
-                            <select
-                              value={
-                                PRESET_COURT_COVERS.some((c) => c.url === newCourtCoverUrl)
-                                  ? newCourtCoverUrl
-                                  : 'CUSTOM'
-                              }
-                              onChange={(e) => {
-                                if (e.target.value !== 'CUSTOM') setNewCourtCoverUrl(e.target.value);
-                              }}
-                              className="w-full rounded-xl border border-neutral-200 bg-white px-3 py-2 text-xs text-[#0F172A]"
-                            >
-                              {!PRESET_COURT_COVERS.some((c) => c.url === newCourtCoverUrl) && (
-                                <option value="CUSTOM">Ảnh riêng đã tải lên từ máy</option>
-                              )}
-                              {PRESET_COURT_COVERS.map((c) => (
-                                <option key={c.url} value={c.url}>
-                                  Ảnh mẫu: {c.label}
-                                </option>
-                              ))}
-                            </select>
-                          </div>
-                        </div>
-
-                        <div className="flex justify-end gap-2.5 pt-1">
-                          <ActionButton
-                            type="button"
-                            variant="outline"
-                            size="sm"
-                            onClick={() => setShowCreateCourtForm(false)}
-                          >
-                            Hủy bỏ
-                          </ActionButton>
-                          <ActionButton type="submit" variant="forest" size="md">
-                            ✓ Xuất bản Cụm sân lên ArenaPulse
-                          </ActionButton>
-                        </div>
-                      </motion.form>
-                    )}
-                  </AnimatePresence>
 
                   {/* OWNED COURT GROUPS LIST */}
                   <div className="space-y-4">
-                    {myListings.map((court) => {
-                      const isPublished = court.published !== false;
-                      const activeAddonCount = (court.addOnServices ?? []).filter(
-                        (s) => s.enabled !== false
-                      ).length;
-                      const isEditingPrice = editingPriceGroupId === court.groupId;
+                    {filteredMyListings.length === 0 ? (
+                      <div className="rounded-[26px] border border-dashed border-neutral-300 bg-white p-10 text-center space-y-3">
+                        <p className="text-sm font-semibold text-[#0F172A]">
+                          Không tìm thấy cụm sân nào phù hợp bộ lọc hiện tại.
+                        </p>
+                        {!isStaffOnly && (
+                          <ActionButton
+                            variant="outline"
+                            size="sm"
+                            onClick={() => {
+                              setCourtStatusFilter('ALL');
+                              setCourtSearchQuery('');
+                            }}
+                          >
+                            Hiển thị lại tất cả cụm sân
+                          </ActionButton>
+                        )}
+                      </div>
+                    ) : (
+                      filteredMyListings.map((court) => {
+                        const isPublished = court.published !== false;
+                        const activeAddonCount = (court.addOnServices ?? []).filter(
+                          (s) => s.enabled !== false
+                        ).length;
+                        const isEditingPrice = editingPriceGroupId === court.groupId;
+                        const isPinMode =
+                          court.checkinMode === 'PIN_COUNTER' || court.checkinMode === 'MANUAL';
+                        const courtCapacity = court.upcomingSlots[0]?.totalCapacity ?? 4;
 
-                      return (
-                        <div
-                          key={court.groupId}
-                          className={`overflow-hidden rounded-[26px] border bg-white p-5 sm:p-6 shadow-xs transition ${
-                            isPublished
-                              ? 'border-neutral-200/90'
-                              : 'border-amber-300/80 bg-amber-50/20'
-                          }`}
-                        >
-                          <div className="flex flex-col gap-5 lg:flex-row">
-                            <div className="relative h-44 w-full shrink-0 overflow-hidden rounded-2xl lg:w-64 bg-neutral-100">
-                              <img
-                                src={court.imageUrl || '/images/real-pickleball-outdoor.jpg'}
-                                alt={court.groupName}
-                                className={`h-full w-full object-cover ${
-                                  isPublished ? '' : 'grayscale opacity-75'
-                                }`}
-                              />
-                              <span className="absolute left-3 top-3 rounded-full bg-black/75 px-3 py-1 text-[11px] font-bold text-white backdrop-blur-xs">
-                                {court.sportName} • {court.slotMinutes}p/ca
-                              </span>
-                              {!isStaffOnly && onUploadCourtPhoto && (
-                                <label className="absolute bottom-3 right-3 cursor-pointer rounded-full bg-white/95 px-3 py-1 text-[11px] font-bold text-[#0F172A] shadow-sm hover:bg-[#E7F7D4]">
-                                  + Đổi ảnh bìa
-                                  <input
-                                    type="file"
-                                    accept="image/*"
-                                    className="hidden"
-                                    onChange={async (e) => {
-                                      const file = e.target.files?.[0];
-                                      if (!file) return;
-                                      await onUploadCourtPhoto(
-                                        court.groupId,
-                                        file,
-                                        `Ảnh thực tế ${court.groupName}`,
-                                        true
-                                      );
-                                      flashToast(`✓ Đã cập nhật ảnh bìa mới cho "${court.groupName}"!`);
-                                    }}
-                                  />
-                                </label>
-                              )}
-                            </div>
-
-                            <div className="flex-1 space-y-4">
-                              <div className="flex flex-wrap items-start justify-between gap-3">
-                                <div>
-                                  <div className="flex flex-wrap items-center gap-2">
-                                    <span
-                                      className={`rounded-full px-2.5 py-0.5 text-[10.5px] font-bold ${
-                                        isPublished
-                                          ? 'bg-[#E7F7D4] text-[#16422C]'
-                                          : 'bg-amber-200 text-amber-950'
-                                      }`}
-                                    >
-                                      {isPublished ? '● ĐANG MỞ CHO THUÊ' : '⏸ TẠM NGƯNG NHẬN KHÁCH'}
-                                    </span>
-                                    <span className="text-xs text-neutral-500">
-                                      {court.venueName} • Cọc {court.depositPercent}%
-                                    </span>
-                                  </div>
-                                  <h4 className="mt-1 text-lg font-bold text-[#0F172A]">
-                                    {court.groupName}
-                                  </h4>
-                                  <p className="text-xs text-neutral-500">{court.venueAddress}</p>
-                                </div>
-
-                                {!isStaffOnly && (
-                                  <div className="flex flex-wrap items-center gap-2">
-                                    <button
-                                      type="button"
-                                      onClick={() => {
-                                        onToggleListingPublished(court.groupId);
-                                        flashToast(
-                                          isPublished
-                                            ? `Đã tạm ẩn cụm sân "${court.groupName}" khỏi trang đặt lịch công khai.`
-                                            : `✓ Đã mở nhận lịch trở lại cho "${court.groupName}"!`
+                        return (
+                          <div
+                            key={court.groupId}
+                            className={`overflow-hidden rounded-[26px] border bg-white p-5 shadow-xs transition ${
+                              isPublished
+                                ? 'border-neutral-200/90'
+                                : 'border-amber-300/80 bg-amber-50/20'
+                            }`}
+                          >
+                            <div className="flex flex-col gap-5 lg:flex-row">
+                              {/* Left Media Card */}
+                              <div className="relative h-44 w-full shrink-0 overflow-hidden rounded-2xl bg-neutral-100 lg:h-auto lg:min-h-[210px] lg:w-56">
+                                <img
+                                  src={court.imageUrl || '/images/real-pickleball-outdoor.jpg'}
+                                  alt={court.groupName}
+                                  className={`h-full w-full object-cover ${
+                                    isPublished ? '' : 'grayscale opacity-75'
+                                  }`}
+                                />
+                                <span className="absolute left-3 top-3 rounded-full bg-slate-950/75 px-3 py-1 text-[11px] font-semibold text-white backdrop-blur-xs">
+                                  {court.sportName} • {court.slotMinutes}p/ca
+                                </span>
+                                {!isStaffOnly && onUploadCourtPhoto && (
+                                  <label className="absolute bottom-3 right-3 inline-flex cursor-pointer items-center gap-1.5 rounded-full bg-white/95 px-3 py-1.5 text-[11px] font-bold text-[#0F172A] shadow-sm hover:bg-[#E7F7D4]">
+                                    <Camera className="h-3 w-3" />
+                                    Đổi ảnh
+                                    <input
+                                      type="file"
+                                      accept="image/*"
+                                      className="hidden"
+                                      onChange={async (e) => {
+                                        const file = e.target.files?.[0];
+                                        if (!file) return;
+                                        await onUploadCourtPhoto(
+                                          court.groupId,
+                                          file,
+                                          `Ảnh thực tế ${court.groupName}`,
+                                          true
                                         );
+                                        flashToast(`✓ Đã cập nhật ảnh mới cho "${court.groupName}"!`);
                                       }}
-                                      className={`rounded-full px-3.5 py-1.5 text-xs font-bold transition ${
-                                        isPublished
-                                          ? 'border border-neutral-300 bg-white text-neutral-700 hover:border-amber-500 hover:text-amber-800'
-                                          : 'bg-[#16422C] text-white hover:bg-[#0F172A]'
-                                      }`}
-                                    >
-                                      {isPublished ? 'Tạm ngưng nhận lịch' : 'Mở nhận lịch lại'}
-                                    </button>
-
-                                    {onPreviewCourt && isPublished && (
-                                      <button
-                                        type="button"
-                                        onClick={() => onPreviewCourt(court)}
-                                        className="rounded-full border border-neutral-200 bg-[#F8FAFC] px-3.5 py-1.5 text-xs font-semibold text-[#0F172A] hover:bg-neutral-100"
-                                      >
-                                        Xem trên Sàn ↗
-                                      </button>
-                                    )}
-                                  </div>
+                                    />
+                                  </label>
                                 )}
                               </div>
 
-                              {/* Live Slot Availability Controller */}
-                              <div className="rounded-2xl border border-neutral-200/75 bg-[#F8FAFC] p-3.5">
-                                <div className="mb-2 flex items-center justify-between text-[11px]">
-                                  <span className="font-bold text-[#0F172A]">
-                                    Điều chỉnh Số sân trống trực tiếp theo Khung giờ
-                                  </span>
-                                  <span className="text-neutral-500">
-                                    Khóa/mở nhanh khi có khách đặt trực tiếp tại quầy
-                                  </span>
-                                </div>
-                                <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-3">
-                                  {court.upcomingSlots.slice(0, 3).map((slot, idx) => (
-                                    <div
-                                      key={slot.slotStart}
-                                      className="flex items-center justify-between rounded-xl border border-neutral-200/80 bg-white px-3 py-2 text-xs"
-                                    >
-                                      <div>
-                                        <div className="font-semibold text-[#0F172A]">
-                                          {slot.timePeriod === 'MORNING'
-                                            ? 'Ca Sáng'
-                                            : slot.timePeriod === 'AFTERNOON'
-                                              ? 'Ca Chiều'
-                                              : 'Ca Tối'}
-                                        </div>
-                                        <div className="tabular-nums text-[11px] font-medium text-[#16422C]">
-                                          {formatVnd(slot.currentDynamicPrice)}
-                                        </div>
-                                      </div>
-
-                                      <div className="flex items-center gap-1.5">
-                                        <button
-                                          type="button"
-                                          onClick={() => {
-                                            const nextSlots = court.upcomingSlots.map((s, i) =>
-                                              i === idx
-                                                ? {
-                                                    ...s,
-                                                    availableCourts: Math.max(
-                                                      0,
-                                                      s.availableCourts - 1
-                                                    ),
-                                                  }
-                                                : s
-                                            );
-                                            onUpdateListingSlots(court.groupId, nextSlots);
-                                          }}
-                                          className="flex h-6 w-6 items-center justify-center rounded-full border border-neutral-200 bg-[#F8FAFC] font-bold hover:bg-neutral-200"
-                                        >
-                                          −
-                                        </button>
-                                        <span className="min-w-[44px] text-center tabular-nums text-xs font-bold text-[#0F172A]">
-                                          {slot.availableCourts}/{slot.totalCapacity}
-                                        </span>
-                                        <button
-                                          type="button"
-                                          onClick={() => {
-                                            const nextSlots = court.upcomingSlots.map((s, i) =>
-                                              i === idx
-                                                ? {
-                                                    ...s,
-                                                    availableCourts: Math.min(
-                                                      s.totalCapacity,
-                                                      s.availableCourts + 1
-                                                    ),
-                                                  }
-                                                : s
-                                            );
-                                            onUpdateListingSlots(court.groupId, nextSlots);
-                                          }}
-                                          className="flex h-6 w-6 items-center justify-center rounded-full border border-neutral-200 bg-[#F8FAFC] font-bold hover:bg-neutral-200"
-                                        >
-                                          +
-                                        </button>
-                                      </div>
+                              {/* Right Clean 3-Layer Management Content */}
+                              <div className="flex-1 space-y-4">
+                                {/* Layer 1: Title + Status Switch + Preview */}
+                                <div className="flex flex-wrap items-start justify-between gap-3">
+                                  <div className="space-y-1">
+                                    <div className="flex flex-wrap items-center gap-2">
+                                      <span
+                                        className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[11px] font-bold ${
+                                          isPublished
+                                            ? 'bg-[#E7F7D4] text-[#16422C]'
+                                            : 'bg-amber-200 text-amber-950'
+                                        }`}
+                                      >
+                                        <span
+                                          className={`h-1.5 w-1.5 rounded-full ${
+                                            isPublished ? 'bg-[#16422C]' : 'bg-amber-800'
+                                          }`}
+                                        />
+                                        {isPublished ? 'Đang mở đặt lịch' : 'Đang tạm ngưng'}
+                                      </span>
+                                      <span className="text-xs text-neutral-400">•</span>
+                                      <span className="text-xs font-medium text-neutral-500">
+                                        {court.venueName}
+                                      </span>
                                     </div>
-                                  ))}
+                                    <h4 className="text-base sm:text-lg font-bold text-[#0F172A]">
+                                      {court.groupName}
+                                    </h4>
+                                    <p className="text-xs text-neutral-500">{court.venueAddress}</p>
+                                  </div>
+
+                                  {!isStaffOnly && (
+                                    <div className="flex flex-wrap items-center gap-2">
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          onToggleListingPublished(court.groupId);
+                                          flashToast(
+                                            isPublished
+                                              ? `Đã tạm ngưng nhận khách cho "${court.groupName}".`
+                                              : `✓ Đã mở nhận lịch trở lại cho "${court.groupName}"!`
+                                          );
+                                        }}
+                                        className={`inline-flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-xs font-semibold transition ${
+                                          isPublished
+                                            ? 'border border-neutral-200 bg-white text-neutral-700 hover:border-amber-500 hover:text-amber-800'
+                                            : 'bg-[#16422C] text-white hover:bg-[#0F172A]'
+                                        }`}
+                                      >
+                                        {isPublished ? (
+                                          <>
+                                            <PauseCircle className="h-3.5 w-3.5" />
+                                            Tạm ngưng
+                                          </>
+                                        ) : (
+                                          <>
+                                            <PlayCircle className="h-3.5 w-3.5" />
+                                            Mở lại
+                                          </>
+                                        )}
+                                      </button>
+
+                                      {onPreviewCourt && isPublished && (
+                                        <button
+                                          type="button"
+                                          onClick={() => onPreviewCourt(court)}
+                                          className="inline-flex items-center gap-1 rounded-full border border-neutral-200 bg-[#F8FAFC] px-3 py-1.5 text-xs font-semibold text-[#0F172A] hover:bg-neutral-100"
+                                        >
+                                          Xem trên sàn
+                                          <ExternalLink className="h-3 w-3 text-neutral-400" />
+                                        </button>
+                                      )}
+                                    </div>
+                                  )}
                                 </div>
-                              </div>
 
-                              {/* Bottom Bar: Price Summary & Add-on Services Shortcut */}
-                              {!isStaffOnly && (
-                                <div className="flex flex-wrap items-center justify-between gap-3 pt-1 text-xs">
-                                  <div className="flex flex-wrap items-center gap-3">
-                                    <span className="rounded-xl bg-[#F4F8F4] px-3 py-1.5 font-semibold text-[#16422C] tabular-nums">
-                                      Khung giá: {formatVnd(court.minPrice)} – {formatVnd(court.maxPrice)} (Cơ sở:{' '}
-                                      {formatVnd(court.basePrice)})
-                                    </span>
+                                {/* Layer 2: Scannable 3-Metric Strip */}
+                                <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-3 text-xs">
+                                  <div className="rounded-2xl border border-neutral-200/75 bg-[#F8FAFC] px-3.5 py-2.5">
+                                    <div className="text-[11px] font-medium text-neutral-500">
+                                      Giá thuê tiêu chuẩn
+                                    </div>
+                                    <div className="mt-0.5 font-bold text-[#16422C] tabular-nums text-sm">
+                                      {formatVnd(court.basePrice)}/ca
+                                    </div>
+                                    <div className="text-[10.5px] text-neutral-500 tabular-nums">
+                                      Biên độ: {formatVnd(court.minPrice)} – {formatVnd(court.maxPrice)}
+                                    </div>
+                                  </div>
 
+                                  <div className="rounded-2xl border border-neutral-200/75 bg-[#F8FAFC] px-3.5 py-2.5">
+                                    <div className="text-[11px] font-medium text-neutral-500">
+                                      Quy mô &amp; Tiền cọc
+                                    </div>
+                                    <div className="mt-0.5 font-bold text-[#0F172A] tabular-nums text-sm">
+                                      {courtCapacity} sân con • Cọc {court.depositPercent}%
+                                    </div>
+                                    <div className="text-[10.5px] text-neutral-500">
+                                      Thời lượng {court.slotMinutes} phút/ca
+                                    </div>
+                                  </div>
+
+                                  <div className="rounded-2xl border border-neutral-200/75 bg-[#F8FAFC] px-3.5 py-2.5 flex flex-col justify-between">
+                                    <div className="text-[11px] font-medium text-neutral-500">
+                                      Cách kiểm tra vé tại quầy
+                                    </div>
                                     <button
                                       type="button"
+                                      disabled={isStaffOnly}
                                       onClick={() => {
-                                        const nextMode: CheckinVerificationMode =
-                                          court.checkinMode === 'QR_STAFF'
-                                            ? 'PIN_COUNTER'
-                                            : 'QR_STAFF';
+                                        const nextMode: CheckinVerificationMode = isPinMode
+                                          ? 'QR_STAFF'
+                                          : 'PIN_COUNTER';
                                         onUpdateListingPricing(court.groupId, {
                                           basePrice: court.basePrice,
                                           minPrice: court.minPrice,
@@ -2098,24 +1788,129 @@ export const LessorPartnerPortal: React.FC<LessorPartnerPortalProps> = ({
                                         });
                                         flashToast(
                                           nextMode === 'PIN_COUNTER'
-                                            ? `Đã chuyển "${court.groupName}" sang Option 2: Không cần máy quét (Xác thực PIN 6 số Email).`
-                                            : `Đã chuyển "${court.groupName}" sang Option 1: Có máy quét QR tại quầy.`
+                                            ? `Đã đổi "${court.groupName}" sang kiểm tra bằng Mã PIN 6 số.`
+                                            : `Đã đổi "${court.groupName}" sang quét mã QR tại quầy.`
                                         );
                                       }}
-                                      className={`rounded-full border px-3 py-1.5 text-[11px] font-bold transition cursor-pointer ${
-                                        court.checkinMode === 'PIN_COUNTER' ||
-                                        court.checkinMode === 'MANUAL'
+                                      title={isStaffOnly ? undefined : 'Bấm để đổi hình thức kiểm tra vé'}
+                                      className={`mt-1 inline-flex w-fit items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-bold transition ${
+                                        isPinMode
                                           ? 'border-[#0E4F7E]/30 bg-[#E6F1F8] text-[#0E4F7E]'
-                                          : 'border-[#16422C]/25 bg-[#F4F8F4] text-[#16422C]'
-                                      }`}
-                                      title="Bấm để chuyển đổi phương thức nhận sân cho cụm này"
+                                          : 'border-[#16422C]/25 bg-[#E7F7D4]/70 text-[#16422C]'
+                                      } ${isStaffOnly ? 'cursor-default' : 'cursor-pointer hover:opacity-85'}`}
                                     >
-                                      {court.checkinMode === 'PIN_COUNTER' ||
-                                      court.checkinMode === 'MANUAL'
-                                        ? '🔢 PIN 6 số (Không máy quét) ⇄'
-                                        : '📷 Quét QR tại quầy ⇄'}
+                                      {isPinMode ? (
+                                        <>
+                                          <KeyRound className="h-3 w-3" />
+                                          Mã PIN 6 số
+                                        </>
+                                      ) : (
+                                        <>
+                                          <QrCode className="h-3 w-3" />
+                                          Quét mã QR
+                                        </>
+                                      )}
+                                      {!isStaffOnly && (
+                                        <span className="text-[10px] opacity-65">(Đổi)</span>
+                                      )}
                                     </button>
+                                  </div>
+                                </div>
 
+                                {/* Layer 3: Live Slot Availability Stepper */}
+                                <div className="rounded-2xl border border-neutral-200/75 bg-white p-3.5">
+                                  <div className="mb-2.5 flex flex-wrap items-center justify-between gap-2 text-[11px]">
+                                    <span className="font-bold text-[#0F172A]">
+                                      Số sân trống hôm nay
+                                    </span>
+                                    <span className="text-neutral-500">
+                                      Bấm − hoặc + để cập nhật nhanh khi có khách đặt trực tiếp
+                                    </span>
+                                  </div>
+                                  <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-3">
+                                    {court.upcomingSlots.slice(0, 3).map((slot, idx) => {
+                                      const availTone =
+                                        slot.availableCourts === 0
+                                          ? 'text-rose-700 bg-rose-50 border-rose-200'
+                                          : slot.availableCourts <= 2
+                                            ? 'text-amber-800 bg-amber-50 border-amber-200'
+                                            : 'text-[#16422C] bg-[#F4F8F4] border-[#16422C]/20';
+                                      return (
+                                        <div
+                                          key={slot.slotStart}
+                                          className="flex items-center justify-between rounded-xl border border-neutral-200/80 bg-[#F8FAFC] px-3 py-2 text-xs"
+                                        >
+                                          <div>
+                                            <div className="font-semibold text-[#0F172A]">
+                                              {slot.timePeriod === 'MORNING'
+                                                ? 'Ca Sáng'
+                                                : slot.timePeriod === 'AFTERNOON'
+                                                  ? 'Ca Chiều'
+                                                  : 'Ca Tối'}
+                                            </div>
+                                            <div className="tabular-nums text-[11px] font-medium text-neutral-600">
+                                              {formatVnd(slot.currentDynamicPrice)}
+                                            </div>
+                                          </div>
+
+                                          <div className="flex items-center gap-1.5">
+                                            <button
+                                              type="button"
+                                              aria-label="Giảm số sân trống"
+                                              onClick={() => {
+                                                const nextSlots = court.upcomingSlots.map((s, i) =>
+                                                  i === idx
+                                                    ? {
+                                                        ...s,
+                                                        availableCourts: Math.max(
+                                                          0,
+                                                          s.availableCourts - 1
+                                                        ),
+                                                      }
+                                                    : s
+                                                );
+                                                onUpdateListingSlots(court.groupId, nextSlots);
+                                              }}
+                                              className="flex h-7 w-7 items-center justify-center rounded-full border border-neutral-200 bg-white font-bold text-[#0F172A] hover:bg-neutral-100"
+                                            >
+                                              −
+                                            </button>
+                                            <span
+                                              className={`min-w-[46px] rounded-lg border px-1.5 py-0.5 text-center tabular-nums text-xs font-bold ${availTone}`}
+                                            >
+                                              {slot.availableCourts}/{slot.totalCapacity}
+                                            </span>
+                                            <button
+                                              type="button"
+                                              aria-label="Tăng số sân trống"
+                                              onClick={() => {
+                                                const nextSlots = court.upcomingSlots.map((s, i) =>
+                                                  i === idx
+                                                    ? {
+                                                        ...s,
+                                                        availableCourts: Math.min(
+                                                          s.totalCapacity,
+                                                          s.availableCourts + 1
+                                                        ),
+                                                      }
+                                                    : s
+                                                );
+                                                onUpdateListingSlots(court.groupId, nextSlots);
+                                              }}
+                                              className="flex h-7 w-7 items-center justify-center rounded-full border border-neutral-200 bg-white font-bold text-[#0F172A] hover:bg-neutral-100"
+                                            >
+                                              +
+                                            </button>
+                                          </div>
+                                        </div>
+                                      );
+                                    })}
+                                  </div>
+                                </div>
+
+                                {/* Layer 4: Clean Footer Actions */}
+                                {!isStaffOnly && (
+                                  <div className="flex flex-wrap items-center justify-between gap-2.5 border-t border-neutral-100 pt-3 text-xs">
                                     <button
                                       type="button"
                                       onClick={() => {
@@ -2129,103 +1924,105 @@ export const LessorPartnerPortal: React.FC<LessorPartnerPortalProps> = ({
                                           setEditDeposit(court.depositPercent);
                                         }
                                       }}
-                                      className="font-semibold text-[#0E4F7E] hover:underline"
+                                      className="inline-flex items-center gap-1.5 rounded-full border border-neutral-200 bg-white px-3.5 py-1.5 font-semibold text-[#0F172A] hover:border-[#0E4F7E] hover:text-[#0E4F7E]"
                                     >
-                                      {isEditingPrice ? 'Đóng sửa giá' : '✎ Sửa giá & % cọc'}
+                                      <SlidersHorizontal className="h-3.5 w-3.5" />
+                                      {isEditingPrice ? 'Đóng chỉnh giá' : 'Chỉnh giá & tiền cọc'}
+                                    </button>
+
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setFocusedServiceGroupId(court.groupId);
+                                        setActiveTab('ADDON_PRODUCTS');
+                                      }}
+                                      className="inline-flex items-center gap-1.5 rounded-full border border-[#16422C]/25 bg-[#F4F8F4] px-3.5 py-1.5 font-semibold text-[#16422C] hover:bg-[#E7F7D4]"
+                                    >
+                                      <Sparkles className="h-3.5 w-3.5" />
+                                      Nước &amp; Dịch vụ ({activeAddonCount} món) →
                                     </button>
                                   </div>
+                                )}
 
-                                  <button
-                                    type="button"
-                                    onClick={() => {
-                                      setFocusedServiceGroupId(court.groupId);
-                                      setActiveTab('ADDON_PRODUCTS');
-                                    }}
-                                    className="rounded-full border border-[#16422C]/30 bg-white px-3.5 py-1.5 font-semibold text-[#16422C] hover:bg-[#F4F8F4]"
-                                  >
-                                    🥤 Nước &amp; Dịch vụ sân này ({activeAddonCount} món) →
-                                  </button>
-                                </div>
-                              )}
-
-                              {/* Inline Price Editor */}
-                              {isEditingPrice && !isStaffOnly && (
-                                <div className="grid grid-cols-2 gap-3 rounded-2xl border border-[#16422C]/25 bg-[#F4F8F4]/70 p-4 sm:grid-cols-5 items-end text-xs">
-                                  <div>
-                                    <label className="mb-1 block font-semibold text-neutral-700">
-                                      Giá sàn (₫)
-                                    </label>
-                                    <input
-                                      type="number"
-                                      step={10000}
-                                      value={editMin}
-                                      onChange={(e) => setEditMin(Number(e.target.value) || 0)}
-                                      className="w-full rounded-xl border border-neutral-300 bg-white px-2.5 py-2 tabular-nums font-semibold"
-                                    />
+                                {/* Inline Price Editor */}
+                                {isEditingPrice && !isStaffOnly && (
+                                  <div className="grid grid-cols-2 gap-3 rounded-2xl border border-[#16422C]/25 bg-[#F4F8F4]/70 p-4 sm:grid-cols-5 items-end text-xs">
+                                    <div>
+                                      <label className="mb-1 block font-semibold text-neutral-700">
+                                        Giá thấp nhất (₫)
+                                      </label>
+                                      <input
+                                        type="number"
+                                        step={10000}
+                                        value={editMin}
+                                        onChange={(e) => setEditMin(Number(e.target.value) || 0)}
+                                        className="w-full rounded-xl border border-neutral-300 bg-white px-2.5 py-2 tabular-nums font-semibold"
+                                      />
+                                    </div>
+                                    <div>
+                                      <label className="mb-1 block font-semibold text-neutral-700">
+                                        Giá tiêu chuẩn (₫)
+                                      </label>
+                                      <input
+                                        type="number"
+                                        step={10000}
+                                        value={editBase}
+                                        onChange={(e) => setEditBase(Number(e.target.value) || 0)}
+                                        className="w-full rounded-xl border border-neutral-300 bg-white px-2.5 py-2 tabular-nums font-semibold text-[#16422C]"
+                                      />
+                                    </div>
+                                    <div>
+                                      <label className="mb-1 block font-semibold text-neutral-700">
+                                        Giá giờ vàng (₫)
+                                      </label>
+                                      <input
+                                        type="number"
+                                        step={10000}
+                                        value={editMax}
+                                        onChange={(e) => setEditMax(Number(e.target.value) || 0)}
+                                        className="w-full rounded-xl border border-neutral-300 bg-white px-2.5 py-2 tabular-nums font-semibold"
+                                      />
+                                    </div>
+                                    <div>
+                                      <label className="mb-1 block font-semibold text-neutral-700">
+                                        Cọc (%)
+                                      </label>
+                                      <input
+                                        type="number"
+                                        min={10}
+                                        max={100}
+                                        value={editDeposit}
+                                        onChange={(e) => setEditDeposit(Number(e.target.value) || 30)}
+                                        className="w-full rounded-xl border border-neutral-300 bg-white px-2.5 py-2 tabular-nums font-semibold"
+                                      />
+                                    </div>
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        const safeMin = Math.max(50_000, editMin);
+                                        const safeMax = Math.max(safeMin + 10_000, editMax);
+                                        const safeBase = Math.min(safeMax, Math.max(safeMin, editBase));
+                                        onUpdateListingPricing(court.groupId, {
+                                          basePrice: safeBase,
+                                          minPrice: safeMin,
+                                          maxPrice: safeMax,
+                                          depositPercent: Math.min(100, Math.max(10, editDeposit)),
+                                        });
+                                        setEditingPriceGroupId(null);
+                                        flashToast(`✓ Đã cập nhật giá cho "${court.groupName}"!`);
+                                      }}
+                                      className="rounded-xl bg-[#16422C] py-2.5 font-bold text-white hover:bg-[#0F172A]"
+                                    >
+                                      Lưu giá mới
+                                    </button>
                                   </div>
-                                  <div>
-                                    <label className="mb-1 block font-semibold text-neutral-700">
-                                      Giá cơ sở (₫)
-                                    </label>
-                                    <input
-                                      type="number"
-                                      step={10000}
-                                      value={editBase}
-                                      onChange={(e) => setEditBase(Number(e.target.value) || 0)}
-                                      className="w-full rounded-xl border border-neutral-300 bg-white px-2.5 py-2 tabular-nums font-semibold text-[#16422C]"
-                                    />
-                                  </div>
-                                  <div>
-                                    <label className="mb-1 block font-semibold text-neutral-700">
-                                      Giá trần (₫)
-                                    </label>
-                                    <input
-                                      type="number"
-                                      step={10000}
-                                      value={editMax}
-                                      onChange={(e) => setEditMax(Number(e.target.value) || 0)}
-                                      className="w-full rounded-xl border border-neutral-300 bg-white px-2.5 py-2 tabular-nums font-semibold"
-                                    />
-                                  </div>
-                                  <div>
-                                    <label className="mb-1 block font-semibold text-neutral-700">
-                                      Cọc (%)
-                                    </label>
-                                    <input
-                                      type="number"
-                                      min={10}
-                                      max={100}
-                                      value={editDeposit}
-                                      onChange={(e) => setEditDeposit(Number(e.target.value) || 30)}
-                                      className="w-full rounded-xl border border-neutral-300 bg-white px-2.5 py-2 tabular-nums font-semibold"
-                                    />
-                                  </div>
-                                  <button
-                                    type="button"
-                                    onClick={() => {
-                                      const safeMin = Math.max(50_000, editMin);
-                                      const safeMax = Math.max(safeMin + 10_000, editMax);
-                                      const safeBase = Math.min(safeMax, Math.max(safeMin, editBase));
-                                      onUpdateListingPricing(court.groupId, {
-                                        basePrice: safeBase,
-                                        minPrice: safeMin,
-                                        maxPrice: safeMax,
-                                        depositPercent: Math.min(100, Math.max(10, editDeposit)),
-                                      });
-                                      setEditingPriceGroupId(null);
-                                      flashToast(`✓ Đã cập nhật biểu giá mới cho "${court.groupName}"!`);
-                                    }}
-                                    className="rounded-xl bg-[#16422C] py-2.5 font-bold text-white hover:bg-[#0F172A]"
-                                  >
-                                    Lưu giá mới
-                                  </button>
-                                </div>
-                              )}
+                                )}
+                              </div>
                             </div>
                           </div>
-                        </div>
-                      );
-                    })}
+                        );
+                      })
+                    )}
                   </div>
                 </motion.div>
               )}
@@ -2696,6 +2493,19 @@ export const LessorPartnerPortal: React.FC<LessorPartnerPortalProps> = ({
           </div>
         </div>
       </div>
+      <CreateCourtGroupModal
+        open={showCreateCourtForm && !isStaffOnly}
+        onClose={() => setShowCreateCourtForm(false)}
+        sports={sports}
+        activeProvider={activeProvider}
+        defaultVenueName={myListings[0]?.venueName ?? activeProvider.providerName}
+        defaultAddress={myListings[0]?.venueAddress ?? `${activeProvider.district}, ${activeProvider.city}`}
+        presetCovers={PRESET_COURT_COVERS}
+        onCreateListing={onCreateNewListing}
+        onCreatedSuccess={(groupName) =>
+          flashToast(`✓ Đã tạo & mở bán cụm sân "${groupName}" thành công!`)
+        }
+      />
       <QrCheckInScannerModal
         open={qrModalOpen}
         initialTab={qrModalTab}
