@@ -1,0 +1,26 @@
+{
+  "branch": "service/admin/platform-audit",
+  "title": "Nhật ký quản trị toàn sàn",
+  "scope": "Xem dấu vết kiểm toán theo hành động và cơ sở.",
+  "operations": [
+    {
+      "method": "GET",
+      "path": "/api/v1/admin/audit-logs",
+      "operationId": "listAuditLogs"
+    }
+  ],
+  "source": [
+    {
+      "file": "src/main/java/com/yieldengine/controller/admin/AdminPlatformController.java",
+      "anchors": [
+        "listAuditLogs("
+      ]
+    },
+    {
+      "file": "frontend/src/api/marketplaceApi.ts",
+      "anchors": [
+        "fetchAdminAuditLogsStrict("
+      ]
+    }
+  ]
+}
