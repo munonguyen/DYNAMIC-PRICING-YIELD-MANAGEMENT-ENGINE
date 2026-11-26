@@ -1,0 +1,26 @@
+{
+  "branch": "service/accountant/reconciliation",
+  "title": "Đối soát sổ cái",
+  "scope": "Đọc chênh lệch và các số liệu đối soát tài chính từ sổ cái.",
+  "operations": [
+    {
+      "method": "GET",
+      "path": "/api/v1/finance/reconciliation",
+      "operationId": "reconcile"
+    }
+  ],
+  "source": [
+    {
+      "file": "src/main/java/com/yieldengine/controller/accountant/AccountantFinanceController.java",
+      "anchors": [
+        "reconcile("
+      ]
+    },
+    {
+      "file": "src/main/java/com/yieldengine/service/FinanceLedgerService.java",
+      "anchors": [
+        "reconcile("
+      ]
+    }
+  ]
+}
