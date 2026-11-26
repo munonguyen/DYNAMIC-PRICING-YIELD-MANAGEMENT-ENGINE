@@ -1,0 +1,32 @@
+{
+  "branch": "service/lessor/court-slots",
+  "title": "Quản lý ca sân",
+  "scope": "Tạo ca và đọc lịch theo cụm sân.",
+  "operations": [
+    {
+      "method": "POST",
+      "path": "/api/v1/inventory/slots",
+      "operationId": "createTimeSlot"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/inventory/groups/{groupId}/slots",
+      "operationId": "getSlots"
+    }
+  ],
+  "source": [
+    {
+      "file": "src/main/java/com/yieldengine/controller/lessor/LessorInventoryController.java",
+      "anchors": [
+        "createTimeSlot(",
+        "getSlots("
+      ]
+    },
+    {
+      "file": "frontend/src/components/LessorPartnerPortal.tsx",
+      "anchors": [
+        "onCreateListingSlot("
+      ]
+    }
+  ]
+}
