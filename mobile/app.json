@@ -1,0 +1,18 @@
+{
+  "expo": {
+    "name": "ArenaPulse",
+    "slug": "arenapulse-mobile",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "scheme": "arenapulse",
+    "userInterfaceStyle": "light",
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "vn.arenapulse.app"
+    },
+    "android": {
+      "package": "vn.arenapulse.app"
+    }
+  }
+}
+
