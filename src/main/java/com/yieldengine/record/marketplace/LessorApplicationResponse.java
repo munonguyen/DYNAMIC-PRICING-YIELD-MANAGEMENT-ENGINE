@@ -36,6 +36,20 @@ public record LessorApplicationResponse(
         UUID provisionedTenantId,
         String reviewNote,
         Instant createdAt,
-        Instant reviewedAt
+        Instant reviewedAt,
+        LocalDate representativeDob,
+        String representativeGender,
+        LocalDate cccdIssueDate,
+        String cccdIssuePlace,
+        String contactPhone,
+        String contactEmail,
+        LocalDate businessLicenseIssuedDate,
+        boolean fireSafetyConfirmed,
+        boolean sportSafetyConfirmed,
+        boolean legalCommitmentsAccepted,
+        String cccdFrontStorageKey,
+        String cccdBackStorageKey,
+        String businessDocStorageKey,
+        String courtPhotoStorageKey
 ) {
 }

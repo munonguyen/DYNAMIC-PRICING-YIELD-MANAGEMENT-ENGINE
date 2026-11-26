@@ -68,7 +68,6 @@ type InternalTab =
   | 'OPERATIONS'
   | 'USER_ACCOUNTS'
   | 'LESSOR_INSPECTOR'
-  | 'RBAC_MATRIX'
   | 'FINANCE_LEDGER'
   | 'ADMIN_KYC';
 
@@ -159,14 +158,16 @@ export const MonteCarloAndRoleCenterSection: React.FC<MonteCarloAndRoleCenterSec
 
   const handleReviewApplication = async (
     applicationId: string,
-    decision: 'APPROVED' | 'REJECTED'
+    decision: 'APPROVED' | 'REJECTED',
+    customNote?: string
   ) => {
     setReviewingId(applicationId);
     try {
       const note =
-        decision === 'APPROVED'
+        customNote?.trim() ||
+        (decision === 'APPROVED'
           ? 'Hồ sơ CCCD, MST Modulo-11, Mặt bằng & PCCC hợp lệ — Đã phê duyệt cấp Tenant.'
-          : 'Tài liệu đính kèm hoặc thông tin pháp lý cần bổ sung lại bản rõ nét.';
+          : 'Tài liệu đính kèm hoặc thông tin pháp lý cần bổ sung lại bản rõ nét.');
       const updated = await marketplaceApi.reviewLessorApplicationInternal(
         applicationId,
         decision,

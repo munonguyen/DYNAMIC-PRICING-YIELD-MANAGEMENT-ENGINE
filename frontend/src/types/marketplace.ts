@@ -193,6 +193,9 @@ export interface MyTicketRecord {
   qrExpiresAt?: string | null;
   checkinMode?: CheckinVerificationMode | null;
   checkinPinCode?: string | null;
+  paymentProvider?: CheckoutProvider | null;
+  providerReference?: string | null;
+  paidAt?: string | null;
 }
 
 export type PaymentGatewayCode = 'VIETQR_NAPAS' | 'VNPAY_ESCROW' | 'MOMO_WALLET' | 'INTL_CARD';
@@ -757,6 +760,20 @@ export interface LessorApplicationRecord {
   reviewNote?: string | null;
   createdAt: string;
   reviewedAt?: string | null;
+  representativeDob?: string | null;
+  representativeGender?: string | null;
+  cccdIssueDate?: string | null;
+  cccdIssuePlace?: string | null;
+  contactPhone?: string | null;
+  contactEmail?: string | null;
+  businessLicenseIssuedDate?: string | null;
+  fireSafetyConfirmed?: boolean;
+  sportSafetyConfirmed?: boolean;
+  legalCommitmentsAccepted?: boolean;
+  cccdFrontStorageKey?: string | null;
+  cccdBackStorageKey?: string | null;
+  businessDocStorageKey?: string | null;
+  courtPhotoStorageKey?: string | null;
 }
 
 export interface AdminTenantOverview {

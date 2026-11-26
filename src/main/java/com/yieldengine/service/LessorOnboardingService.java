@@ -455,7 +455,21 @@ public class LessorOnboardingService {
                 app.getProvisionedTenantId(),
                 app.getReviewNote(),
                 app.getCreatedAt(),
-                app.getReviewedAt()
+                app.getReviewedAt(),
+                app.getRepresentativeDob(),
+                app.getRepresentativeGender(),
+                app.getCccdIssueDate(),
+                app.getCccdIssuePlace(),
+                app.getContactPhone(),
+                app.getContactEmail(),
+                app.getBusinessLicenseIssuedDate(),
+                app.isFireSafetyConfirmed(),
+                app.isSportSafetyConfirmed(),
+                app.isLegalCommitmentsAccepted(),
+                app.getCccdFrontStorageKey(),
+                app.getCccdBackStorageKey(),
+                app.getBusinessDocStorageKey(),
+                app.getCourtPhotoStorageKey()
         );
     }
 }

@@ -1,5 +1,5 @@
-import React, { useMemo, useState } from 'react';
-import { motion } from 'framer-motion';
+import React, { useEffect, useMemo, useState } from 'react';
+import { AnimatePresence, motion } from 'framer-motion';
 import {
   Activity,
   BarChart3,
@@ -10,7 +10,7 @@ import {
   PieChart,
   RefreshCw,
   ShieldCheck,
-  TrendingUp,
+  Sparkles,
   Users,
 } from 'lucide-react';
 import type {
@@ -19,12 +19,7 @@ import type {
   ReconciliationSummary,
 } from '../types/marketplace';
 import { ALL_LESSOR_PROVIDERS, formatVnd } from '../api/marketplaceApi';
-import {
-  AnimatedCounter,
-  DASHBOARD_STAGGER_CONTAINER,
-  DASHBOARD_STAGGER_ITEM,
-  EXPO_EASE,
-} from './motionPrimitives';
+import { AnimatedCounter, EXPO_EASE } from './motionPrimitives';
 
 interface AdminPlatformDashboardProps {
   analytics: AnalyticsDashboardData;
@@ -46,6 +41,7 @@ interface AdminPlatformDashboardProps {
 }
 
 const SPORT_PALETTE = ['#0E4F7E', '#0F766E', '#D97706', '#2563EB', '#6366F1', '#475569'];
+const CARD_VIEWPORT = { once: true, amount: 0.14 } as const;
 
 export const AdminPlatformDashboard: React.FC<AdminPlatformDashboardProps> = ({
   analytics,
@@ -71,15 +67,26 @@ export const AdminPlatformDashboard: React.FC<AdminPlatformDashboardProps> = ({
   const courtPerf = analytics.courtPerformance;
   const recentOrders = analytics.recentOrders ?? [];
 
-  const [hoveredDayIdx, setHoveredDayIdx] = useState<number>(
+  const [replayEpoch, setReplayEpoch] = useState(0);
+  const [hoveredDayIdx, setHoveredDayIdx] = useState<number | null>(null);
+  const [selectedDayIdx, setSelectedDayIdx] = useState<number>(
     Math.max(0, dailySeries.length - 1)
   );
+  const [hoveredSparkIdx, setHoveredSparkIdx] = useState<number | null>(null);
   const [hoveredSportIdx, setHoveredSportIdx] = useState<number | null>(null);
   const [hoveredHourIdx, setHoveredHourIdx] = useState<number | null>(null);
+  const [hoveredProviderId, setHoveredProviderId] = useState<string | null>(null);
+  const [hoveredCourtId, setHoveredCourtId] = useState<string | null>(null);
   const [selectedSportFilter, setSelectedSportFilter] = useState<string>('ALL');
 
-  const safeDayIdx = Math.min(hoveredDayIdx, Math.max(0, dailySeries.length - 1));
-  const activeDay = dailySeries[safeDayIdx] ?? null;
+  useEffect(() => {
+    setSelectedDayIdx(Math.max(0, dailySeries.length - 1));
+  }, [dailySeries.length]);
+
+  const animKey = `${days}-${analytics.indexedDocuments}-${replayEpoch}`;
+
+  const activeDayIdx = hoveredDayIdx ?? Math.min(selectedDayIdx, Math.max(0, dailySeries.length - 1));
+  const activeDay = dailySeries[activeDayIdx] ?? null;
 
   const grossGmv = analytics.grossRevenue || reconciliation?.totalEscrowCredits || 0;
   const platformCommission =
@@ -104,7 +111,6 @@ export const AdminPlatformDashboard: React.FC<AdminPlatformDashboardProps> = ({
   const aovVnd =
     analytics.totalBookings > 0 ? Math.round(grossGmv / analytics.totalBookings) : 0;
 
-  // Compute day-over-day / period momentum
   const avgDailyRev =
     dailySeries.length > 0 ? Math.round(totalSeriesRev / dailySeries.length) : 0;
   const peakDay = useMemo(() => {
@@ -129,7 +135,11 @@ export const AdminPlatformDashboard: React.FC<AdminPlatformDashboardProps> = ({
     return Number((((secondHalf - firstHalf) / firstHalf) * 100).toFixed(1));
   }, [dailySeries]);
 
-  // Combo Chart Geometry (Daily Stacked Bars + Bookings Overlay Line)
+  const sparkDays = dailySeries.slice(-7);
+  const hoveredSparkDay =
+    hoveredSparkIdx !== null ? sparkDays[hoveredSparkIdx] ?? null : null;
+
+  // Combo Chart Geometry
   const chartW = 680;
   const chartH = 240;
   const padLeft = 56;
@@ -162,6 +172,8 @@ export const AdminPlatformDashboard: React.FC<AdminPlatformDashboardProps> = ({
         day: d,
         total,
         cx,
+        leftPct: (cx / chartW) * 100,
+        topPct: (Math.min(courtYFrom(baseY, courtH, serviceH), bookY) / chartH) * 100,
         barW,
         baseY,
         courtY: baseY - courtH,
@@ -173,12 +185,18 @@ export const AdminPlatformDashboard: React.FC<AdminPlatformDashboardProps> = ({
     });
   }, [dailySeries, maxDayRev, maxBookings, plotW, plotH]);
 
+  function courtYFrom(baseY: number, courtH: number, serviceH: number): number {
+    return baseY - courtH - serviceH;
+  }
+
   const bookingsLinePath = useMemo(() => {
     if (dailyBars.length < 2) return '';
     return dailyBars
       .map((b, i) => `${i === 0 ? 'M' : 'L'} ${b.cx.toFixed(1)} ${b.bookY.toFixed(1)}`)
       .join(' ');
   }, [dailyBars]);
+
+  const hoveredBarData = hoveredDayIdx !== null ? dailyBars[hoveredDayIdx] ?? null : null;
 
   // SVG Donut Geometry for Sport Breakdown
   const donutR = 54;
@@ -223,7 +241,7 @@ export const AdminPlatformDashboard: React.FC<AdminPlatformDashboardProps> = ({
           hourlySeries[0] ?? null
         );
 
-  // Provider Market Share aggregation from real listings + courtPerf
+  // Provider Market Share aggregation
   const providerRows = useMemo(() => {
     const revByGroupId = new Map<string, { rev: number; bookings: number }>();
     for (const c of courtPerf) {
@@ -234,6 +252,9 @@ export const AdminPlatformDashboard: React.FC<AdminPlatformDashboardProps> = ({
       {
         providerId: string;
         providerName: string;
+        district: string;
+        city: string;
+        legalEntityType: string;
         commissionRatePct: number;
         groups: number;
         courts: number;
@@ -246,6 +267,9 @@ export const AdminPlatformDashboard: React.FC<AdminPlatformDashboardProps> = ({
       map.set(p.providerId, {
         providerId: p.providerId,
         providerName: p.providerName,
+        district: p.district,
+        city: p.city,
+        legalEntityType: p.legalEntityType ?? 'Đối tác Sân',
         commissionRatePct: p.commissionRatePct,
         groups: 0,
         courts: 0,
@@ -259,6 +283,9 @@ export const AdminPlatformDashboard: React.FC<AdminPlatformDashboardProps> = ({
       const existing = map.get(pid) ?? {
         providerId: pid,
         providerName: l.provider?.providerName || l.venueName,
+        district: l.provider?.district || '',
+        city: l.provider?.city || '',
+        legalEntityType: l.provider?.legalEntityType || 'Hộ / Doanh nghiệp',
         commissionRatePct: l.provider?.commissionRatePct ?? 10,
         groups: 0,
         courts: 0,
@@ -285,6 +312,7 @@ export const AdminPlatformDashboard: React.FC<AdminPlatformDashboardProps> = ({
     return list.map((r) => ({
       ...r,
       sharePct: Math.round((r.revenue / totalRev) * 100),
+      estCommission: Math.round((r.revenue * r.commissionRatePct) / 100),
     }));
   }, [listings, courtPerf]);
 
@@ -301,18 +329,21 @@ export const AdminPlatformDashboard: React.FC<AdminPlatformDashboardProps> = ({
     [courtPerf, selectedSportFilter]
   );
 
+  const totalCourtPerfRev = useMemo(
+    () => Math.max(1, courtPerf.reduce((s, c) => s + c.totalRevenue, 0)),
+    [courtPerf]
+  );
+
   return (
-    <motion.div
-      variants={DASHBOARD_STAGGER_CONTAINER}
-      initial="hidden"
-      animate="show"
-      className="space-y-5"
-    >
+    <div key={animKey} className="space-y-5">
       {/* ================================================================= */}
       {/* TOP TELEMETRY & FILTER RIBBON                                     */}
       {/* ================================================================= */}
       <motion.div
-        variants={DASHBOARD_STAGGER_ITEM}
+        initial={{ opacity: 0, y: 16 }}
+        whileInView={{ opacity: 1, y: 0 }}
+        viewport={CARD_VIEWPORT}
+        transition={{ duration: 0.45, ease: EXPO_EASE }}
         className="flex flex-col gap-3 rounded-[22px] border border-neutral-200/90 bg-white px-5 py-3.5 shadow-xs sm:flex-row sm:items-center sm:justify-between"
       >
         <div className="flex flex-wrap items-center gap-2.5 text-xs">
@@ -329,7 +360,7 @@ export const AdminPlatformDashboard: React.FC<AdminPlatformDashboardProps> = ({
                 : 'Dữ liệu Phiên đồng bộ'}
           </span>
           <span className="text-neutral-500">
-            Cập nhật toàn sàn:{' '}
+            Toàn sàn:{' '}
             <strong className="text-[#0F172A]">{totalProviders} Đối tác</strong> •{' '}
             <strong className="text-[#0F172A]">
               {publishedGroups}/{totalGroups} cụm
@@ -339,12 +370,25 @@ export const AdminPlatformDashboard: React.FC<AdminPlatformDashboardProps> = ({
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setReplayEpoch((prev) => prev + 1)}
+            className="inline-flex items-center gap-1 rounded-full border border-neutral-200 bg-white px-3 py-1.5 text-[11px] font-semibold text-neutral-600 hover:border-[#0E4F7E] hover:text-[#0E4F7E] transition cursor-pointer"
+            title="Phát lại hiệu ứng xuất hiện toàn bộ biểu đồ"
+          >
+            <Sparkles className="h-3 w-3" />
+            Hiệu ứng
+          </button>
+
           <div className="inline-flex items-center rounded-full border border-neutral-200 bg-[#F8FAFC] p-0.5 text-[11px]">
             {[7, 14].map((d) => (
               <button
                 key={d}
                 type="button"
-                onClick={() => onChangeDays(d)}
+                onClick={() => {
+                  onChangeDays(d);
+                  setReplayEpoch((prev) => prev + 1);
+                }}
                 className={`rounded-full px-3 py-1 font-bold transition cursor-pointer ${
                   days === d
                     ? 'bg-[#0A192F] text-white shadow-xs'
@@ -358,7 +402,10 @@ export const AdminPlatformDashboard: React.FC<AdminPlatformDashboardProps> = ({
 
           <button
             type="button"
-            onClick={() => void onSyncAll()}
+            onClick={async () => {
+              await onSyncAll();
+              setReplayEpoch((prev) => prev + 1);
+            }}
             disabled={syncing}
             className="inline-flex items-center gap-1.5 rounded-full border border-[#0E4F7E]/25 bg-[#F4F8FB] px-3.5 py-1.5 text-[11px] font-bold text-[#0E4F7E] hover:bg-[#E6F1F8] disabled:opacity-60 transition cursor-pointer"
           >
@@ -369,13 +416,16 @@ export const AdminPlatformDashboard: React.FC<AdminPlatformDashboardProps> = ({
       </motion.div>
 
       {/* ================================================================= */}
-      {/* ROW 1: 4 EXECUTIVE KPI CARDS (MULTI-METRICS + MINI VISUALS)       */}
+      {/* ROW 1: 4 EXECUTIVE KPI CARDS (SCROLL REVEAL + HOVER TELEMETRY)    */}
       {/* ================================================================= */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
         {/* Card 1: Gross GMV */}
         <motion.div
-          variants={DASHBOARD_STAGGER_ITEM}
-          className="flex flex-col justify-between rounded-[24px] bg-gradient-to-br from-[#0A192F] via-[#0D2E4D] to-[#0E4F7E] p-5 text-white shadow-[0_14px_34px_rgba(10,25,47,0.18)]"
+          initial={{ opacity: 0, y: 20, scale: 0.98 }}
+          whileInView={{ opacity: 1, y: 0, scale: 1 }}
+          viewport={CARD_VIEWPORT}
+          transition={{ duration: 0.5, delay: 0.04, ease: EXPO_EASE }}
+          className="group relative flex flex-col justify-between rounded-[24px] bg-gradient-to-br from-[#0A192F] via-[#0D2E4D] to-[#0E4F7E] p-5 text-white shadow-[0_14px_34px_rgba(10,25,47,0.18)]"
         >
           <div className="flex items-start justify-between gap-2">
             <span className="text-[11px] font-medium text-sky-100/80">
@@ -405,21 +455,26 @@ export const AdminPlatformDashboard: React.FC<AdminPlatformDashboardProps> = ({
               <div
                 className="h-full bg-sky-300"
                 style={{ width: `${100 - serviceSharePct}%` }}
-                title={`Tiền sân ${100 - serviceSharePct}%`}
               />
               <div
                 className="h-full bg-teal-300"
                 style={{ width: `${serviceSharePct}%` }}
-                title={`Dịch vụ ${serviceSharePct}%`}
               />
+            </div>
+            <div className="flex justify-between text-[10px] text-sky-100/75 opacity-80 group-hover:opacity-100 transition">
+              <span>Sân: {100 - serviceSharePct}%</span>
+              <span>Dịch vụ: {serviceSharePct}%</span>
             </div>
           </div>
         </motion.div>
 
-        {/* Card 2: Commission & Daily Sparkline */}
+        {/* Card 2: Commission & Interactive Sparkline */}
         <motion.div
-          variants={DASHBOARD_STAGGER_ITEM}
-          className="flex flex-col justify-between rounded-[24px] border border-neutral-200/90 bg-white p-5 shadow-xs"
+          initial={{ opacity: 0, y: 20, scale: 0.98 }}
+          whileInView={{ opacity: 1, y: 0, scale: 1 }}
+          viewport={CARD_VIEWPORT}
+          transition={{ duration: 0.5, delay: 0.1, ease: EXPO_EASE }}
+          className="relative flex flex-col justify-between rounded-[24px] border border-neutral-200/90 bg-white p-5 shadow-xs"
         >
           <div className="flex items-start justify-between gap-2">
             <div>
@@ -436,23 +491,42 @@ export const AdminPlatformDashboard: React.FC<AdminPlatformDashboardProps> = ({
           </div>
 
           <div className="mt-4 flex items-end justify-between gap-2">
-            <span className="text-[11px] text-neutral-500">
-              Theo từng ngày trong kỳ
-            </span>
+            <div className="text-[11px] text-neutral-500 leading-snug">
+              {hoveredSparkDay ? (
+                <span className="font-semibold text-[#0F766E] tabular-nums">
+                  {hoveredSparkDay.dayLabel}:{' '}
+                  {formatVnd(
+                    Math.round(
+                      ((hoveredSparkDay.courtRevenue + hoveredSparkDay.serviceRevenue) *
+                        Number(takeRatePct)) /
+                        100
+                    )
+                  )}
+                </span>
+              ) : (
+                <span>Rê vào từng cột xem ngày</span>
+              )}
+            </div>
             <div className="flex items-end gap-1 h-8">
-              {dailySeries.slice(-7).map((d, i) => {
+              {sparkDays.map((d, i) => {
                 const v = d.courtRevenue + d.serviceRevenue;
                 const pct = Math.max(18, Math.round((v / maxDayRev) * 100));
+                const active = hoveredSparkIdx === i;
                 return (
-                  <span
+                  <button
                     key={d.dateIso + i}
+                    type="button"
+                    onMouseEnter={() => setHoveredSparkIdx(i)}
+                    onMouseLeave={() => setHoveredSparkIdx(null)}
                     style={{ height: `${pct}%` }}
-                    title={`${d.dayLabel}: ${formatVnd(v)}`}
-                    className={`w-1.5 rounded-full transition-all ${
-                      i === dailySeries.slice(-7).length - 1
-                        ? 'bg-[#0F766E]'
-                        : 'bg-[#0F766E]/35'
+                    className={`w-2 rounded-full transition-all cursor-pointer ${
+                      active
+                        ? 'bg-[#0A192F] scale-y-110'
+                        : i === sparkDays.length - 1
+                          ? 'bg-[#0F766E]'
+                          : 'bg-[#0F766E]/35 hover:bg-[#0F766E]/75'
                     }`}
+                    aria-label={`${d.dayLabel}: ${formatVnd(v)}`}
                   />
                 );
               })}
@@ -462,7 +536,10 @@ export const AdminPlatformDashboard: React.FC<AdminPlatformDashboardProps> = ({
 
         {/* Card 3: Escrow & Settlement Ledger */}
         <motion.div
-          variants={DASHBOARD_STAGGER_ITEM}
+          initial={{ opacity: 0, y: 20, scale: 0.98 }}
+          whileInView={{ opacity: 1, y: 0, scale: 1 }}
+          viewport={CARD_VIEWPORT}
+          transition={{ duration: 0.5, delay: 0.16, ease: EXPO_EASE }}
           className="flex flex-col justify-between rounded-[24px] border border-neutral-200/90 bg-white p-5 shadow-xs"
         >
           <div className="flex items-start justify-between gap-2">
@@ -497,7 +574,10 @@ export const AdminPlatformDashboard: React.FC<AdminPlatformDashboardProps> = ({
 
         {/* Card 4: Occupancy Gauge & Active Bookings */}
         <motion.div
-          variants={DASHBOARD_STAGGER_ITEM}
+          initial={{ opacity: 0, y: 20, scale: 0.98 }}
+          whileInView={{ opacity: 1, y: 0, scale: 1 }}
+          viewport={CARD_VIEWPORT}
+          transition={{ duration: 0.5, delay: 0.22, ease: EXPO_EASE }}
           className="flex items-center justify-between gap-3 rounded-[24px] border border-neutral-200/90 bg-white p-5 shadow-xs"
         >
           <div className="space-y-1">
@@ -526,7 +606,7 @@ export const AdminPlatformDashboard: React.FC<AdminPlatformDashboardProps> = ({
                 stroke="#E2E8F0"
                 strokeWidth="6"
               />
-              <circle
+              <motion.circle
                 cx="32"
                 cy="32"
                 r={ringR}
@@ -535,7 +615,10 @@ export const AdminPlatformDashboard: React.FC<AdminPlatformDashboardProps> = ({
                 strokeWidth="6"
                 strokeLinecap="round"
                 strokeDasharray={ringC}
-                strokeDashoffset={ringDashOffset}
+                initial={{ strokeDashoffset: ringC }}
+                whileInView={{ strokeDashoffset: ringDashOffset }}
+                viewport={CARD_VIEWPORT}
+                transition={{ duration: 0.9, ease: EXPO_EASE }}
               />
             </svg>
             <span className="absolute inset-0 flex items-center justify-center text-[11px] font-bold text-[#0F172A] tabular-nums">
@@ -549,9 +632,12 @@ export const AdminPlatformDashboard: React.FC<AdminPlatformDashboardProps> = ({
       {/* ROW 2: COMBO REVENUE+BOOKINGS CHART (8) + SPORT DONUT CHART (4)   */}
       {/* ================================================================= */}
       <div className="grid grid-cols-1 gap-5 xl:grid-cols-12">
-        {/* Stacked Daily Revenue + Bookings Trend Overlay */}
+        {/* Stacked Daily Revenue + Bookings Trend Overlay + Floating Hover Tooltip */}
         <motion.div
-          variants={DASHBOARD_STAGGER_ITEM}
+          initial={{ opacity: 0, y: 26, scale: 0.975 }}
+          whileInView={{ opacity: 1, y: 0, scale: 1 }}
+          viewport={CARD_VIEWPORT}
+          transition={{ duration: 0.62, ease: EXPO_EASE }}
           className="xl:col-span-8 rounded-[26px] border border-neutral-200/90 bg-white p-5 sm:p-6 shadow-xs flex flex-col justify-between space-y-4"
         >
           <div className="flex flex-wrap items-start justify-between gap-3">
@@ -561,29 +647,37 @@ export const AdminPlatformDashboard: React.FC<AdminPlatformDashboardProps> = ({
                 <span>Biểu đồ Kết hợp: Tiền Sân, Dịch vụ Đi kèm &amp; Số ca đặt</span>
               </div>
               <p className="mt-0.5 text-xs text-neutral-500">
-                Rê chuột hoặc chạm vào từng ngày để soi cơ cấu tiền sân vs phụ trợ và số đơn.
+                Rê chuột trực tiếp lên cột để hiện thông tin chi tiết ngay tại điểm đang xem.
               </p>
             </div>
 
-            {activeDay && (
-              <div className="rounded-2xl border border-[#0E4F7E]/20 bg-[#F4F8FB] px-3.5 py-2 text-xs">
-                <div className="flex items-center justify-between gap-4 font-bold text-[#0E4F7E]">
-                  <span>{activeDay.fullDateLabel}</span>
-                  <span>{activeDay.bookingsCount} ca đặt</span>
-                </div>
-                <div className="mt-1 flex flex-wrap items-center gap-3 text-[11px] tabular-nums">
-                  <span className="text-[#0F172A]">
-                    Sân: <strong>{formatVnd(activeDay.courtRevenue)}</strong>
-                  </span>
-                  <span className="text-[#0F766E]">
-                    Dịch vụ: <strong>{formatVnd(activeDay.serviceRevenue)}</strong>
-                  </span>
-                </div>
-              </div>
-            )}
+            <AnimatePresence mode="wait">
+              {activeDay && (
+                <motion.div
+                  key={activeDay.dateIso}
+                  initial={{ opacity: 0, y: 4, scale: 0.97 }}
+                  animate={{ opacity: 1, y: 0, scale: 1 }}
+                  exit={{ opacity: 0, y: -4, scale: 0.97 }}
+                  transition={{ duration: 0.18, ease: EXPO_EASE }}
+                  className="rounded-2xl border border-[#0E4F7E]/20 bg-[#F4F8FB] px-3.5 py-2 text-xs"
+                >
+                  <div className="flex items-center justify-between gap-4 font-bold text-[#0E4F7E]">
+                    <span>{activeDay.fullDateLabel}</span>
+                    <span>{activeDay.bookingsCount} ca đặt</span>
+                  </div>
+                  <div className="mt-1 flex flex-wrap items-center gap-3 text-[11px] tabular-nums">
+                    <span className="text-[#0F172A]">
+                      Sân: <strong>{formatVnd(activeDay.courtRevenue)}</strong>
+                    </span>
+                    <span className="text-[#0F766E]">
+                      Dịch vụ: <strong>{formatVnd(activeDay.serviceRevenue)}</strong>
+                    </span>
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
           </div>
 
-          {/* Chart Legend */}
           <div className="flex flex-wrap items-center gap-4 text-[11px] font-medium text-neutral-600">
             <span className="inline-flex items-center gap-1.5">
               <span className="h-2.5 w-2.5 rounded-sm bg-[#0E4F7E]" />
@@ -599,7 +693,59 @@ export const AdminPlatformDashboard: React.FC<AdminPlatformDashboardProps> = ({
             </span>
           </div>
 
-          <div className="w-full overflow-x-auto">
+          <div
+            className="relative w-full overflow-x-auto pt-4"
+            onMouseLeave={() => setHoveredDayIdx(null)}
+          >
+            {/* Floating Rich Tooltip Above Hovered Column */}
+            <AnimatePresence>
+              {hoveredBarData && (
+                <motion.div
+                  key={`tip-${hoveredBarData.day.dateIso}`}
+                  initial={{ opacity: 0, y: 6, scale: 0.95 }}
+                  animate={{ opacity: 1, y: 0, scale: 1 }}
+                  exit={{ opacity: 0, y: 4, scale: 0.95 }}
+                  transition={{ duration: 0.16, ease: EXPO_EASE }}
+                  style={{
+                    left: `${Math.min(82, Math.max(18, hoveredBarData.leftPct))}%`,
+                    top: '4px',
+                  }}
+                  className="pointer-events-none absolute z-20 -translate-x-1/2 rounded-2xl border border-white/15 bg-[#0A192F]/95 px-3.5 py-2.5 text-[11px] text-white shadow-[0_14px_30px_rgba(10,25,47,0.32)] backdrop-blur-md min-w-[205px]"
+                >
+                  <div className="flex items-center justify-between gap-3 border-b border-white/15 pb-1.5 font-bold text-sky-200">
+                    <span>{hoveredBarData.day.fullDateLabel}</span>
+                    <span className="rounded-full bg-amber-400/20 px-2 py-0.5 text-[10px] text-amber-200">
+                      {hoveredBarData.day.bookingsCount} ca đặt
+                    </span>
+                  </div>
+                  <div className="mt-1.5 space-y-1 tabular-nums">
+                    <div className="flex justify-between gap-4">
+                      <span className="text-white/70">Tổng GMV:</span>
+                      <strong className="text-white">{formatVnd(hoveredBarData.total)}</strong>
+                    </div>
+                    <div className="flex justify-between gap-4">
+                      <span className="text-sky-200/80">Tiền thuê sân:</span>
+                      <span>{formatVnd(hoveredBarData.day.courtRevenue)}</span>
+                    </div>
+                    <div className="flex justify-between gap-4">
+                      <span className="text-teal-300/90">Dịch vụ đi kèm:</span>
+                      <span>{formatVnd(hoveredBarData.day.serviceRevenue)}</span>
+                    </div>
+                    <div className="flex justify-between gap-4 border-t border-white/10 pt-1 text-[10px] text-white/75">
+                      <span>TB / ca đặt:</span>
+                      <span>
+                        {hoveredBarData.day.bookingsCount > 0
+                          ? formatVnd(
+                              Math.round(hoveredBarData.total / hoveredBarData.day.bookingsCount)
+                            )
+                          : '—'}
+                      </span>
+                    </div>
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+
             <svg
               viewBox={`0 0 ${chartW} ${chartH}`}
               className="w-full min-w-[460px] h-56 overflow-visible"
@@ -633,15 +779,17 @@ export const AdminPlatformDashboard: React.FC<AdminPlatformDashboardProps> = ({
                 );
               })}
 
-              {/* Stacked Bars */}
               {dailyBars.map((b) => {
-                const isSel = b.idx === safeDayIdx;
+                const isSel = b.idx === activeDayIdx;
                 return (
                   <g
                     key={b.day.dateIso + b.idx}
                     className="cursor-pointer"
                     onMouseEnter={() => setHoveredDayIdx(b.idx)}
-                    onClick={() => setHoveredDayIdx(b.idx)}
+                    onClick={() => {
+                      setSelectedDayIdx(b.idx);
+                      setHoveredDayIdx(b.idx);
+                    }}
                   >
                     {isSel && (
                       <rect
@@ -651,22 +799,29 @@ export const AdminPlatformDashboard: React.FC<AdminPlatformDashboardProps> = ({
                         height={plotH}
                         rx="8"
                         fill="#E6F1F8"
-                        opacity="0.55"
+                        opacity="0.6"
                       />
                     )}
-                    {/* Court Revenue bottom segment */}
-                    <rect
+                    <motion.rect
                       x={b.cx - b.barW / 2}
                       y={b.courtY}
                       width={b.barW}
                       height={Math.max(2, b.courtH)}
                       rx={b.serviceH <= 1 ? '4' : '0'}
                       fill="#0E4F7E"
-                      opacity={isSel ? 1 : 0.86}
+                      opacity={isSel ? 1 : 0.85}
+                      style={{ transformOrigin: `${b.cx}px ${b.baseY}px` }}
+                      initial={{ scaleY: 0 }}
+                      whileInView={{ scaleY: 1 }}
+                      viewport={CARD_VIEWPORT}
+                      transition={{
+                        duration: 0.65,
+                        delay: 0.08 + Math.min(0.45, b.idx * 0.05),
+                        ease: EXPO_EASE,
+                      }}
                     />
-                    {/* Service Revenue top segment */}
                     {b.serviceH > 0 && (
-                      <rect
+                      <motion.rect
                         x={b.cx - b.barW / 2}
                         y={b.serviceY}
                         width={b.barW}
@@ -674,6 +829,15 @@ export const AdminPlatformDashboard: React.FC<AdminPlatformDashboardProps> = ({
                         rx="4"
                         fill="#0F766E"
                         opacity={isSel ? 1 : 0.88}
+                        style={{ transformOrigin: `${b.cx}px ${b.courtY}px` }}
+                        initial={{ scaleY: 0 }}
+                        whileInView={{ scaleY: 1 }}
+                        viewport={CARD_VIEWPORT}
+                        transition={{
+                          duration: 0.45,
+                          delay: 0.25 + Math.min(0.45, b.idx * 0.05),
+                          ease: EXPO_EASE,
+                        }}
                       />
                     )}
                     <text
@@ -690,7 +854,6 @@ export const AdminPlatformDashboard: React.FC<AdminPlatformDashboardProps> = ({
                 );
               })}
 
-              {/* Bookings Trend Line Overlay */}
               {bookingsLinePath && (
                 <motion.path
                   d={bookingsLinePath}
@@ -700,13 +863,14 @@ export const AdminPlatformDashboard: React.FC<AdminPlatformDashboardProps> = ({
                   strokeLinecap="round"
                   strokeLinejoin="round"
                   initial={{ pathLength: 0 }}
-                  animate={{ pathLength: 1 }}
-                  transition={{ duration: 0.8, ease: EXPO_EASE }}
+                  whileInView={{ pathLength: 1 }}
+                  viewport={CARD_VIEWPORT}
+                  transition={{ duration: 0.9, delay: 0.15, ease: EXPO_EASE }}
                 />
               )}
 
               {dailyBars.map((b) => {
-                const isSel = b.idx === safeDayIdx;
+                const isSel = b.idx === activeDayIdx;
                 return (
                   <g
                     key={`bk-${b.day.dateIso}-${b.idx}`}
@@ -727,7 +891,6 @@ export const AdminPlatformDashboard: React.FC<AdminPlatformDashboardProps> = ({
             </svg>
           </div>
 
-          {/* 4-Pill Executive Summary under chart */}
           <div className="grid grid-cols-2 gap-2.5 border-t border-neutral-100 pt-3.5 text-xs sm:grid-cols-4">
             <div className="rounded-xl bg-[#F8FAFC] px-3 py-2">
               <div className="text-[10.5px] text-neutral-500">Trung bình / ngày</div>
@@ -754,7 +917,10 @@ export const AdminPlatformDashboard: React.FC<AdminPlatformDashboardProps> = ({
 
         {/* Interactive Multi-Segment Sport Donut Chart */}
         <motion.div
-          variants={DASHBOARD_STAGGER_ITEM}
+          initial={{ opacity: 0, y: 26, scale: 0.975 }}
+          whileInView={{ opacity: 1, y: 0, scale: 1 }}
+          viewport={CARD_VIEWPORT}
+          transition={{ duration: 0.62, delay: 0.1, ease: EXPO_EASE }}
           className="xl:col-span-4 rounded-[26px] border border-neutral-200/90 bg-white p-5 sm:p-6 shadow-xs flex flex-col justify-between space-y-4"
         >
           <div>
@@ -765,6 +931,9 @@ export const AdminPlatformDashboard: React.FC<AdminPlatformDashboardProps> = ({
             <h4 className="mt-0.5 text-base font-bold text-[#0F172A]">
               Tỷ trọng GMV Theo Lĩnh vực
             </h4>
+            <p className="mt-0.5 text-[11px] text-neutral-500">
+              Rê chuột vào biểu đồ tròn hoặc từng môn để soi chi tiết.
+            </p>
           </div>
 
           {sportBreakdown.length === 0 ? (
@@ -773,60 +942,89 @@ export const AdminPlatformDashboard: React.FC<AdminPlatformDashboardProps> = ({
             </div>
           ) : (
             <>
-              <div className="relative mx-auto h-40 w-40">
+              <div className="relative mx-auto h-44 w-44">
                 <svg viewBox="0 0 140 140" className="h-full w-full -rotate-90">
                   {donutSegments.map((seg) => {
                     const active = hoveredSportIdx === seg.idx;
                     return (
-                      <circle
+                      <motion.circle
                         key={seg.label}
                         cx="70"
                         cy="70"
                         r={donutR}
                         fill="none"
                         stroke={seg.color}
-                        strokeWidth={active ? 18 : 14}
-                        strokeDasharray={seg.dashArray}
+                        strokeWidth={active ? 19 : 14}
                         strokeDashoffset={seg.dashOffset}
-                        className="cursor-pointer transition-all duration-200"
+                        initial={{ strokeDasharray: `0 ${donutC.toFixed(2)}` }}
+                        whileInView={{ strokeDasharray: seg.dashArray }}
+                        viewport={CARD_VIEWPORT}
+                        transition={{
+                          duration: 0.78,
+                          delay: 0.14 + seg.idx * 0.08,
+                          ease: EXPO_EASE,
+                        }}
+                        className="cursor-pointer transition-[stroke-width] duration-200"
                         onMouseEnter={() => setHoveredSportIdx(seg.idx)}
                         onMouseLeave={() => setHoveredSportIdx(null)}
                       />
                     );
                   })}
                 </svg>
-                <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center text-center px-3">
+                <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center text-center px-4">
                   <span className="text-[10px] font-semibold uppercase tracking-wider text-neutral-400">
                     {activeDonutItem ? activeDonutItem.label : 'Tổng GMV'}
                   </span>
                   <span className="text-sm font-bold text-[#0F172A] tabular-nums">
                     {activeDonutItem ? `${activeDonutItem.pct}%` : formatVnd(grossGmv)}
                   </span>
+                  {activeDonutItem && (
+                    <span className="mt-0.5 text-[10px] font-bold text-[#0E4F7E] tabular-nums">
+                      {formatVnd(activeDonutItem.amount)}
+                    </span>
+                  )}
                 </div>
               </div>
 
               <div className="space-y-2">
                 {donutSegments.map((seg) => {
                   const active = hoveredSportIdx === seg.idx;
+                  const estComm = Math.round((seg.amount * Number(takeRatePct)) / 100);
                   return (
                     <div
                       key={seg.label}
                       onMouseEnter={() => setHoveredSportIdx(seg.idx)}
                       onMouseLeave={() => setHoveredSportIdx(null)}
-                      className={`flex items-center justify-between rounded-xl px-2.5 py-1.5 text-xs transition cursor-pointer ${
-                        active ? 'bg-[#F4F8FB]' : 'hover:bg-neutral-50'
+                      className={`rounded-xl px-2.5 py-2 text-xs transition cursor-pointer ${
+                        active
+                          ? 'bg-[#0A192F] text-white shadow-xs'
+                          : 'hover:bg-[#F4F8FB] text-[#0F172A]'
                       }`}
                     >
-                      <div className="flex items-center gap-2 min-w-0">
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="flex items-center gap-2 min-w-0">
+                          <span
+                            className="h-2.5 w-2.5 shrink-0 rounded-full"
+                            style={{ backgroundColor: seg.color }}
+                          />
+                          <span className="font-semibold truncate">{seg.label}</span>
+                        </div>
                         <span
-                          className="h-2.5 w-2.5 shrink-0 rounded-full"
-                          style={{ backgroundColor: seg.color }}
-                        />
-                        <span className="font-semibold text-[#0F172A] truncate">{seg.label}</span>
+                          className={`tabular-nums font-bold shrink-0 ${
+                            active ? 'text-sky-200' : 'text-[#0E4F7E]'
+                          }`}
+                        >
+                          {seg.pct}% • {formatVnd(seg.amount)}
+                        </span>
                       </div>
-                      <span className="tabular-nums font-bold text-[#0E4F7E] shrink-0">
-                        {seg.pct}% • {formatVnd(seg.amount)}
-                      </span>
+                      {active && (
+                        <div className="mt-1 flex items-center justify-between text-[10.5px] text-sky-100/80 border-t border-white/10 pt-1">
+                          <span>Hoa hồng sàn ước tính ({takeRatePct}%):</span>
+                          <strong className="text-emerald-300 tabular-nums">
+                            {formatVnd(estComm)}
+                          </strong>
+                        </div>
+                      )}
                     </div>
                   );
                 })}
@@ -840,9 +1038,12 @@ export const AdminPlatformDashboard: React.FC<AdminPlatformDashboardProps> = ({
       {/* ROW 3: HOURLY OCCUPANCY + PRICING CHART (6) & PROVIDER SHARE (6)  */}
       {/* ================================================================= */}
       <div className="grid grid-cols-1 gap-5 xl:grid-cols-12">
-        {/* Vertical Bar Chart: Hourly Utilization & Dynamic Pricing */}
+        {/* Vertical Bar Chart with Floating Per-Hour Tooltip */}
         <motion.div
-          variants={DASHBOARD_STAGGER_ITEM}
+          initial={{ opacity: 0, y: 26, scale: 0.975 }}
+          whileInView={{ opacity: 1, y: 0, scale: 1 }}
+          viewport={CARD_VIEWPORT}
+          transition={{ duration: 0.62, ease: EXPO_EASE }}
           className="xl:col-span-6 rounded-[26px] border border-neutral-200/90 bg-white p-5 sm:p-6 shadow-xs flex flex-col justify-between space-y-4"
         >
           <div className="flex flex-wrap items-start justify-between gap-2">
@@ -852,7 +1053,7 @@ export const AdminPlatformDashboard: React.FC<AdminPlatformDashboardProps> = ({
                 <span>Biểu đồ Công suất &amp; Giá Động theo Khung giờ</span>
               </div>
               <p className="mt-0.5 text-xs text-neutral-500">
-                Tỷ lệ lấp đầy (%) và giá bình quân giữa giờ thấp điểm – tiêu chuẩn – giờ vàng.
+                Rê vào từng khung giờ để xem giá động, tỷ lệ lấp đầy và phân tầng giờ.
               </p>
             </div>
 
@@ -874,7 +1075,10 @@ export const AdminPlatformDashboard: React.FC<AdminPlatformDashboardProps> = ({
             </div>
           ) : (
             <div className="space-y-3">
-              <div className="flex items-end gap-2 h-44 pt-4 px-1">
+              <div
+                className="relative flex items-end gap-2 h-48 pt-6 px-1"
+                onMouseLeave={() => setHoveredHourIdx(null)}
+              >
                 {hourlySeries.map((pt, idx) => {
                   const isPeak = pt.tier === 'GIỜ VÀNG';
                   const isLow = pt.tier === 'THẤP ĐIỂM';
@@ -886,33 +1090,54 @@ export const AdminPlatformDashboard: React.FC<AdminPlatformDashboardProps> = ({
                       key={pt.hourLabel}
                       onMouseEnter={() => setHoveredHourIdx(idx)}
                       onClick={() => setHoveredHourIdx(idx)}
-                      className="flex-1 flex flex-col items-center justify-end h-full cursor-pointer group"
+                      className="relative flex-1 flex flex-col items-center justify-end h-full cursor-pointer group"
                     >
+                      {/* Floating tooltip directly above hovered hour column */}
+                      {isSelected && (
+                        <div className="pointer-events-none absolute -top-2 left-1/2 z-20 -translate-x-1/2 -translate-y-full whitespace-nowrap rounded-xl border border-white/15 bg-[#0A192F]/95 px-2.5 py-1.5 text-[10.5px] text-white shadow-lg">
+                          <div className="font-bold text-sky-200">
+                            {pt.hourLabel} • {pt.tier}
+                          </div>
+                          <div className="tabular-nums">
+                            Lấp đầy: <strong>{pt.occupancyPct}%</strong>
+                          </div>
+                          <div className="tabular-nums text-emerald-300">
+                            Giá TB: <strong>{formatVnd(pt.avgPrice)}</strong>
+                          </div>
+                        </div>
+                      )}
+
                       <span className="text-[9.5px] font-bold tabular-nums text-neutral-600 mb-1">
                         {pt.occupancyPct}%
                       </span>
                       <div className="relative w-full flex-1 flex items-end justify-center rounded-xl bg-slate-100/75 overflow-hidden">
-                        <div
-                          style={{ height: `${barHeightPct}%` }}
-                          className={`w-full rounded-t-xl transition-all duration-200 ${
+                        <motion.div
+                          initial={{ scaleY: 0, opacity: 0.25 }}
+                          whileInView={{ scaleY: 1, opacity: 1 }}
+                          viewport={CARD_VIEWPORT}
+                          transition={{
+                            duration: 0.65,
+                            delay: 0.08 + idx * 0.05,
+                            ease: EXPO_EASE,
+                          }}
+                          style={{ height: `${barHeightPct}%`, transformOrigin: 'bottom' }}
+                          className={`w-full rounded-t-xl transition-colors duration-200 ${
                             isPeak
                               ? isSelected
                                 ? 'bg-amber-600'
                                 : 'bg-amber-500/90 group-hover:bg-amber-600'
                               : isLow
                                 ? isSelected
-                                  ? 'bg-slate-500'
+                                  ? 'bg-slate-600'
                                   : 'bg-slate-400/80 group-hover:bg-slate-500'
                                 : isSelected
                                   ? 'bg-[#0A192F]'
                                   : 'bg-[#0E4F7E]/90 group-hover:bg-[#0A192F]'
                           }`}
                         />
-                        {/* Dynamic Price indicator dot inside column */}
                         <span
                           style={{ bottom: `${Math.max(8, Math.min(92, priceRatio))}%` }}
                           className="absolute h-2 w-2 rounded-full border border-white bg-[#0F766E] shadow-xs"
-                          title={`Giá động: ${formatVnd(pt.avgPrice)}`}
                         />
                       </div>
                       <span className="mt-1.5 text-[10px] font-semibold text-neutral-600 tabular-nums">
@@ -945,9 +1170,12 @@ export const AdminPlatformDashboard: React.FC<AdminPlatformDashboardProps> = ({
           )}
         </motion.div>
 
-        {/* Top Partners / Provider Market Share */}
+        {/* Top Partners / Provider Market Share with Hover Detail Expand */}
         <motion.div
-          variants={DASHBOARD_STAGGER_ITEM}
+          initial={{ opacity: 0, y: 26, scale: 0.975 }}
+          whileInView={{ opacity: 1, y: 0, scale: 1 }}
+          viewport={CARD_VIEWPORT}
+          transition={{ duration: 0.62, delay: 0.08, ease: EXPO_EASE }}
           className="xl:col-span-6 rounded-[26px] border border-neutral-200/90 bg-white p-5 sm:p-6 shadow-xs flex flex-col justify-between space-y-4"
         >
           <div className="flex items-center justify-between gap-2">
@@ -957,7 +1185,7 @@ export const AdminPlatformDashboard: React.FC<AdminPlatformDashboardProps> = ({
                 <span>Xếp hạng Thị phần Đối tác Cho thuê ({providerRows.length})</span>
               </div>
               <p className="mt-0.5 text-xs text-neutral-500">
-                Quy mô sân vật lý, hoa hồng áp dụng và đóng góp doanh thu theo từng chủ sân.
+                Rê vào từng đối tác để xem khu vực, pháp nhân KYC &amp; hoa hồng sàn thu về.
               </p>
             </div>
             {onJumpToTab && (
@@ -971,46 +1199,80 @@ export const AdminPlatformDashboard: React.FC<AdminPlatformDashboardProps> = ({
             )}
           </div>
 
-          <div className="space-y-3">
-            {providerRows.slice(0, 6).map((prov, idx) => (
-              <div key={prov.providerId} className="space-y-1.5 text-xs">
-                <div className="flex items-center justify-between gap-2">
-                  <div className="flex items-center gap-2 min-w-0">
-                    <span
-                      className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-md text-[10px] font-bold ${
-                        idx === 0
-                          ? 'bg-[#0A192F] text-white'
-                          : idx === 1
-                            ? 'bg-[#0E4F7E] text-white'
-                            : 'bg-slate-100 text-slate-700'
-                      }`}
-                    >
-                      {idx + 1}
-                    </span>
-                    <div className="min-w-0">
-                      <div className="font-bold text-[#0F172A] truncate">
-                        {prov.providerName}
+          <div className="space-y-2.5">
+            {providerRows.slice(0, 6).map((prov, idx) => {
+              const hovered = hoveredProviderId === prov.providerId;
+              return (
+                <div
+                  key={prov.providerId}
+                  onMouseEnter={() => setHoveredProviderId(prov.providerId)}
+                  onMouseLeave={() => setHoveredProviderId(null)}
+                  className={`rounded-2xl border p-3 text-xs transition cursor-pointer ${
+                    hovered
+                      ? 'border-[#0E4F7E]/35 bg-[#F4F8FB] shadow-xs'
+                      : 'border-transparent hover:border-neutral-200 hover:bg-[#F8FAFC]'
+                  }`}
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <span
+                        className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-md text-[10px] font-bold ${
+                          idx === 0
+                            ? 'bg-[#0A192F] text-white'
+                            : idx === 1
+                              ? 'bg-[#0E4F7E] text-white'
+                              : 'bg-slate-100 text-slate-700'
+                        }`}
+                      >
+                        {idx + 1}
+                      </span>
+                      <div className="min-w-0">
+                        <div className="font-bold text-[#0F172A] truncate">
+                          {prov.providerName}
+                        </div>
+                        <div className="text-[10.5px] text-neutral-500">
+                          {prov.groups} cụm • {prov.courts} sân • Phí sàn {prov.commissionRatePct}%
+                        </div>
                       </div>
-                      <div className="text-[10.5px] text-neutral-500">
-                        {prov.groups} cụm • {prov.courts} sân • Phí sàn {prov.commissionRatePct}%
+                    </div>
+                    <div className="text-right shrink-0 tabular-nums">
+                      <div className="font-bold text-[#0F172A]">{formatVnd(prov.revenue)}</div>
+                      <div className="text-[10.5px] font-semibold text-[#0E4F7E]">
+                        {prov.sharePct}% thị phần
                       </div>
                     </div>
                   </div>
-                  <div className="text-right shrink-0 tabular-nums">
-                    <div className="font-bold text-[#0F172A]">{formatVnd(prov.revenue)}</div>
-                    <div className="text-[10.5px] font-semibold text-[#0E4F7E]">
-                      {prov.sharePct}% thị phần
-                    </div>
+                  <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-slate-100">
+                    <motion.div
+                      initial={{ scaleX: 0 }}
+                      whileInView={{ scaleX: 1 }}
+                      viewport={CARD_VIEWPORT}
+                      transition={{
+                        duration: 0.72,
+                        delay: 0.1 + idx * 0.06,
+                        ease: EXPO_EASE,
+                      }}
+                      className="h-full rounded-full bg-gradient-to-r from-[#0E4F7E] to-[#0F766E]"
+                      style={{
+                        width: `${Math.max(6, prov.sharePct)}%`,
+                        transformOrigin: 'left',
+                      }}
+                    />
                   </div>
+                  {hovered && (
+                    <div className="mt-2 flex flex-wrap items-center justify-between gap-2 border-t border-[#0E4F7E]/15 pt-1.5 text-[10.5px] text-[#0E4F7E]">
+                      <span>
+                        Khu vực: <strong>{[prov.district, prov.city].filter(Boolean).join(', ')}</strong> •{' '}
+                        {prov.legalEntityType}
+                      </span>
+                      <span className="font-bold text-[#0F766E] tabular-nums">
+                        Hoa hồng dự thu: {formatVnd(prov.estCommission)}
+                      </span>
+                    </div>
+                  )}
                 </div>
-                <div className="h-1.5 w-full overflow-hidden rounded-full bg-slate-100">
-                  <div
-                    className="h-full rounded-full bg-gradient-to-r from-[#0E4F7E] to-[#0F766E]"
-                    style={{ width: `${Math.max(6, prov.sharePct)}%` }}
-                  />
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </motion.div>
       </div>
@@ -1019,9 +1281,12 @@ export const AdminPlatformDashboard: React.FC<AdminPlatformDashboardProps> = ({
       {/* ROW 4: COURT PERFORMANCE TABLE (8) + GOVERNANCE & ORDERS PULSE (4) */}
       {/* ================================================================= */}
       <div className="grid grid-cols-1 gap-5 xl:grid-cols-12">
-        {/* Detailed Court Performance Table */}
+        {/* Detailed Court Performance Table with Hover Row Detail Strip */}
         <motion.div
-          variants={DASHBOARD_STAGGER_ITEM}
+          initial={{ opacity: 0, y: 26, scale: 0.975 }}
+          whileInView={{ opacity: 1, y: 0, scale: 1 }}
+          viewport={CARD_VIEWPORT}
+          transition={{ duration: 0.62, ease: EXPO_EASE }}
           className="xl:col-span-8 overflow-hidden rounded-[26px] border border-neutral-200/90 bg-white shadow-xs"
         >
           <div className="flex flex-col gap-3 border-b border-neutral-100 px-6 py-4 sm:flex-row sm:items-center sm:justify-between">
@@ -1030,7 +1295,7 @@ export const AdminPlatformDashboard: React.FC<AdminPlatformDashboardProps> = ({
                 Chi tiết Hiệu suất Cụm Sân ({filteredCourtPerf.length})
               </h4>
               <p className="text-[11px] text-neutral-500">
-                Lọc theo bộ môn để đối chiếu giá gốc, số lượt đặt và công suất khai thác.
+                Rê vào từng dòng để xem tỷ trọng đóng góp &amp; doanh thu bình quân mỗi ca.
               </p>
             </div>
 
@@ -1065,36 +1330,68 @@ export const AdminPlatformDashboard: React.FC<AdminPlatformDashboardProps> = ({
                 </tr>
               </thead>
               <tbody className="divide-y divide-neutral-100">
-                {filteredCourtPerf.slice(0, 7).map((court) => (
-                  <tr key={court.groupId} className="hover:bg-[#F8FAFC]">
-                    <td className="px-5 py-3 font-semibold text-[#0F172A] max-w-[200px] truncate">
-                      {court.groupName}
-                    </td>
-                    <td className="px-3 py-3 text-neutral-600">{court.sportName}</td>
-                    <td className="px-3 py-3 text-right tabular-nums text-neutral-600">
-                      {formatVnd(court.basePrice)}
-                    </td>
-                    <td className="px-3 py-3 text-right tabular-nums text-neutral-700 font-medium">
-                      {court.bookingsCount}
-                    </td>
-                    <td className="px-3 py-3 text-right tabular-nums font-bold text-[#0F172A]">
-                      {formatVnd(court.totalRevenue)}
-                    </td>
-                    <td className="px-5 py-3 text-right">
-                      <div className="inline-flex items-center gap-2">
-                        <div className="hidden sm:block h-1.5 w-14 overflow-hidden rounded-full bg-slate-100">
-                          <div
-                            className="h-full rounded-full bg-[#0E4F7E]"
-                            style={{ width: `${Math.min(100, court.occupancyPct)}%` }}
-                          />
-                        </div>
-                        <span className="inline-flex rounded-full bg-[#E6F1F8] px-2 py-0.5 tabular-nums text-[10.5px] font-bold text-[#0E4F7E]">
-                          {court.occupancyPct}%
-                        </span>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
+                {filteredCourtPerf.slice(0, 7).map((court) => {
+                  const rowHovered = hoveredCourtId === court.groupId;
+                  const share = Math.round((court.totalRevenue / totalCourtPerfRev) * 100);
+                  const avgPerBooking =
+                    court.bookingsCount > 0
+                      ? Math.round(court.totalRevenue / court.bookingsCount)
+                      : court.basePrice;
+                  return (
+                    <React.Fragment key={court.groupId}>
+                      <tr
+                        onMouseEnter={() => setHoveredCourtId(court.groupId)}
+                        onMouseLeave={() => setHoveredCourtId(null)}
+                        className={`transition cursor-pointer ${
+                          rowHovered ? 'bg-[#F4F8FB]' : 'hover:bg-[#F8FAFC]'
+                        }`}
+                      >
+                        <td className="px-5 py-3 font-semibold text-[#0F172A] max-w-[200px] truncate">
+                          {court.groupName}
+                        </td>
+                        <td className="px-3 py-3 text-neutral-600">{court.sportName}</td>
+                        <td className="px-3 py-3 text-right tabular-nums text-neutral-600">
+                          {formatVnd(court.basePrice)}
+                        </td>
+                        <td className="px-3 py-3 text-right tabular-nums text-neutral-700 font-medium">
+                          {court.bookingsCount}
+                        </td>
+                        <td className="px-3 py-3 text-right tabular-nums font-bold text-[#0F172A]">
+                          {formatVnd(court.totalRevenue)}
+                        </td>
+                        <td className="px-5 py-3 text-right">
+                          <div className="inline-flex items-center gap-2">
+                            <div className="hidden sm:block h-1.5 w-14 overflow-hidden rounded-full bg-slate-100">
+                              <div
+                                className="h-full rounded-full bg-[#0E4F7E]"
+                                style={{ width: `${Math.min(100, court.occupancyPct)}%` }}
+                              />
+                            </div>
+                            <span className="inline-flex rounded-full bg-[#E6F1F8] px-2 py-0.5 tabular-nums text-[10.5px] font-bold text-[#0E4F7E]">
+                              {court.occupancyPct}%
+                            </span>
+                          </div>
+                        </td>
+                      </tr>
+                      {rowHovered && (
+                        <tr className="bg-[#0A192F] text-white text-[11px]">
+                          <td colSpan={6} className="px-5 py-2">
+                            <div className="flex flex-wrap items-center justify-between gap-3">
+                              <span className="text-sky-200">
+                                Tỷ trọng toàn sàn: <strong>{share}%</strong> • Bình quân:{' '}
+                                <strong>{formatVnd(avgPerBooking)}/ca</strong>
+                              </span>
+                              <span className="text-emerald-300 font-semibold tabular-nums">
+                                Hoa hồng sàn ước tính ({takeRatePct}%):{' '}
+                                {formatVnd(Math.round((court.totalRevenue * Number(takeRatePct)) / 100))}
+                              </span>
+                            </div>
+                          </td>
+                        </tr>
+                      )}
+                    </React.Fragment>
+                  );
+                })}
               </tbody>
             </table>
           </div>
@@ -1102,7 +1399,10 @@ export const AdminPlatformDashboard: React.FC<AdminPlatformDashboardProps> = ({
 
         {/* Governance Pulse + Recent Platform Orders */}
         <motion.div
-          variants={DASHBOARD_STAGGER_ITEM}
+          initial={{ opacity: 0, y: 26, scale: 0.975 }}
+          whileInView={{ opacity: 1, y: 0, scale: 1 }}
+          viewport={CARD_VIEWPORT}
+          transition={{ duration: 0.62, delay: 0.1, ease: EXPO_EASE }}
           className="xl:col-span-4 rounded-[26px] border border-neutral-200/90 bg-white p-5 shadow-xs flex flex-col justify-between space-y-4"
         >
           <div className="space-y-3">
@@ -1192,6 +1492,6 @@ export const AdminPlatformDashboard: React.FC<AdminPlatformDashboardProps> = ({
           </div>
         </motion.div>
       </div>
-    </motion.div>
+    </div>
   );
 };

@@ -2,7 +2,6 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import {
   Activity,
-  Building2,
   CheckCircle2,
   Database,
   FileEdit,
@@ -27,12 +26,13 @@ import type {
   VenueProviderInfo,
 } from '../types/marketplace';
 import { ALL_LESSOR_PROVIDERS, formatVnd, marketplaceApi } from '../api/marketplaceApi';
-import { EXPO_EASE } from './motionPrimitives';
+import { EXPO_EASE, ScrollReveal } from './motionPrimitives';
 import { ActionButton } from './FairwayControls';
 import { AdminPlatformDashboard } from './AdminPlatformDashboard';
 import { AdminAccountManager } from './AdminAccountManager';
+import { AdminPartnerGovernance } from './AdminPartnerGovernance';
+import { AdminKycReviewPanel } from './AdminKycReviewPanel';
 import { VietQrReviewPanel } from './VietQrReviewPanel';
-import { LessorPartnerPortal } from './LessorPartnerPortal';
 import type { AdminHeaderTabId } from './FairwayHeader';
 
 interface AdminExecutivePortalProps {
@@ -44,7 +44,11 @@ interface AdminExecutivePortalProps {
   reconciliation: ReconciliationSummary | null;
   kycQueue: LessorApplicationRecord[];
   reviewingId: string | null;
-  onReviewApplication: (id: string, decision: 'APPROVED' | 'REJECTED') => void;
+  onReviewApplication: (
+    id: string,
+    decision: 'APPROVED' | 'REJECTED',
+    customNote?: string
+  ) => void;
   staffChatEnabled: boolean;
   onToggleStaffChat: () => void;
   onOpenChatDrawer: () => void;
@@ -163,16 +167,9 @@ export const AdminExecutivePortal: React.FC<AdminExecutivePortalProps> = ({
   onOpenChatDrawer,
   onNavigate,
   onOpenPublicShop,
-  onPreviewCourt,
   controlledTab,
   onSelectTab,
-  onUpdateListingServices,
-  onUpdateListingPricing,
   onToggleListingPublished,
-  onUpdateListingSlots,
-  onCreateNewListing,
-  onUpdateProviderProfile,
-  onUploadCourtPhoto,
   onLogout,
 }) => {
   const isAdmin = activeRole === 'ADMIN';
@@ -185,9 +182,6 @@ export const AdminExecutivePortal: React.FC<AdminExecutivePortalProps> = ({
 
   const [newSportCode, setNewSportCode] = useState('');
   const [newSportName, setNewSportName] = useState('');
-  const [kycStatusFilter, setKycStatusFilter] = useState<
-    'ALL' | 'PENDING_REVIEW' | 'APPROVED' | 'REJECTED'
-  >('ALL');
   const [toastMsg, setToastMsg] = useState<string | null>(null);
   const [platformDays, setPlatformDays] = useState<number>(7);
   const [platformAnalytics, setPlatformAnalytics] = useState<AnalyticsDashboardData | null>(null);
@@ -314,9 +308,9 @@ export const AdminExecutivePortal: React.FC<AdminExecutivePortalProps> = ({
     },
     {
       id: 'LESSOR_INSPECTOR',
-      label: 'Giám sát Đối tác Cho thuê',
-      subtitle: 'Kiểm tra từng Chủ sân, sân & dịch vụ',
-      badge: `${platformStats.publishedCount} cụm`,
+      label: 'Quản lý & Kiểm duyệt Đối tác',
+      subtitle: 'Hợp đồng phí, trạng thái Tenant & kiểm duyệt',
+      badge: `${platformStats.totalProviders} ĐT`,
       adminOnly: true,
     },
     {
@@ -334,18 +328,9 @@ export const AdminExecutivePortal: React.FC<AdminExecutivePortalProps> = ({
       subtitle: 'Tổng Nợ = Tổng Có • Hoa hồng 8–12%',
       badge: reconciliation?.doubleEntryBalanced ? 'Cân bằng' : undefined,
     },
-    {
-      id: 'RBAC_MATRIX',
-      label: 'Ma trận Phân quyền RBAC',
-      subtitle: 'Kiểm soát 5 vai trò & Chính sách bảo mật',
-      badge: '5 Roles',
-    },
   ];
 
   const visibleNavItems = navItems.filter((item) => !item.adminOnly || isAdmin);
-  const filteredKycQueue = kycQueue.filter(
-    (k) => kycStatusFilter === 'ALL' || k.status === kycStatusFilter
-  );
 
   return (
     <section id="command-center" className="py-10 sm:py-12">
@@ -599,7 +584,8 @@ export const AdminExecutivePortal: React.FC<AdminExecutivePortalProps> = ({
 
               {/* Bottom Asymmetric Grid: Sport Category Catalogue + Fast Governance Shortcuts */}
               {isAdmin && (
-                <div className="grid grid-cols-1 gap-5 lg:grid-cols-12">
+                <ScrollReveal>
+                  <div className="grid grid-cols-1 gap-5 lg:grid-cols-12">
                   <div className="lg:col-span-7 rounded-[26px] bg-white p-6 border border-neutral-200/90 shadow-xs space-y-4">
                     <div>
                       <span className="text-xs font-bold uppercase tracking-wider text-[#0E4F7E]">
@@ -686,10 +672,10 @@ export const AdminExecutivePortal: React.FC<AdminExecutivePortalProps> = ({
                         className="rounded-2xl border border-[#0E4F7E]/25 bg-[#F4F8FB] p-3.5 text-left hover:bg-[#E6F1F8]/70 transition cursor-pointer"
                       >
                         <div className="font-bold text-[#0E4F7E]">
-                          Giám sát Toàn bộ Hệ thống Cho thuê Đối tác →
+                          Quản lý Tuân thủ &amp; Kiểm duyệt Đối tác →
                         </div>
                         <div className="mt-0.5 text-[11px] text-neutral-600">
-                          Kiểm tra từng Chủ sân, danh sách cụm sân &amp; menu dịch vụ đang bán.
+                          Đình chỉ/kích hoạt Tenant &amp; kiểm duyệt hiển thị cụm sân công khai.
                         </div>
                       </button>
 
@@ -708,6 +694,7 @@ export const AdminExecutivePortal: React.FC<AdminExecutivePortalProps> = ({
                     </div>
                   </div>
                 </div>
+                </ScrollReveal>
               )}
             </motion.div>
           )}
@@ -733,7 +720,7 @@ export const AdminExecutivePortal: React.FC<AdminExecutivePortalProps> = ({
             </motion.div>
           )}
 
-          {/* TAB 2: LESSOR INSPECTOR */}
+          {/* TAB 2: PRIVACY-PRESERVING PARTNER GOVERNANCE */}
           {activeTab === 'LESSOR_INSPECTOR' && isAdmin && (
             <motion.div
               key="admin-inspector"
@@ -741,66 +728,22 @@ export const AdminExecutivePortal: React.FC<AdminExecutivePortalProps> = ({
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -6 }}
               transition={{ duration: 0.24, ease: EXPO_EASE }}
-              className="space-y-4"
             >
-              <div className="flex flex-col gap-3 rounded-[24px] border border-[#0E4F7E]/20 bg-gradient-to-r from-[#F4F8FB] via-white to-[#F0FDFA] p-4 sm:p-5 sm:flex-row sm:items-center sm:justify-between shadow-xs">
-                <div className="flex items-start gap-3">
-                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-[#0E4F7E] text-white">
-                    <Building2 className="h-5 w-5" />
-                  </div>
-                  <div>
-                    <div className="text-xs font-bold uppercase tracking-wider text-[#0E4F7E]">
-                      Chế độ Giám sát Đối tác (Admin Inspection)
-                    </div>
-                    <p className="mt-0.5 text-xs text-neutral-600">
-                      Đang giám sát <strong>{platformStats.totalProviders} Đối tác</strong> •{' '}
-                      <strong>{platformStats.publishedCount}/{platformStats.totalGroups} cụm sân</strong>{' '}
-                      • <strong>{platformStats.totalPhysicalCourts} sân vật lý</strong>.
-                    </p>
-                  </div>
-                </div>
-                <div className="flex flex-wrap items-center gap-2 text-xs">
-                  <button
-                    type="button"
-                    onClick={() => setActiveTab('ADMIN_KYC')}
-                    className="rounded-xl border border-neutral-200 bg-white px-3.5 py-2 font-semibold text-[#0F172A] hover:bg-neutral-50 transition cursor-pointer"
-                  >
-                    Hồ sơ KYC ({platformStats.pendingKycCount} chờ)
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setActiveTab('USER_ACCOUNTS')}
-                    className="rounded-xl bg-[#0E4F7E] px-3.5 py-2 font-semibold text-white hover:bg-[#0A192F] transition cursor-pointer"
-                  >
-                    Tài khoản Chủ sân ({accountStats.byRole.MANAGER})
-                  </button>
-                </div>
-              </div>
-
-              <LessorPartnerPortal
-                session={session}
-                activeRole={activeRole}
-                sports={sports}
+              <AdminPartnerGovernance
                 listings={listings}
-                staffChatEnabled={staffChatEnabled}
-                onToggleStaffChat={onToggleStaffChat}
-                onOpenChatDrawer={onOpenChatDrawer}
-                onNavigate={onNavigate}
+                onToggleListingPublished={onToggleListingPublished}
                 onOpenPublicShop={onOpenPublicShop}
-                onPreviewCourt={onPreviewCourt}
-                onUpdateListingPricing={(gid, patch) => onUpdateListingPricing?.(gid, patch)}
-                onUpdateListingServices={(gid, srv) => onUpdateListingServices?.(gid, srv)}
-                onToggleListingPublished={(gid) => onToggleListingPublished?.(gid)}
-                onUpdateListingSlots={(gid, slots) => onUpdateListingSlots?.(gid, slots)}
-                onCreateNewListing={(item) => onCreateNewListing?.(item)}
-                onUpdateProviderProfile={(pid, patch) => onUpdateProviderProfile?.(pid, patch)}
-                onUploadCourtPhoto={onUploadCourtPhoto}
-                embeddedForAdmin
+                onOpenChatDrawer={onOpenChatDrawer}
+                onJumpToKyc={() => setActiveTab('ADMIN_KYC')}
+                onJumpToAccounts={() => setActiveTab('USER_ACCOUNTS')}
+                pendingKycCount={platformStats.pendingKycCount}
+                managerAccountsCount={accountStats.byRole.MANAGER}
+                onFlashToast={flashToast}
               />
             </motion.div>
           )}
 
-          {/* TAB 3: KYC APPROVAL QUEUE */}
+          {/* TAB 3: FULL PARTNER KYC AUDIT & APPROVAL QUEUE */}
           {activeTab === 'ADMIN_KYC' && (
             <motion.div
               key="admin-kyc"
@@ -808,119 +751,13 @@ export const AdminExecutivePortal: React.FC<AdminExecutivePortalProps> = ({
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -6 }}
               transition={{ duration: 0.24, ease: EXPO_EASE }}
-              className="rounded-[26px] border border-neutral-200/90 bg-white p-6 sm:p-7 shadow-xs space-y-5"
             >
-              <div className="flex flex-col gap-3 border-b border-neutral-100 pb-4 sm:flex-row sm:items-center sm:justify-between">
-                <div>
-                  <span className="text-xs font-bold uppercase tracking-wider text-[#0E4F7E]">
-                    Hàng Đợi Thẩm Định Pháp Lý 7 Tiêu Chuẩn
-                  </span>
-                  <h3 className="mt-0.5 text-xl font-bold text-[#0F172A]">
-                    Hồ sơ Đăng ký Đối tác Chủ Cụm Sân ({filteredKycQueue.length})
-                  </h3>
-                </div>
-
-                <div className="flex flex-wrap gap-1.5">
-                  {[
-                    { id: 'ALL', label: 'Tất cả' },
-                    { id: 'PENDING_REVIEW', label: 'Chờ duyệt' },
-                    { id: 'APPROVED', label: 'Đã cấp Tenant' },
-                    { id: 'REJECTED', label: 'Từ chối' },
-                  ].map((f) => (
-                    <button
-                      key={f.id}
-                      type="button"
-                      onClick={() => setKycStatusFilter(f.id as typeof kycStatusFilter)}
-                      className={`rounded-full px-3.5 py-1.5 text-xs font-semibold transition cursor-pointer ${
-                        kycStatusFilter === f.id
-                          ? 'bg-[#0E4F7E] text-white'
-                          : 'bg-[#F1F5F9] text-neutral-600 hover:text-[#0F172A]'
-                      }`}
-                    >
-                      {f.label}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {filteredKycQueue.length === 0 ? (
-                <div className="rounded-2xl bg-[#F8F9FA] p-6 text-xs text-neutral-500 border border-neutral-200/60">
-                  Hiện chưa có hồ sơ đăng ký Chủ sân nào khớp bộ lọc.
-                </div>
-              ) : (
-                <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
-                  {filteredKycQueue.map((item) => (
-                    <div
-                      key={item.id}
-                      className="flex flex-col justify-between gap-4 rounded-2xl border border-neutral-200/80 bg-[#F8F9FA] p-5"
-                    >
-                      <div className="space-y-1.5 text-xs">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <span className="tabular-nums font-bold text-[#0F172A]">
-                            {item.referenceCode}
-                          </span>
-                          <span className="font-semibold text-[#0E4F7E]">{item.venueName}</span>
-                          {item.otpVerified && (
-                            <span className="rounded-full bg-[#E6F1F8] px-2.5 py-0.5 text-[10px] font-semibold text-[#0E4F7E]">
-                              OTP Đã xác thực
-                            </span>
-                          )}
-                          <span
-                            className={`rounded-full px-2.5 py-0.5 tabular-nums text-[10px] font-bold ${
-                              item.riskScore >= 40
-                                ? 'bg-rose-100 text-rose-700'
-                                : item.riskScore > 0
-                                  ? 'bg-amber-100 text-amber-900'
-                                  : 'bg-teal-50 text-[#0F766E]'
-                            }`}
-                          >
-                            Risk Score: {item.riskScore}/100
-                          </span>
-                          <span
-                            className={`rounded-full px-2.5 py-0.5 text-[10px] font-bold ${
-                              item.status === 'APPROVED'
-                                ? 'bg-teal-50 text-[#0F766E]'
-                                : item.status === 'REJECTED'
-                                  ? 'bg-rose-100 text-rose-700'
-                                  : 'bg-amber-100 text-amber-900'
-                            }`}
-                          >
-                            {item.status}
-                          </span>
-                        </div>
-                        <p className="text-neutral-600">
-                          Pháp nhân: <strong>{item.legalEntityName}</strong> • MST: {item.taxCode} •
-                          CCCD: {item.maskedCccdNumber} • PCCC: {item.pcccCertificateNumber}
-                        </p>
-                        <p className="text-neutral-500">
-                          Cờ kiểm tra: {item.internalRiskFlags || 'CLEAN'} • {item.validationSummary}
-                        </p>
-                      </div>
-
-                      {isAdmin && item.status === 'PENDING_REVIEW' && (
-                        <div className="flex items-center gap-2 pt-2 border-t border-neutral-200/70">
-                          <ActionButton
-                            variant="ink"
-                            size="sm"
-                            disabled={reviewingId === item.id}
-                            onClick={() => onReviewApplication(item.id, 'APPROVED')}
-                          >
-                            Phê duyệt (Mở Tenant)
-                          </ActionButton>
-                          <ActionButton
-                            variant="outline"
-                            size="sm"
-                            disabled={reviewingId === item.id}
-                            onClick={() => onReviewApplication(item.id, 'REJECTED')}
-                          >
-                            Từ chối
-                          </ActionButton>
-                        </div>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              )}
+              <AdminKycReviewPanel
+                kycQueue={kycQueue}
+                isAdmin={isAdmin}
+                reviewingId={reviewingId}
+                onReviewApplication={onReviewApplication}
+              />
             </motion.div>
           )}
 
@@ -1032,172 +869,6 @@ export const AdminExecutivePortal: React.FC<AdminExecutivePortalProps> = ({
               {(activeRole === 'ADMIN' || activeRole === 'ACCOUNTANT') && (
                 <div className="lg:col-span-12">
                   <VietQrReviewPanel />
-                </div>
-              )}
-            </motion.div>
-          )}
-
-          {/* TAB 5: FULL-WIDTH RBAC MATRIX & AUDIT FEED */}
-          {activeTab === 'RBAC_MATRIX' && (
-            <motion.div
-              key="admin-rbac"
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -6 }}
-              transition={{ duration: 0.24, ease: EXPO_EASE }}
-              className="space-y-5"
-            >
-              <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
-                {(
-                  [
-                    {
-                      role: 'ADMIN' as RoleCode,
-                      title: 'Super Admin',
-                      scope: 'PLATFORM',
-                      tone: 'border-[#0E4F7E]/25 bg-[#F4F8FB] text-[#0E4F7E]',
-                    },
-                    {
-                      role: 'MANAGER' as RoleCode,
-                      title: 'Chủ sân Đối tác',
-                      scope: 'TENANT',
-                      tone: 'border-[#0F766E]/25 bg-[#F0FDFA] text-[#0F766E]',
-                    },
-                    {
-                      role: 'ACCOUNTANT' as RoleCode,
-                      title: 'Kế toán Đối soát',
-                      scope: 'PLATFORM / TENANT',
-                      tone: 'border-indigo-200 bg-indigo-50/60 text-indigo-800',
-                    },
-                    {
-                      role: 'STAFF' as RoleCode,
-                      title: 'Nhân viên Quầy',
-                      scope: 'TENANT',
-                      tone: 'border-amber-200 bg-amber-50/70 text-amber-800',
-                    },
-                    {
-                      role: 'USER' as RoleCode,
-                      title: 'Khách thuê sân',
-                      scope: 'PUBLIC',
-                      tone: 'border-neutral-200 bg-white text-[#0F172A]',
-                    },
-                  ] as const
-                ).map((item) => (
-                  <div
-                    key={item.role}
-                    className={`rounded-[22px] border p-4 shadow-xs ${item.tone}`}
-                  >
-                    <div className="flex items-center justify-between text-[10px] font-bold uppercase tracking-wider opacity-80">
-                      <span>{item.role}</span>
-                      <span>{item.scope}</span>
-                    </div>
-                    <div className="mt-2 text-2xl font-bold tabular-nums">
-                      {accountStats.byRole[item.role]} TK
-                    </div>
-                    <div className="mt-0.5 text-xs font-semibold">{item.title}</div>
-                  </div>
-                ))}
-              </div>
-
-              <div className="overflow-hidden rounded-[26px] border border-neutral-200/90 bg-white shadow-xs">
-                <div className="flex flex-col gap-3 border-b border-neutral-100 p-6 sm:flex-row sm:items-center sm:justify-between">
-                  <div>
-                    <span className="inline-flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-[#0E4F7E]">
-                      <ShieldCheck className="h-3.5 w-3.5" />
-                      Role-Based Access Control (RBAC)
-                    </span>
-                    <h3 className="mt-1 text-lg font-bold text-[#0F172A]">
-                      Ma trận Phân quyền Hệ thống Nội bộ &amp; Khách thuê sân
-                    </h3>
-                    <p className="mt-1 text-xs text-neutral-500">
-                      Kiểm tra phân quyền đồng bộ trên toàn bộ cổng vận hành và hệ thống quản trị.
-                    </p>
-                  </div>
-
-                  {isAdmin && (
-                    <ActionButton
-                      variant="ink"
-                      size="sm"
-                      arrow="right"
-                      onClick={() => setActiveTab('USER_ACCOUNTS')}
-                    >
-                      Quản lý Danh sách Tài khoản
-                    </ActionButton>
-                  )}
-                </div>
-
-                <div className="overflow-x-auto">
-                  <table className="w-full text-left text-xs">
-                    <thead className="bg-[#F8FAFC] text-neutral-600">
-                      <tr>
-                        <th className="px-6 py-3.5 font-semibold">Chức năng &amp; Phân hệ Nghiệp vụ</th>
-                        <th className="px-4 py-3.5 text-center font-bold text-[#0E4F7E]">ADMIN</th>
-                        <th className="px-4 py-3.5 text-center font-bold text-[#0F766E]">
-                          MANAGER (Chủ sân)
-                        </th>
-                        <th className="px-4 py-3.5 text-center font-semibold">ACCOUNTANT</th>
-                        <th className="px-4 py-3.5 text-center font-semibold">STAFF</th>
-                        <th className="px-4 py-3.5 text-center font-semibold text-neutral-400">USER</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-neutral-100">
-                      {RBAC_MATRIX_ROWS.map((row) => (
-                        <tr key={row.capability} className="hover:bg-[#F8FAFC]">
-                          <td className="px-6 py-4">
-                            <div className="font-semibold text-[#0F172A]">{row.capability}</div>
-                            <span className="text-[11px] text-neutral-500">{row.scope}</span>
-                          </td>
-                          {[row.admin, row.manager, row.accountant, row.staff, row.user].map(
-                            (allowed, i) => (
-                              <td key={i} className="px-4 py-4 text-center">
-                                {allowed ? (
-                                  <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-[#E6F1F8] text-[11px] font-bold text-[#0E4F7E]">
-                                    ✓
-                                  </span>
-                                ) : (
-                                  <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-neutral-100 text-[11px] text-neutral-400">
-                                    —
-                                  </span>
-                                )}
-                              </td>
-                            )
-                          )}
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-
-              {recentAuditLogs.length > 0 && (
-                <div className="rounded-[26px] border border-neutral-200/90 bg-white p-6 shadow-xs space-y-3">
-                  <div className="flex items-center justify-between">
-                    <span className="inline-flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-[#0F766E]">
-                      <Activity className="h-3.5 w-3.5" />
-                      Nhật ký Kiểm toán RBAC &amp; Bảo mật Gần nhất (PostgreSQL Audit Logs)
-                    </span>
-                    <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2.5 py-0.5 text-[10.5px] font-bold text-emerald-700">
-                      <CheckCircle2 className="h-3 w-3" />
-                      {recentAuditLogs.length} sự kiện
-                    </span>
-                  </div>
-                  <div className="divide-y divide-neutral-100 text-xs">
-                    {recentAuditLogs.map((log) => (
-                      <div
-                        key={log.auditId}
-                        className="flex flex-col gap-1 py-2.5 sm:flex-row sm:items-center sm:justify-between"
-                      >
-                        <div>
-                          <span className="font-bold text-[#0E4F7E]">{log.action}</span>{' '}
-                          <span className="text-neutral-600">
-                            • {log.entityType} ({log.entityId})
-                          </span>
-                        </div>
-                        <div className="text-[11px] text-neutral-500">
-                          @{log.actorUsername || 'system'} • {log.createdAt}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
                 </div>
               )}
             </motion.div>

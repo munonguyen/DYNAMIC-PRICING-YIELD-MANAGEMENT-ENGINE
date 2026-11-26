@@ -1255,13 +1255,75 @@ class MarketplaceApiClient {
     };
   }
 
+  private readonly localCheckoutKey = 'arenapulse_local_checkout_statuses_v1';
+  private readonly localTicketsKey = 'arenapulse_local_my_tickets_v1';
+
+  private readLocalCheckoutMap(): Record<string, import('../types/marketplace').BookingPaymentStatus & {
+    _meta?: { venueName: string; groupName: string; sportName: string; unitNumber: string; slotStart: string; slotEnd: string; customerEmail?: string };
+  }> {
+    try {
+      const raw = window.sessionStorage.getItem(this.localCheckoutKey);
+      return raw ? JSON.parse(raw) : {};
+    } catch {
+      return {};
+    }
+  }
+
+  private writeLocalCheckoutMap(
+    map: Record<string, import('../types/marketplace').BookingPaymentStatus & {
+      _meta?: { venueName: string; groupName: string; sportName: string; unitNumber: string; slotStart: string; slotEnd: string; customerEmail?: string };
+    }>
+  ): void {
+    try {
+      window.sessionStorage.setItem(this.localCheckoutKey, JSON.stringify(map));
+    } catch {
+      // Ignore quota errors
+    }
+  }
+
+  private async tryCheckoutRequest<T>(
+    path: string,
+    body?: object,
+    signal?: AbortSignal,
+    methodOverride?: 'GET' | 'POST' | 'PATCH'
+  ): Promise<{ ok: true; data: T } | { ok: false; offline: boolean; error?: string }> {
+    try {
+      const response = await fetch(`/api/v1${path}`, {
+        method: methodOverride ?? (body ? 'POST' : 'GET'),
+        headers: this.headers(),
+        body: body ? JSON.stringify(body) : undefined,
+        signal,
+      });
+      if (response.ok) {
+        if (response.status === 204) {
+          return { ok: true, data: undefined as T };
+        }
+        return { ok: true, data: (await response.json()) as T };
+      }
+      if (response.status >= 400 && response.status < 500) {
+        const problem = await response.json().catch(() => null);
+        return {
+          ok: false,
+          offline: false,
+          error: problem?.message || 'Hệ thống chưa xác nhận được thao tác.',
+        };
+      }
+      return { ok: false, offline: true };
+    } catch (err) {
+      if (err instanceof DOMException && err.name === 'AbortError') {
+        throw err;
+      }
+      return { ok: false, offline: true };
+    }
+  }
+
   async holdCourtSlot(
     listing: PublishedListing,
     quote: PriceQuote,
     userId = 'player_fairway_vip'
   ): Promise<{ hold: HoldSlotResult; live: boolean; idempotencyKey: string }> {
     const idempotencyKey = `idem-${crypto.randomUUID()}`;
-    const hold = await this.checkoutRequest<HoldSlotResult>('/bookings/hold', {
+    const res = await this.tryCheckoutRequest<HoldSlotResult>('/bookings/hold', {
       tenantId: listing.tenantId,
       groupId: listing.groupId,
       slotStart: quote.slotStart,
@@ -1269,13 +1331,62 @@ class MarketplaceApiClient {
       priceLockToken: quote.priceLockToken,
       idempotencyKey,
     });
-    return { hold, live: true, idempotencyKey };
+    if (res.ok) {
+      return { hold: res.data, live: true, idempotencyKey };
+    }
+    if (!res.offline) {
+      throw new Error(res.error || 'Chưa giữ được sân.');
+    }
+
+    const reservationId = `resv-${crypto.randomUUID()}`;
+    const holdExpiresAt = new Date(Date.now() + 10 * 60_000).toISOString();
+    const depositAmount = Math.floor((quote.currentPrice * listing.depositPercent) / 100);
+    const unitNumber = `SAN_0${(Math.floor(Math.random() * 6) + 1).toString()}`;
+    const hold: HoldSlotResult = {
+      reservationId,
+      bookingId: `book-${crypto.randomUUID()}`,
+      unitId: `unit-${unitNumber}`,
+      unitNumber,
+      groupId: listing.groupId,
+      slotStart: quote.slotStart,
+      userId,
+      lockedPrice: quote.currentPrice,
+      depositAmount,
+      holdExpiresAt,
+      status: 'HELD',
+    };
+
+    const map = this.readLocalCheckoutMap();
+    map[reservationId] = {
+      reservationId,
+      reservationStatus: 'HELD',
+      paymentStatus: 'NOT_STARTED',
+      paidAmount: 0,
+      remainingAtVenue: quote.currentPrice,
+      requestedAmount: depositAmount,
+      provider: null,
+      providerReference: null,
+      verifiedAt: null,
+      paymentQr: null,
+      _meta: {
+        venueName: listing.venueName,
+        groupName: listing.groupName,
+        sportName: listing.sportName,
+        unitNumber,
+        slotStart: quote.slotStart,
+        slotEnd: quote.slotEnd,
+      },
+    };
+    this.writeLocalCheckoutMap(map);
+    return { hold, live: false, idempotencyKey };
   }
 
   private async checkoutRequest<T>(path: string, body?: object, signal?: AbortSignal): Promise<T> {
     const response = await fetch(`/api/v1${path}`, {
-      method: body ? 'POST' : 'GET', headers: this.headers(),
-      body: body ? JSON.stringify(body) : undefined, signal,
+      method: body ? 'POST' : 'GET',
+      headers: this.headers(),
+      body: body ? JSON.stringify(body) : undefined,
+      signal,
     });
     if (!response.ok) {
       const problem = await response.json().catch(() => null);
@@ -1284,12 +1395,86 @@ class MarketplaceApiClient {
     return response.json();
   }
 
-  getCheckoutProviders(): Promise<import('../types/marketplace').CheckoutProvider[]> {
-    return this.checkoutRequest('/payments/providers');
+  async getCheckoutProviders(): Promise<import('../types/marketplace').CheckoutProvider[]> {
+    const res = await this.tryCheckoutRequest<import('../types/marketplace').CheckoutProvider[]>(
+      '/payments/providers'
+    );
+    if (res.ok && res.data.length > 0) {
+      return res.data;
+    }
+    return ['VIETQR_NAPAS', 'MOMO_WALLET', 'VNPAY_ESCROW'];
   }
 
-  getBookingPaymentStatus(reservationId: string, signal?: AbortSignal): Promise<import('../types/marketplace').BookingPaymentStatus> {
-    return this.checkoutRequest(`/bookings/${reservationId}/payment-status`, undefined, signal);
+  async getBookingPaymentStatus(
+    reservationId: string,
+    signal?: AbortSignal
+  ): Promise<import('../types/marketplace').BookingPaymentStatus> {
+    const localMap = this.readLocalCheckoutMap();
+    if (localMap[reservationId]) {
+      const { _meta, ...status } = localMap[reservationId];
+      void _meta;
+      return status;
+    }
+    const res = await this.tryCheckoutRequest<import('../types/marketplace').BookingPaymentStatus>(
+      `/bookings/${reservationId}/payment-status`,
+      undefined,
+      signal
+    );
+    if (res.ok) return res.data;
+    throw new Error(res.error || 'Chưa kiểm tra được giao dịch.');
+  }
+
+  hasLocalSandboxSession(reservationId: string): boolean {
+    const localMap = this.readLocalCheckoutMap();
+    return Boolean(localMap[reservationId]);
+  }
+
+  simulateLocalSandboxSuccess(reservationId: string): void {
+    const localMap = this.readLocalCheckoutMap();
+    const record = localMap[reservationId];
+    if (!record) return;
+    const paid = record.requestedAmount ?? 0;
+    const total = record.remainingAtVenue || paid;
+    record.paymentStatus = 'VERIFIED';
+    record.reservationStatus = 'CONFIRMED';
+    record.paidAmount = paid;
+    record.remainingAtVenue = Math.max(0, total - paid);
+    record.verifiedAt = new Date().toISOString();
+    record.paymentQr = null;
+    localMap[reservationId] = record;
+    this.writeLocalCheckoutMap(localMap);
+
+    try {
+      const rawTickets = window.localStorage.getItem(this.localTicketsKey);
+      const tickets: MyTicketRecord[] = rawTickets ? JSON.parse(rawTickets) : [];
+      if (!tickets.some((t) => t.reservationId === reservationId)) {
+        const meta = record._meta;
+        tickets.unshift({
+          reservationId,
+          venueName: meta?.venueName ?? 'Cụm sân ArenaPulse',
+          venueAddress: 'Hệ thống Sân ArenaPulse Việt Nam',
+          groupName: meta?.groupName ?? 'Sân tiêu chuẩn thi đấu',
+          unitNumber: meta?.unitNumber ?? 'SAN_01',
+          slotStart: meta?.slotStart ?? new Date(Date.now() + 3600_000).toISOString(),
+          slotEnd: meta?.slotEnd ?? new Date(Date.now() + 7200_000).toISOString(),
+          lockedPrice: total,
+          depositAmount: paid,
+          paidOnlineAmount: paid,
+          remainingAtVenue: Math.max(0, total - paid),
+          status: 'CONFIRMED',
+          qrToken: `APV3.${reservationId}.${record.providerReference || 'SANDBOX'}`,
+          checkinMode: 'QR_STAFF',
+          contactEmail: meta?.customerEmail,
+          paymentProvider: record.provider,
+          providerReference: record.providerReference,
+          paidAt: record.verifiedAt,
+        });
+        window.localStorage.setItem(this.localTicketsKey, JSON.stringify(tickets));
+      }
+      window.dispatchEvent(new CustomEvent('arenapulse:tickets-updated'));
+    } catch {
+      // Ignore storage quota errors
+    }
   }
 
   async resendQrTicketEmail(
@@ -1321,7 +1506,7 @@ class MarketplaceApiClient {
   }
 
   async createInlineQrPayment(
-    provider: 'MOMO_WALLET' | 'VIETQR_NAPAS',
+    provider: 'MOMO_WALLET' | 'VIETQR_NAPAS' | 'VNPAY_ESCROW',
     hold: HoldSlotResult,
     options: {
       amount: number;
@@ -1334,8 +1519,94 @@ class MarketplaceApiClient {
       bookingNote?: string;
     }
   ): Promise<void> {
-    const path = provider === 'VIETQR_NAPAS' ? '/payments/vietqr/create' : '/payments/momo/create';
-    await this.checkoutRequest(path, { reservationId: hold.reservationId, ...options });
+    const localMap = this.readLocalCheckoutMap();
+    if (!localMap[hold.reservationId]) {
+      const path =
+        provider === 'VIETQR_NAPAS'
+          ? '/payments/vietqr/create'
+          : provider === 'VNPAY_ESCROW'
+            ? '/payments/vnpay/create-payment'
+            : '/payments/momo/create';
+      const payload =
+        provider === 'VNPAY_ESCROW'
+          ? {
+              reservationId: hold.reservationId,
+              amountVnd: options.amount,
+              orderInfo: `Dat san ArenaPulse ${hold.reservationId.slice(0, 8)}`,
+              bankCode: 'NCB',
+              ...options,
+            }
+          : { reservationId: hold.reservationId, ...options };
+      const res = await this.tryCheckoutRequest<{ paymentUrl?: string }>(path, payload);
+      if (res.ok) {
+        if (provider === 'VNPAY_ESCROW' && res.data?.paymentUrl) {
+          window.location.assign(res.data.paymentUrl);
+        }
+        return;
+      }
+      if (!res.offline) {
+        throw new Error(res.error || 'Chưa tạo được giao dịch thanh toán.');
+      }
+    }
+
+    const refCode = `AP${hold.reservationId.replace(/-/g, '').slice(0, 8).toUpperCase()}`;
+    const current = localMap[hold.reservationId] ?? {
+      reservationId: hold.reservationId,
+      reservationStatus: 'HELD',
+      paymentStatus: 'NOT_STARTED',
+      paidAmount: 0,
+      remainingAtVenue: hold.lockedPrice,
+      requestedAmount: options.amount,
+      provider: null,
+      providerReference: null,
+      verifiedAt: null,
+      paymentQr: null,
+    };
+
+    const transfer =
+      provider === 'VIETQR_NAPAS'
+        ? {
+            bankCode: 'VCB',
+            bankName: 'Vietcombank (NAPAS 24/7)',
+            bankAccount: '1028889999',
+            virtualAccount: `V3Q${refCode}`,
+            accountName: 'CONG TY CO PHAN ARENAPULSE VIETNAM',
+            content: `TT ${refCode} ${hold.unitNumber}`,
+          }
+        : undefined;
+
+    const qrPayload =
+      provider === 'VIETQR_NAPAS'
+        ? `https://img.vietqr.io/image/VCB-1028889999-compact2.png?amount=${options.amount}&addInfo=${encodeURIComponent(`TT ${refCode}`)}`
+        : provider === 'VNPAY_ESCROW'
+          ? `VNPAYQR|${refCode}|${options.amount}|DAT_SAN_ARENAPULSE`
+          : `momo://app?action=payWithApp&amount=${options.amount}&orderId=${refCode}&partnerCode=ARENAPULSE`;
+
+    localMap[hold.reservationId] = {
+      ...current,
+      paymentStatus: 'PENDING',
+      requestedAmount: options.amount,
+      provider,
+      providerReference: refCode,
+      _meta: {
+        ...(current._meta ?? {
+          venueName: 'ArenaPulse Complex',
+          groupName: 'Sân thi đấu tiêu chuẩn',
+          sportName: 'Thể thao',
+          unitNumber: hold.unitNumber,
+          slotStart: hold.slotStart,
+          slotEnd: new Date(Date.parse(hold.slotStart) + 3600_000).toISOString(),
+        }),
+        customerEmail: options.customerEmail,
+      },
+      paymentQr: {
+        payload: qrPayload,
+        holdUntil: hold.holdExpiresAt,
+        sandbox: true,
+        transfer: transfer ?? null,
+      },
+    };
+    this.writeLocalCheckoutMap(localMap);
   }
 
   getVietQrReviewQueue(signal?: AbortSignal): Promise<import('../types/marketplace').VietQrReviewItem[]> {
@@ -1366,8 +1637,23 @@ class MarketplaceApiClient {
     return (await res.json()) as VnPayReturnResult;
   }
 
-  getMyTickets(): Promise<MyTicketRecord[]> {
-    return this.checkoutRequest('/bookings/my-tickets');
+  async getMyTickets(): Promise<MyTicketRecord[]> {
+    const res = await this.tryCheckoutRequest<MyTicketRecord[]>('/bookings/my-tickets');
+    if (res.ok) return res.data;
+    if (!res.offline) throw new Error(res.error || 'Chưa tải được vé.');
+    try {
+      const raw = window.localStorage.getItem(this.localTicketsKey);
+      return raw ? (JSON.parse(raw) as MyTicketRecord[]) : [];
+    } catch {
+      return [];
+    }
+  }
+
+  async getPaymentHistory(): Promise<MyTicketRecord[]> {
+    const res = await this.tryCheckoutRequest<MyTicketRecord[]>('/payments/history');
+    if (res.ok) return res.data;
+    if (!res.offline) throw new Error(res.error || 'Chưa tải được lịch sử thanh toán.');
+    return this.getMyTickets();
   }
 
   async inspectQrTicket(rawInput: string, providerOrders: LessorBookingOrder[]): Promise<import('../types/marketplace').QrInspectResult> {
@@ -1405,10 +1691,47 @@ class MarketplaceApiClient {
   }
 
   async cancelReservation(hold: HoldSlotResult, venueInitiated: boolean): Promise<CancelBookingResult> {
-    return this.checkoutRequest(`/bookings/${hold.reservationId}/cancel`, {
-      slotStart: hold.slotStart,
-      reason: venueInitiated ? 'Mưa lớn / Bảo trì mặt sân' : 'Người chơi thay đổi lịch trình',
-    });
+    const localMap = this.readLocalCheckoutMap();
+    if (!localMap[hold.reservationId]) {
+      return this.checkoutRequest(`/bookings/${hold.reservationId}/cancel`, {
+        slotStart: hold.slotStart,
+        reason: venueInitiated ? 'Mưa lớn / Bảo trì mặt sân' : 'Người chơi thay đổi lịch trình',
+      });
+    }
+    const record = localMap[hold.reservationId];
+    const paid = record.paidAmount || hold.depositAmount;
+    const hoursUntil = Math.max(0, (Date.parse(hold.slotStart) - Date.now()) / 3600_000);
+    const pct = venueInitiated ? 100 : hoursUntil >= 11 ? 100 : hoursUntil >= 4 ? 50 : 0;
+    const refundAmount = Math.floor((paid * pct) / 100);
+    const forfeitedAmount = Math.max(0, paid - refundAmount);
+    record.reservationStatus = 'CANCELLED';
+    record.paymentStatus = refundAmount > 0 ? 'REFUNDED' : 'CANCELLED';
+    record.paymentQr = null;
+    localMap[hold.reservationId] = record;
+    this.writeLocalCheckoutMap(localMap);
+    try {
+      const rawTickets = window.localStorage.getItem(this.localTicketsKey);
+      if (rawTickets) {
+        const tickets: MyTicketRecord[] = JSON.parse(rawTickets);
+        const updatedTickets = tickets.map((t) =>
+          t.reservationId === hold.reservationId ? { ...t, status: 'CANCELLED' as const } : t
+        );
+        window.localStorage.setItem(this.localTicketsKey, JSON.stringify(updatedTickets));
+        window.dispatchEvent(new CustomEvent('arenapulse:tickets-updated'));
+      }
+    } catch {
+      // Ignore storage quota errors
+    }
+    return {
+      reservationId: hold.reservationId,
+      status: 'CANCELLED',
+      depositAmount: paid,
+      refundAmount,
+      forfeitedAmount,
+      appliedRefundPercent: pct,
+      venueInitiated,
+      cancelledAt: new Date().toISOString(),
+    };
   }
 
   async runMonteCarloSimulation(
@@ -3226,9 +3549,50 @@ function readOfflineTickets(): MyTicketRecord[] {
 function readOfflineLessorApplications(): LessorApplicationRecord[] {
   if (typeof window === 'undefined') return [];
   try {
+    const enrichDefaultDetails = (item: LessorApplicationRecord): LessorApplicationRecord => {
+      if (item.referenceCode === 'KYC-2026-CG8841') {
+        return {
+          representativeDob: '1988-06-14',
+          representativeGender: 'MALE',
+          cccdIssueDate: '2021-08-19',
+          cccdIssuePlace: 'Cục Cảnh sát QLHC về TTXH',
+          contactPhone: '0918 482 715',
+          contactEmail: 'thinh.nd@caugiayproarena.vn',
+          businessLicenseIssuedDate: '2021-03-10',
+          fireSafetyConfirmed: true,
+          sportSafetyConfirmed: true,
+          legalCommitmentsAccepted: true,
+          cccdFrontStorageKey: 'kyc/cg8841/cccd-front.jpg',
+          cccdBackStorageKey: 'kyc/cg8841/cccd-back.jpg',
+          businessDocStorageKey: 'kyc/cg8841/dkkd-0109482715.pdf',
+          courtPhotoStorageKey: 'kyc/cg8841/san-thuc-te.jpg',
+          ...item,
+        };
+      }
+      if (item.referenceCode === 'KYC-2026-TT5520') {
+        return {
+          representativeDob: '1985-11-22',
+          representativeGender: 'MALE',
+          cccdIssueDate: '2022-04-08',
+          cccdIssuePlace: 'Cục Cảnh sát QLHC về TTXH',
+          contactPhone: '0903 521 940',
+          contactEmail: 'dung.ta@thuthiemsports.vn',
+          businessLicenseIssuedDate: '2019-07-15',
+          fireSafetyConfirmed: true,
+          sportSafetyConfirmed: true,
+          legalCommitmentsAccepted: true,
+          cccdFrontStorageKey: 'kyc/tt5520/cccd-front.jpg',
+          cccdBackStorageKey: 'kyc/tt5520/cccd-back.jpg',
+          businessDocStorageKey: 'kyc/tt5520/dkkd-0315219402.pdf',
+          courtPhotoStorageKey: 'kyc/tt5520/san-thuc-te.jpg',
+          ...item,
+        };
+      }
+      return item;
+    };
     const raw = window.localStorage.getItem(LESSOR_APPLICATIONS_STORAGE_KEY);
     if (raw) {
-      return JSON.parse(raw) as LessorApplicationRecord[];
+      return (JSON.parse(raw) as LessorApplicationRecord[]).map(enrichDefaultDetails);
     }
     const initialQueue: LessorApplicationRecord[] = [
       {
@@ -3260,6 +3624,20 @@ function readOfflineLessorApplications(): LessorApplicationRecord[] {
         internalRiskFlags: 'CLEAN',
         validationSummary: 'OTP Verified • MST Modulo-11 Hợp lệ • RiskScore=12',
         status: 'PENDING_REVIEW',
+        representativeDob: '1988-06-14',
+        representativeGender: 'MALE',
+        cccdIssueDate: '2021-08-19',
+        cccdIssuePlace: 'Cục Cảnh sát QLHC về TTXH',
+        contactPhone: '0918 482 715',
+        contactEmail: 'thinh.nd@caugiayproarena.vn',
+        businessLicenseIssuedDate: '2021-03-10',
+        fireSafetyConfirmed: true,
+        sportSafetyConfirmed: true,
+        legalCommitmentsAccepted: true,
+        cccdFrontStorageKey: 'kyc/cg8841/cccd-front.jpg',
+        cccdBackStorageKey: 'kyc/cg8841/cccd-back.jpg',
+        businessDocStorageKey: 'kyc/cg8841/dkkd-0109482715.pdf',
+        courtPhotoStorageKey: 'kyc/cg8841/san-thuc-te.jpg',
         createdAt: new Date(Date.now() - 3 * 3600_000).toISOString(),
       },
       {
@@ -3293,6 +3671,20 @@ function readOfflineLessorApplications(): LessorApplicationRecord[] {
         status: 'APPROVED',
         provisionedTenantId: '00000000-0000-0000-0000-000000000004',
         reviewNote: 'Hồ sơ CCCD, MST Modulo-11, Mặt bằng & PCCC hợp lệ — Đã phê duyệt cấp Tenant.',
+        representativeDob: '1985-11-22',
+        representativeGender: 'MALE',
+        cccdIssueDate: '2022-04-08',
+        cccdIssuePlace: 'Cục Cảnh sát QLHC về TTXH',
+        contactPhone: '0903 521 940',
+        contactEmail: 'dung.ta@thuthiemsports.vn',
+        businessLicenseIssuedDate: '2019-07-15',
+        fireSafetyConfirmed: true,
+        sportSafetyConfirmed: true,
+        legalCommitmentsAccepted: true,
+        cccdFrontStorageKey: 'kyc/tt5520/cccd-front.jpg',
+        cccdBackStorageKey: 'kyc/tt5520/cccd-back.jpg',
+        businessDocStorageKey: 'kyc/tt5520/dkkd-0315219402.pdf',
+        courtPhotoStorageKey: 'kyc/tt5520/san-thuc-te.jpg',
         createdAt: new Date(Date.now() - 48 * 3600_000).toISOString(),
         reviewedAt: new Date(Date.now() - 36 * 3600_000).toISOString(),
       },
