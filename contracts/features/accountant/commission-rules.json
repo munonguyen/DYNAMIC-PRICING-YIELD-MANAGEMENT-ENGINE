@@ -1,0 +1,31 @@
+{
+  "branch": "service/accountant/commission-rules",
+  "title": "Quy tắc hoa hồng",
+  "scope": "Tạo và tra cứu quy tắc hoa hồng theo thời gian hiệu lực.",
+  "operations": [
+    {
+      "method": "POST",
+      "path": "/api/v1/finance/commission-rules",
+      "operationId": "createCommissionRule"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/admin/commission-rules",
+      "operationId": "listCommissionRules"
+    }
+  ],
+  "source": [
+    {
+      "file": "src/main/java/com/yieldengine/controller/accountant/AccountantFinanceController.java",
+      "anchors": [
+        "createCommissionRule("
+      ]
+    },
+    {
+      "file": "src/main/java/com/yieldengine/controller/admin/AdminPlatformController.java",
+      "anchors": [
+        "listCommissionRules("
+      ]
+    }
+  ]
+}
