@@ -1,0 +1,26 @@
+{
+  "branch": "service/accountant/vnpay-refund",
+  "title": "Hoàn tiền VNPAY",
+  "scope": "Yêu cầu hoàn tiền qua cổng VNPAY.",
+  "operations": [
+    {
+      "method": "POST",
+      "path": "/api/v1/payments/vnpay/refund",
+      "operationId": "refundVnPayTransaction"
+    }
+  ],
+  "source": [
+    {
+      "file": "src/main/java/com/yieldengine/controller/accountant/AccountantFinanceController.java",
+      "anchors": [
+        "refundVnPayTransaction("
+      ]
+    },
+    {
+      "file": "src/main/java/com/yieldengine/service/VnPayPaymentService.java",
+      "anchors": [
+        "refundTransaction("
+      ]
+    }
+  ]
+}
