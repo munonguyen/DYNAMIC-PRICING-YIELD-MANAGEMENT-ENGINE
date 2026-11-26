@@ -32,10 +32,14 @@ export const LessorAddOnServicesManager: React.FC<LessorAddOnServicesManagerProp
   useEffect(() => {
     if (initialGroupId && listings.some((l) => l.groupId === initialGroupId)) {
       setSelectedGroupId(initialGroupId);
-    } else if (!listings.some((l) => l.groupId === selectedGroupId) && listings[0]) {
+    }
+  }, [initialGroupId, listings]);
+
+  useEffect(() => {
+    if (!listings.some((l) => l.groupId === selectedGroupId) && listings[0]) {
       setSelectedGroupId(listings[0].groupId);
     }
-  }, [initialGroupId, listings, selectedGroupId]);
+  }, [listings, selectedGroupId]);
 
   const activeListing = useMemo(
     () => listings.find((l) => l.groupId === selectedGroupId) ?? listings[0] ?? null,

@@ -51,11 +51,13 @@ import { LessorAnalyticsDashboard } from './LessorAnalyticsDashboard';
 import { QrCheckInScannerModal, type QrModalTabId } from './QrCheckInScannerModal';
 import { CreateCourtGroupModal } from './CreateCourtGroupModal';
 import { BookingOrderDetailModal } from './BookingOrderDetailModal';
+import { LiveCourtsInUseSection } from './LiveCourtsInUseSection';
 import { getActiveLessorServices, resolveCourtThumbnail } from '../data/courtServicesData';
 
 export type LessorPortalTabId =
   | 'OVERVIEW'
   | 'ORDERS_CHECKIN'
+  | 'LIVE_COURTS'
   | 'COURTS_INVENTORY'
   | 'ADDON_PRODUCTS'
   | 'YIELD_PRICING'
@@ -105,6 +107,7 @@ interface LessorPartnerPortalProps {
 
 const LESSOR_ORDERS_STORAGE_KEY = 'arenapulse_lessor_orders_v1';
 const LESSOR_PAYOUTS_STORAGE_KEY = 'arenapulse_lessor_payouts_v1';
+const WALKIN_LOCKS_STORAGE_KEY = 'arenapulse_walkin_court_locks_v1';
 
 const PRESET_COURT_COVERS: { label: string; url: string }[] = [
   { label: 'Sân Pickleball Mái Vòm Chuẩn Giải', url: '/images/court-pickleball-dome.jpg' },
@@ -382,6 +385,35 @@ export const LessorPartnerPortal: React.FC<LessorPartnerPortalProps> = ({
   const [qrModalOrder, setQrModalOrder] = useState<LessorBookingOrder | null>(null);
   const [qrModalQuery, setQrModalQuery] = useState('');
   const [detailOrderId, setDetailOrderId] = useState<string | null>(null);
+  const [walkInLocksByUnit, setWalkInLocksByUnit] = useState<Record<string, string>>(() => {
+    if (typeof window === 'undefined') return {};
+    try {
+      const raw = window.localStorage.getItem(WALKIN_LOCKS_STORAGE_KEY);
+      return raw ? (JSON.parse(raw) as Record<string, string>) : {};
+    } catch {
+      return {};
+    }
+  });
+
+  const handleToggleWalkInLock = (groupId: string, unitNumber: string, groupName: string) => {
+    const key = `${groupId}__${unitNumber}`;
+    setWalkInLocksByUnit((prev) => {
+      const next = { ...prev };
+      if (next[key]) {
+        delete next[key];
+        flashToast(`Đã mở trống lại ${unitNumber} (${groupName}).`);
+      } else {
+        next[key] = new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
+        flashToast(`Đã đánh dấu ${unitNumber} (${groupName}) đang có khách chơi tại quầy.`);
+      }
+      try {
+        window.localStorage.setItem(WALKIN_LOCKS_STORAGE_KEY, JSON.stringify(next));
+      } catch {
+        // ignore quota errors
+      }
+      return next;
+    });
+  };
 
   const selectedDetailOrder = useMemo<LessorBookingOrder | null>(
     () => (detailOrderId ? providerOrders.find((o) => o.orderId === detailOrderId) ?? null : null),
@@ -651,6 +683,13 @@ export const LessorPartnerPortal: React.FC<LessorPartnerPortalProps> = ({
       label: 'Đơn Đặt Sân & Soát QR',
       sub: 'Quét vé chống giả, lọc ca & xử lý đơn',
       badge: `${metrics.pendingCheckins} chờ`,
+      staffAllowed: true,
+    },
+    {
+      id: 'LIVE_COURTS',
+      label: 'Sân Đang Dùng & Vị Trí',
+      sub: 'Sơ đồ ô sân & vị trí khách đang chơi',
+      badge: `${providerOrders.filter((o) => o.status === 'COMPLETED' || o.status === 'CONFIRMED').length + Object.keys(walkInLocksByUnit).length} ô`,
       staffAllowed: true,
     },
     {
@@ -1594,6 +1633,44 @@ export const LessorPartnerPortal: React.FC<LessorPartnerPortalProps> = ({
               )}
 
               {/* ===================================================================== */}
+              {/* TAB 1C: LIVE COURTS IN USE & EXACT UNIT FLOOR MAP                     */}
+              {/* ===================================================================== */}
+              {activeTab === 'LIVE_COURTS' && (
+                <motion.div
+                  key="lessor-live-courts"
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -6 }}
+                  transition={{ duration: 0.24, ease: EXPO_EASE }}
+                >
+                  <LiveCourtsInUseSection
+                    listings={myListings}
+                    providerOrders={providerOrders}
+                    walkInLocksByUnit={walkInLocksByUnit}
+                    onToggleWalkInLock={handleToggleWalkInLock}
+                    onOpenOrderDetail={(orderId) => setDetailOrderId(orderId)}
+                    onStartCheckIn={(order, mode) => {
+                      setQrModalOrder(order);
+                      if (mode === 'PIN_COUNTER' || mode === 'MANUAL') {
+                        setQrModalTab('PIN_VERIFY');
+                        setQrModalAllowedModes(['PIN_VERIFY']);
+                        setQrModalQuery('');
+                      } else {
+                        setQrModalTab('SCANNER');
+                        setQrModalAllowedModes(['SCANNER']);
+                        setQrModalQuery(order.qrToken || order.qrCode);
+                      }
+                      setQrModalOpen(true);
+                    }}
+                    onCompleteActiveOrder={(orderId) => {
+                      flashToast(`✓ Đã mở chi tiết hoàn tất thanh toán tại sân cho đơn ${orderId}.`);
+                      setDetailOrderId(orderId);
+                    }}
+                  />
+                </motion.div>
+              )}
+
+              {/* ===================================================================== */}
               {/* TAB 2: COURTS INVENTORY & PUBLISH NEW COURT                           */}
               {/* ===================================================================== */}
               {activeTab === 'COURTS_INVENTORY' && (
@@ -2172,7 +2249,7 @@ export const LessorPartnerPortal: React.FC<LessorPartnerPortalProps> = ({
                         arrow="right"
                         onClick={() => onNavigate('pricing')}
                       >
-                        Mở Mô phỏng Monte Carlo Sâu (/pricing)
+                        Mở Mô phỏng Doanh thu Chi tiết
                       </ActionButton>
                     )}
                   </div>

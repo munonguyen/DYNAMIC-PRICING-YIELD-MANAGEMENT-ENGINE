@@ -172,6 +172,12 @@ export const FairwayHeader: React.FC<FairwayHeaderProps> = ({
             lessorTab: 'ORDERS_CHECKIN',
           },
           {
+            key: 'lessor-live-courts',
+            label: 'Sân Đang Dùng & Vị Trí',
+            targetPage: 'governance',
+            lessorTab: 'LIVE_COURTS',
+          },
+          {
             key: 'lessor-courts',
             label: 'Quản lý Cụm Sân',
             targetPage: 'governance',
@@ -208,6 +214,12 @@ export const FairwayHeader: React.FC<FairwayHeaderProps> = ({
               label: 'Đơn Đặt & Soát QR',
               targetPage: 'governance',
               lessorTab: 'ORDERS_CHECKIN',
+            },
+            {
+              key: 'staff-live-courts',
+              label: 'Sân Đang Dùng & Vị Trí',
+              targetPage: 'governance',
+              lessorTab: 'LIVE_COURTS',
             },
             {
               key: 'staff-courts',
