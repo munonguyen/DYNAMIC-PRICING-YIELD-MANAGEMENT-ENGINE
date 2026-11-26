@@ -1,0 +1,32 @@
+{
+  "branch": "service/lessor/court-add-ons",
+  "title": "Danh mục dịch vụ đi kèm",
+  "scope": "Cấu hình danh mục sản phẩm và dịch vụ tại cơ sở.",
+  "operations": [
+    {
+      "method": "PATCH",
+      "path": "/api/v1/inventory/groups/{id}/settings",
+      "operationId": "updateGroup"
+    }
+  ],
+  "source": [
+    {
+      "file": "src/main/java/com/yieldengine/controller/lessor/LessorInventoryController.java",
+      "anchors": [
+        "updateGroup("
+      ]
+    },
+    {
+      "file": "src/main/java/com/yieldengine/service/InventoryService.java",
+      "anchors": [
+        "request.addOnServices()"
+      ]
+    },
+    {
+      "file": "frontend/src/components/LessorAddOnServicesManager.tsx",
+      "anchors": [
+        "LessorAddOnServicesManager"
+      ]
+    }
+  ]
+}
