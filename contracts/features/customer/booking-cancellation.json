@@ -1,0 +1,26 @@
+{
+  "branch": "service/customer/booking-cancellation",
+  "title": "Hủy đặt sân",
+  "scope": "Hủy đặt sân theo chính sách đã chốt trên đơn.",
+  "operations": [
+    {
+      "method": "POST",
+      "path": "/api/v1/bookings/{reservationId}/cancel",
+      "operationId": "cancelReservation"
+    }
+  ],
+  "source": [
+    {
+      "file": "src/main/java/com/yieldengine/controller/customer/CustomerBookingController.java",
+      "anchors": [
+        "cancelReservation("
+      ]
+    },
+    {
+      "file": "src/main/java/com/yieldengine/service/BookingOrchestratorService.java",
+      "anchors": [
+        "cancelReservationWithPolicy("
+      ]
+    }
+  ]
+}
