@@ -1,0 +1,37 @@
+{
+  "branch": "service/customer/court-search",
+  "title": "Tìm sân",
+  "scope": "Tra cứu sân công bố và xem sức chứa theo ca.",
+  "operations": [
+    {
+      "method": "GET",
+      "path": "/api/v1/sport-types",
+      "operationId": "listSportTypes"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/listings",
+      "operationId": "browseListings"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/search/courts",
+      "operationId": "searchCourts"
+    }
+  ],
+  "source": [
+    {
+      "file": "src/main/java/com/yieldengine/controller/publicapi/PublicCatalogueController.java",
+      "anchors": [
+        "browseListings(",
+        "searchCourts("
+      ]
+    },
+    {
+      "file": "frontend/src/components/MarketplaceExplorerSection.tsx",
+      "anchors": [
+        "MarketplaceExplorerSection"
+      ]
+    }
+  ]
+}
