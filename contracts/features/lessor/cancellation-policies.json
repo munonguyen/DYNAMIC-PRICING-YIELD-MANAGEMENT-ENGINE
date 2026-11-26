@@ -1,0 +1,26 @@
+{
+  "branch": "service/lessor/cancellation-policies",
+  "title": "Chính sách hủy sân",
+  "scope": "Tạo và tra cứu chính sách hoàn cọc theo cơ sở.",
+  "operations": [
+    {
+      "method": "GET",
+      "path": "/api/v1/cancellation-policies",
+      "operationId": "listCancellationPolicies"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/cancellation-policies",
+      "operationId": "createCancellationPolicy"
+    }
+  ],
+  "source": [
+    {
+      "file": "src/main/java/com/yieldengine/controller/lessor/LessorVenueSettingsController.java",
+      "anchors": [
+        "listCancellationPolicies(",
+        "createCancellationPolicy("
+      ]
+    }
+  ]
+}
