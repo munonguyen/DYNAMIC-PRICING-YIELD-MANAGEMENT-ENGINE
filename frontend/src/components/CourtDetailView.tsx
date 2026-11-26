@@ -364,7 +364,7 @@ export const CourtDetailView: React.FC<CourtDetailViewProps> = ({
                   Tải thêm ảnh thực tế do Chủ sân chụp
                 </span>
                 <span className="rounded-full bg-[#F4F8F4] px-2.5 py-0.5 text-[10px] font-semibold text-[#204E18]">
-                  POST /api/v1/listings/…/media
+                  Ảnh thực tế đã kiểm duyệt
                 </span>
               </div>
 

@@ -141,7 +141,7 @@ export const LessorOnboardingSection: React.FC<LessorOnboardingSectionProps> = (
       setOtpChallenge(challenge);
       setOtpMessage(
         challenge.sandboxOtpHint
-          ? `Đã gửi mã xác thực tới ${challenge.maskedTarget} (Mã Sandbox thử nghiệm: ${challenge.sandboxOtpHint})`
+          ? `Đã gửi mã xác thực tới ${challenge.maskedTarget} (Mã xác thực nhanh: ${challenge.sandboxOtpHint})`
           : `Đã gửi mã xác thực 6 chữ số tới ${challenge.maskedTarget} (hiệu lực 5 phút).`
       );
     } catch (err) {

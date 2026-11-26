@@ -66,7 +66,7 @@ interface AdminExecutivePortalProps {
 
 const RBAC_MATRIX_ROWS: {
   capability: string;
-  endpoint: string;
+  scope: string;
   admin: boolean;
   manager: boolean;
   accountant: boolean;
@@ -74,8 +74,8 @@ const RBAC_MATRIX_ROWS: {
   user: boolean;
 }[] = [
   {
-    capability: 'Định giá Động, Giá sàn/trần & Monte Carlo (/pricing)',
-    endpoint: 'POST /api/v1/simulations/run',
+    capability: 'Định giá Động, Giá sàn/trần & Mô phỏng Doanh thu',
+    scope: 'Phân hệ Mô phỏng & Định giá Động',
     admin: true,
     manager: true,
     accountant: false,
@@ -83,8 +83,8 @@ const RBAC_MATRIX_ROWS: {
     user: false,
   },
   {
-    capability: 'Phê duyệt hồ sơ Chủ sân (KYC 7 tiêu chuẩn) & Cấp Tenant',
-    endpoint: 'POST /api/v1/internal/lessor-applications/{id}/review',
+    capability: 'Phê duyệt hồ sơ Chủ sân (KYC 7 tiêu chuẩn) & Cấp tài khoản đối tác',
+    scope: 'Phê duyệt Đối tác & Quản trị Hệ thống',
     admin: true,
     manager: false,
     accountant: false,
@@ -92,8 +92,8 @@ const RBAC_MATRIX_ROWS: {
     user: false,
   },
   {
-    capability: 'Đăng Thông báo Hệ thống & Xuất bản Bài báo (/news)',
-    endpoint: 'Admin Newsroom & Notification Hub',
+    capability: 'Đăng Thông báo Hệ thống & Xuất bản Tin tức',
+    scope: 'Bản tin & Thông báo Hệ thống',
     admin: true,
     manager: false,
     accountant: false,
@@ -102,7 +102,7 @@ const RBAC_MATRIX_ROWS: {
   },
   {
     capability: 'Mở/Ẩn Cụm sân, Upload Ảnh & Cấu hình Chính sách Hủy',
-    endpoint: 'POST /api/v1/inventory/groups/*',
+    scope: 'Quản lý Quỹ sân & Chính sách Hủy',
     admin: true,
     manager: true,
     accountant: false,
@@ -110,8 +110,8 @@ const RBAC_MATRIX_ROWS: {
     user: false,
   },
   {
-    capability: 'Đối soát Sổ cái Kép & Hoàn tiền Giao dịch VNPAY',
-    endpoint: 'GET /finance/reconciliation • POST /vnpay/refund',
+    capability: 'Đối soát Doanh thu & Hoàn tiền Giao dịch VNPAY',
+    scope: 'Đối soát Tài chính & Hoàn tiền',
     admin: true,
     manager: true,
     accountant: true,
@@ -119,8 +119,8 @@ const RBAC_MATRIX_ROWS: {
     user: false,
   },
   {
-    capability: 'Quét mã QR Check-in một lần & Chat hỗ trợ Khách tại sân',
-    endpoint: 'POST /api/v1/bookings/{id}/checkin',
+    capability: 'Soát vé QR / PIN một lần & Chat hỗ trợ Khách tại sân',
+    scope: 'Điều phối Ca & Soát vé tại Sân',
     admin: true,
     manager: true,
     accountant: false,
@@ -128,8 +128,8 @@ const RBAC_MATRIX_ROWS: {
     user: false,
   },
   {
-    capability: 'Đặt sân, Thanh toán VNPAY/MoMo/VietQR & Nhận Vé QR Gmail',
-    endpoint: 'POST /api/v1/bookings/hold • /payments/*',
+    capability: 'Đặt sân, Thanh toán VNPAY/MoMo/VietQR & Nhận Vé Email',
+    scope: 'Cổng Đặt sân & Thanh toán Trực tuyến',
     admin: true,
     manager: true,
     accountant: true,
@@ -978,7 +978,7 @@ export const AdminExecutivePortal: React.FC<AdminExecutivePortalProps> = ({
                       Ma trận Phân quyền Hệ thống Nội bộ &amp; Khách thuê sân
                     </h3>
                     <p className="mt-1 text-xs text-neutral-500">
-                      Kiểm tra đồng bộ tại cả 3 cổng Frontend và Backend Controller (`RbacGuard`).
+                      Kiểm tra phân quyền đồng bộ trên toàn bộ cổng vận hành và hệ thống quản trị.
                     </p>
                   </div>
 
@@ -986,7 +986,7 @@ export const AdminExecutivePortal: React.FC<AdminExecutivePortalProps> = ({
                     <table className="w-full text-left text-xs">
                       <thead className="bg-[#F8FAFC] text-neutral-600">
                         <tr>
-                          <th className="px-6 py-3.5 font-semibold">Chức năng &amp; API Backend</th>
+                          <th className="px-6 py-3.5 font-semibold">Chức năng &amp; Phân hệ Nghiệp vụ</th>
                           <th className="px-4 py-3.5 text-center font-bold text-[#0F172A]">ADMIN</th>
                           <th className="px-4 py-3.5 text-center font-bold text-[#16422C]">
                             MANAGER (Chủ sân)
@@ -1003,7 +1003,7 @@ export const AdminExecutivePortal: React.FC<AdminExecutivePortalProps> = ({
                           <tr key={row.capability} className="hover:bg-[#F8FAFC]">
                             <td className="px-6 py-4">
                               <div className="font-semibold text-[#0F172A]">{row.capability}</div>
-                              <code className="text-[10.5px] text-neutral-400">{row.endpoint}</code>
+                              <span className="text-[11px] text-neutral-500">{row.scope}</span>
                             </td>
                             {[row.admin, row.manager, row.accountant, row.staff, row.user].map(
                               (allowed, i) => (

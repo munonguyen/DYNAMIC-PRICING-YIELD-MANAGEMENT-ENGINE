@@ -2409,7 +2409,7 @@ export const LessorPartnerPortal: React.FC<LessorPartnerPortalProps> = ({
                         Cấu hình Hồ sơ Gian hàng Công khai
                       </h3>
                       <p className="text-xs text-neutral-500">
-                        Hiển thị trực tiếp khi khách bấm xem hồ sơ chủ sân tại <code>/lessor/{activeProvider.providerId}</code>.
+                        Hiển thị trực tiếp trên trang hồ sơ công khai khi khách bấm xem thông tin cơ sở.
                       </p>
                     </div>
 

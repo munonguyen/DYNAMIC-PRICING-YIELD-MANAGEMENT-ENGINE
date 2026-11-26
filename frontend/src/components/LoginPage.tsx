@@ -404,7 +404,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({
                     className="mt-1"
                   >
                     {submitting
-                      ? 'Đang xác thực phiên Redis…'
+                      ? 'Đang xác thực phiên đăng nhập…'
                       : authTab === 'LOGIN'
                         ? 'Đăng nhập vào ArenaPulse'
                         : 'Tạo tài khoản & Đăng nhập'}

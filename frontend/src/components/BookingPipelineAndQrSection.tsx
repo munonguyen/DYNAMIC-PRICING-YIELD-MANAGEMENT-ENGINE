@@ -287,7 +287,7 @@ export const BookingPipelineAndQrSection: React.FC<BookingPipelineAndQrSectionPr
     const resultCode = Number(resultCodeRaw);
     marketplaceApi
       .completeMoMoIpnCallback({
-        partnerCode: sp.get('partnerCode') ?? 'MOMOBKUN20180529',
+        partnerCode: sp.get('partnerCode') ?? '',
         orderId,
         requestId: sp.get('requestId') ?? orderId,
         amount: Number(sp.get('amount') ?? '0'),
@@ -304,15 +304,15 @@ export const BookingPipelineAndQrSection: React.FC<BookingPipelineAndQrSectionPr
       .then((verified) => {
         setMomoCallbackStatus(
           resultCode === 0
-            ? `MoMo Sandbox xác thực giao dịch ${orderId} thành công (Trạng thái: ${verified.status}).`
-            : `MoMo Sandbox báo giao dịch ${orderId} không thành công (Mã ${resultCode}).`
+            ? `MoMo xác thực giao dịch ${orderId} thành công (Trạng thái: ${verified.status}).`
+            : `MoMo báo giao dịch ${orderId} không thành công (Mã ${resultCode}).`
         );
         marketplaceApi.getMyTickets().then(setMyTickets);
         window.history.replaceState({}, '', window.location.pathname);
       })
       .catch((err) => {
         setMomoCallbackStatus(
-          err instanceof Error ? err.message : 'Không xác thực được chữ ký phản hồi MoMo Sandbox.'
+          err instanceof Error ? err.message : 'Không xác thực được phản hồi thanh toán MoMo.'
         );
       });
   }, []);
@@ -337,7 +337,7 @@ export const BookingPipelineAndQrSection: React.FC<BookingPipelineAndQrSectionPr
       });
       setMomoSession(sessionResp);
     } catch (err) {
-      setPaymentError(err instanceof Error ? err.message : 'Chưa thể kết nối MoMo Sandbox.');
+      setPaymentError(err instanceof Error ? err.message : 'Chưa thể kết nối cổng thanh toán MoMo.');
     } finally {
       setMomoInitBusy(false);
     }
@@ -859,10 +859,10 @@ export const BookingPipelineAndQrSection: React.FC<BookingPipelineAndQrSectionPr
                     <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
                       <div className="space-y-1">
                         <div className="font-semibold text-[#0E4F7E]">
-                          Cổng Thanh Toán VNPAY v2.1.0 (HMAC-SHA512 • IPN Idempotent)
+                          Cổng Thanh Toán VNPAY
                         </div>
                         <p className="text-neutral-500 leading-relaxed">
-                          Khởi tạo URL chuyển hướng sang cổng <code className="text-[11px]">sandbox.vnpayment.vn/paymentv2/vpcpay.html</code> với đầy đủ VNPAYQR, thẻ nội địa (NCB) và thẻ quốc tế.
+                          Chuyển hướng trực tiếp tới cổng thanh toán VNPAY bảo mật, hỗ trợ VNPAYQR, thẻ nội địa và thẻ quốc tế.
                         </p>
                       </div>
                       <div className="shrink-0 rounded-2xl bg-white px-4 py-3 text-right border border-neutral-200">
@@ -909,7 +909,7 @@ export const BookingPipelineAndQrSection: React.FC<BookingPipelineAndQrSectionPr
                       <div className="rounded-2xl border border-[#0E4F7E]/25 bg-white p-4 space-y-2">
                         <div className="flex flex-wrap items-center justify-between gap-2">
                           <span className="font-semibold text-[#0F172A]">
-                            vnp_TxnRef: <code className="tabular-nums">{vnpaySession.txnRef}</code>
+                            Mã giao dịch: <code className="tabular-nums">{vnpaySession.txnRef}</code>
                           </span>
                           <span className="rounded-full bg-[#E6F1F8] px-2.5 py-0.5 text-[10px] font-semibold text-[#0E4F7E]">
                             {vnpaySession.status} • Hết hạn {vnpaySession.expireDate}
@@ -921,7 +921,7 @@ export const BookingPipelineAndQrSection: React.FC<BookingPipelineAndQrSectionPr
                           rel="noopener noreferrer"
                           className="inline-flex items-center gap-1 rounded-xl bg-[#0E4F7E] px-4 py-2 text-[11px] font-semibold text-white hover:bg-[#0B3D62]"
                         >
-                          Chuyển sang cổng VNPAY Sandbox ↗
+                          Tiếp tục tới cổng thanh toán VNPAY ↗
                         </a>
                       </div>
                     )}
@@ -933,13 +933,10 @@ export const BookingPipelineAndQrSection: React.FC<BookingPipelineAndQrSectionPr
                     <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
                       <div className="space-y-1">
                         <div className="flex items-center gap-2 font-semibold text-[#A50064]">
-                          <span>Ví Điện Tử MoMo Sandbox (PayGate v2)</span>
-                          <span className="rounded-full bg-[#FCE7F3] px-2 py-0.5 text-[10px] font-semibold text-[#A50064]">
-                            MOMOBKUN20180529
-                          </span>
+                          <span>Ví Điện Tử MoMo</span>
                         </div>
                         <p className="text-neutral-500 leading-relaxed">
-                          Kết nối trực tiếp <code className="text-[11px]">test-payment.momo.vn/v2/gateway/api/create</code> ký HMAC-SHA256 để lấy mã QR EMVCo &amp; link cổng thanh toán MoMo thực tế.
+                          Tạo mã QR thanh toán MoMo hoặc chuyển hướng trực tiếp sang ứng dụng ví MoMo bảo mật.
                         </p>
                       </div>
                       <div className="shrink-0 rounded-2xl bg-white px-4 py-3 text-right border border-neutral-200">
@@ -965,8 +962,8 @@ export const BookingPipelineAndQrSection: React.FC<BookingPipelineAndQrSectionPr
                           className="rounded-xl bg-[#A50064] px-4 py-2 text-xs font-semibold text-white hover:bg-[#8A0053] disabled:opacity-50"
                         >
                           {momoInitBusy
-                            ? 'Đang gọi test-payment.momo.vn…'
-                            : 'Tạo giao dịch MoMo Sandbox & Lấy mã QR'}
+                            ? 'Đang tạo phiên thanh toán MoMo…'
+                            : 'Tạo thanh toán MoMo & Lấy mã QR'}
                         </button>
                         {!holdResult && (
                           <span className="text-[11px] text-neutral-500">

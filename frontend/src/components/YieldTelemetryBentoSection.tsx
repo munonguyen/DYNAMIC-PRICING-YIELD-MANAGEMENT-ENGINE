@@ -153,7 +153,7 @@ export const YieldTelemetryBentoSection: React.FC<YieldTelemetryBentoSectionProp
                 </div>
                 <ul className="space-y-1 text-neutral-600">
                   <li>• Giám sát biên độ giá động và ma trận hệ số toàn sàn ArenaPulse.vn</li>
-                  <li>• Kiểm tra quy tắc chống chồng lấn PostgreSQL GiST giữa các đối tác</li>
+                  <li>• Kiểm tra quy tắc chống trùng lịch giữa các cụm sân đối tác</li>
                   <li>• Phân quyền MANAGER / ACCOUNTANT / STAFF và duyệt hồ sơ KYC</li>
                 </ul>
               </div>
@@ -623,7 +623,7 @@ export const YieldTelemetryBentoSection: React.FC<YieldTelemetryBentoSectionProp
             </div>
 
             <div className="mt-4 text-[11.5px] leading-relaxed text-neutral-500">
-              Hệ thống khóa không chồng lấn các ô ma trận ngay tại tầng cơ sở dữ liệu PostgreSQL 16.
+              Hệ thống tự động ngăn trùng lặp khung giờ giữa các ô ma trận.
             </div>
           </ScrollReveal>
         </div>

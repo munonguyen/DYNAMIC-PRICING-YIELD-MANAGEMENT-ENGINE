@@ -191,7 +191,7 @@ export const HomeShowcaseSections: React.FC<HomeShowcaseSectionsProps> = ({
             <div className="flex flex-wrap items-center gap-2 sm:gap-3">
               {[
                 { label: 'VNPAY Ký Quỹ', sub: 'Xác thực đa lớp' },
-                { label: 'MoMo PayGate', sub: 'Xác nhận 1 chạm' },
+                { label: 'Ví MoMo', sub: 'Xác nhận 1 chạm' },
                 { label: 'VietQR Napas 24/7', sub: 'Đối soát tức thì' },
                 { label: 'Khóa giá giữ chỗ', sub: 'Giữ giá cứng 10 phút' },
                 { label: 'Bảo hiểm Mưa bão', sub: 'Hoàn cọc 100%' },
