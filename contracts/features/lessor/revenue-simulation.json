@@ -1,0 +1,20 @@
+{
+  "branch": "service/lessor/revenue-simulation",
+  "title": "Mô phỏng doanh thu",
+  "scope": "Chạy mô phỏng định giá và doanh thu cho cơ sở.",
+  "operations": [
+    {
+      "method": "POST",
+      "path": "/api/v1/simulations/run",
+      "operationId": "runSimulation"
+    }
+  ],
+  "source": [
+    {
+      "file": "src/main/java/com/yieldengine/controller/lessor/LessorSimulationController.java",
+      "anchors": [
+        "runSimulation("
+      ]
+    }
+  ]
+}
