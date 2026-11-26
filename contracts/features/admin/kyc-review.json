@@ -1,0 +1,32 @@
+{
+  "branch": "service/admin/kyc-review",
+  "title": "Duyệt hồ sơ chủ sân",
+  "scope": "Xem hàng đợi và quyết định duyệt hồ sơ đối tác.",
+  "operations": [
+    {
+      "method": "GET",
+      "path": "/api/v1/internal/lessor-applications",
+      "operationId": "listApplicationsInternal"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/internal/lessor-applications/{id}/review",
+      "operationId": "reviewApplicationInternal"
+    }
+  ],
+  "source": [
+    {
+      "file": "src/main/java/com/yieldengine/controller/admin/AdminKycReviewController.java",
+      "anchors": [
+        "listApplicationsInternal(",
+        "reviewApplicationInternal("
+      ]
+    },
+    {
+      "file": "frontend/src/components/AdminKycReviewPanel.tsx",
+      "anchors": [
+        "AdminKycReviewPanel"
+      ]
+    }
+  ]
+}
