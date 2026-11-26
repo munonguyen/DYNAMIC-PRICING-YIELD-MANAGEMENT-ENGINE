@@ -409,7 +409,7 @@ class V3MarketplaceIntegrationTest {
 
     @Test
     @Order(7)
-    void momoIpnRestoresOnlyTheRegisteredPaymentAttempt() throws Exception {
+    void momoQrIsPendingUntilTheRegisteredPaymentAttemptReceivesAnIpn() throws Exception {
         String suffix = UUID.randomUUID().toString().substring(0, 8);
         var player = authService.register(new RegisterRequest(
                 "momo_" + suffix, "momo_" + suffix + "@example.test", "Pass12345!", "Test", "Player", null));
@@ -425,16 +425,33 @@ class V3MarketplaceIntegrationTest {
                 null, null, null, false, null, null, null);
         String orderId = "TEST_" + suffix;
         bookingOrchestratorService.beginMoMoPayment(create, player.id(), orderId);
-        assertEquals(State.PENDING, checkoutPayment.getStatus(hold.getReservationId(), player.id()).paymentStatus());
+        assertNull(checkoutPayment.getStatus(hold.getReservationId(), player.id()).paymentQr());
+        String qrPayload = "000201-MOMO-TEST-QR-" + suffix;
+        bookingOrchestratorService.saveMoMoPaymentQr(hold.getReservationId(), orderId, qrPayload, true);
+        var pending = checkoutPayment.getStatus(hold.getReservationId(), player.id());
+        assertEquals(State.PENDING, pending.paymentStatus());
+        assertEquals(0, pending.paidAmount());
+        assertEquals(hold.getDepositAmount(), pending.requestedAmount());
+        assertEquals(qrPayload, pending.paymentQr().payload());
+        assertTrue(pending.paymentQr().sandbox());
+        assertTrue(pending.paymentQr().holdUntil().isAfter(Instant.now()));
+        assertThrows(ForbiddenAccessException.class, () -> checkoutPayment.getStatus(hold.getReservationId(), UUID.randomUUID()));
+        assertThrows(BusinessConflictException.class, () -> checkInService.issueOrGetQrCode(hold.getReservationId()));
+        var restored = mvc.perform(MockMvcRequestBuilders.get("/api/v1/bookings/" + hold.getReservationId() + "/payment-status")
+                .header("Authorization", "Bearer " + login.accessToken())).andReturn().getResponse();
+        assertEquals(200, restored.getStatus());
+        assertEquals("no-store", restored.getHeader("Cache-Control"));
+        assertEquals(qrPayload, new ObjectMapper().readTree(restored.getContentAsString()).at("/paymentQr/payload").asText());
 
         assertEquals(204, sendMoMoFixture(hold, orderId, 7000, 0));
-        assertEquals(State.PENDING, checkoutPayment.getStatus(hold.getReservationId(), player.id()).paymentStatus());
+        assertEquals(qrPayload, checkoutPayment.getStatus(hold.getReservationId(), player.id()).paymentQr().payload());
         assertEquals(204, sendMoMoFixture(hold, orderId, 0, 123456789));
         assertEquals(204, sendMoMoFixture(hold, orderId, 0, 123456789));
         var status = checkoutPayment.getStatus(hold.getReservationId(), player.id());
         assertEquals(State.VERIFIED, status.paymentStatus());
         assertEquals(hold.getDepositAmount(), status.paidAmount());
         assertEquals(orderId, status.providerReference());
+        assertNull(status.paymentQr());
     }
 
     private int sendMoMoFixture(HoldSlotResponse hold, String order, int resultCode, long transactionId) throws Exception {

@@ -131,10 +131,13 @@ public class MoMoPaymentGatewayService {
 
             if (response.statusCode() >= 200 && response.statusCode() < 300 && resultCode == 0
                     && Objects.equals(apiResp.orderId(), orderId) && Objects.equals(apiResp.requestId(), requestId)
-                    && Objects.equals(apiResp.partnerCode(), properties.getPartnerCode())
-                    && Objects.equals(apiResp.amount(), amount) && hasText(apiResp.payUrl())
-                    && "https".equalsIgnoreCase(URI.create(apiResp.payUrl()).getScheme())) {
-                log.info("Live MoMo Sandbox created transaction orderId={} amount={}VND resultCode=0", orderId, amount);
+                    && Objects.equals(apiResp.partnerCode(), properties.getPartnerCode()) && Objects.equals(apiResp.amount(), amount)) {
+                String qrPayload = apiResp.qrCodeUrl();
+                if (!hasText(qrPayload) || qrPayload.getBytes(StandardCharsets.UTF_8).length > 1024
+                        || qrPayload.codePoints().anyMatch(Character::isISOControl)) {
+                    throw new IllegalStateException("MoMo chưa cấp mã QR cho giao dịch. Vui lòng kiểm tra cấu hình QR của merchant.");
+                }
+                log.info("MoMo created QR for orderId={} amount={}VND", orderId, amount);
                 return mapper.toLiveInitResult(properties, orderId, requestId, amount, apiResp, signature, rawSignature);
             }
 
@@ -204,6 +207,10 @@ public class MoMoPaymentGatewayService {
     public boolean isConfigured() {
         return properties.isLiveHttpEnabled() && hasText(properties.getEndpoint())
                 && hasValidMerchantCredentials() && hasHttpsIpnUrl();
+    }
+
+    public boolean isSandbox() {
+        return "test-payment.momo.vn".equalsIgnoreCase(URI.create(properties.getEndpoint()).getHost());
     }
 
     private boolean hasValidMerchantCredentials() {

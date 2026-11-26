@@ -12,7 +12,6 @@ import type {
   LessorBookingOrder,
   MoMoPaymentSession,
   MyTicketRecord,
-  VnPayPaymentUrlResult,
   VnPayReturnResult,
   OtpChallengeResult,
   PriceQuote,
@@ -1329,46 +1328,6 @@ class MarketplaceApiClient {
     }
   ): Promise<MoMoPaymentSession> {
     return this.checkoutRequest('/payments/momo/create', { reservationId: hold.reservationId, ...options });
-  }
-
-  async createVnPayPaymentUrl(
-    hold: HoldSlotResult,
-    options: {
-      amount: number;
-      bankCode?: string;
-      locale?: 'vn' | 'en';
-      customerName?: string;
-      customerPhone?: string;
-      customerEmail?: string;
-      needVatInvoice?: boolean;
-      vatCompanyName?: string;
-      vatTaxCode?: string;
-      bookingNote?: string;
-    }
-  ): Promise<VnPayPaymentUrlResult> {
-    const res = await fetch('/api/v1/payments/vnpay/create-payment', {
-      method: 'POST',
-      headers: this.headers(),
-      body: JSON.stringify({
-        reservationId: hold.reservationId,
-        amount: options.amount,
-        bankCode: options.bankCode || undefined,
-        locale: options.locale ?? 'vn',
-        orderType: 'other',
-        customerName: options.customerName,
-        customerPhone: options.customerPhone,
-        customerEmail: options.customerEmail,
-        needVatInvoice: options.needVatInvoice,
-        vatCompanyName: options.vatCompanyName,
-        vatTaxCode: options.vatTaxCode,
-        bookingNote: options.bookingNote,
-      }),
-    });
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({ message: 'Không khởi tạo được URL thanh toán VNPAY.' }));
-      throw new Error(err.message || 'Không khởi tạo được URL thanh toán VNPAY.');
-    }
-    return (await res.json()) as VnPayPaymentUrlResult;
   }
 
   async verifyVnPayReturnParams(rawQueryString: string): Promise<VnPayReturnResult> {

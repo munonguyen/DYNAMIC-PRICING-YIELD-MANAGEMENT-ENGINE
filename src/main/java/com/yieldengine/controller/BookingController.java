@@ -21,6 +21,7 @@ import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.CacheControl;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -58,8 +59,9 @@ public class BookingController {
     }
 
     @GetMapping("/bookings/{reservationId}/payment-status")
-    public BookingPaymentStatus paymentStatus(@PathVariable UUID reservationId) {
-        return checkoutPaymentService.getStatus(reservationId, rbacGuard.requireAuthenticated().userId());
+    public ResponseEntity<BookingPaymentStatus> paymentStatus(@PathVariable UUID reservationId) {
+        return ResponseEntity.ok().cacheControl(CacheControl.noStore())
+                .body(checkoutPaymentService.getStatus(reservationId, rbacGuard.requireAuthenticated().userId()));
     }
 
     @Operation(summary = "Create MoMo v2 HMAC-SHA256 payment session matching PayGate spec")
@@ -77,7 +79,10 @@ public class BookingController {
             MoMoPaymentInitResult init = moMoPaymentGatewayService.createPaymentSession(
                     request.reservationId(), request.amount(), orderId,
                     "Dat san ArenaPulse " + request.reservationId().toString().substring(0, 8), extraData);
-            return ResponseEntity.status(HttpStatus.CREATED).body(moMoGatewayMapper.toSessionResponse(init));
+            bookingOrchestratorService.saveMoMoPaymentQr(request.reservationId(), orderId,
+                    init.qrCodeUrl(), moMoPaymentGatewayService.isSandbox());
+            return ResponseEntity.status(HttpStatus.CREATED).cacheControl(CacheControl.noStore())
+                    .body(moMoGatewayMapper.toSessionResponse(init));
         } catch (MoMoSessionRejectedException ex) {
             bookingOrchestratorService.markMoMoCreateRejected(request.reservationId(), orderId);
             throw ex;

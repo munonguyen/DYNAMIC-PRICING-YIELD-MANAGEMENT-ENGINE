@@ -58,6 +58,12 @@ public class Payment extends BaseEntity {
     @Column(name = "gateway_verified_at")
     private Instant gatewayVerifiedAt;
 
+    @Column(name = "checkout_qr_payload", length = 1024)
+    private String checkoutQrPayload;
+
+    @Column(name = "checkout_qr_sandbox")
+    private Boolean checkoutQrSandbox;
+
     @Type(JsonType.class)
     @Column(name = "raw_payload", columnDefinition = "jsonb")
     private Map<String, Object> rawPayload;

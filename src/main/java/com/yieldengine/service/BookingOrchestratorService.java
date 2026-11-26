@@ -234,6 +234,18 @@ public class BookingOrchestratorService {
     }
 
     @Transactional
+    public void saveMoMoPaymentQr(UUID reservationId, String orderId, String qrPayload, boolean sandbox) {
+        Reservation reservation = lockReservation(reservationId);
+        paymentRepository.findByProviderAndProviderRef("MOMO_WALLET", orderId)
+                .filter(payment -> reservation.getBookingId().equals(payment.getBooking().getId()))
+                .filter(payment -> "PENDING".equals(payment.getStatus()))
+                .ifPresent(payment -> {
+                    payment.setCheckoutQrPayload(qrPayload);
+                    payment.setCheckoutQrSandbox(sandbox);
+                });
+    }
+
+    @Transactional
     public void markMoMoCreateRejected(UUID reservationId, String orderId) {
         lockReservation(reservationId);
         paymentRepository.findByProviderAndProviderRef("MOMO_WALLET", orderId)
@@ -275,6 +287,8 @@ public class BookingOrchestratorService {
                 .provider(webhook.provider()).providerRef(webhook.providerRef()).amount(webhook.amount())
                 .currency(booking.getCurrency()).paymentType(paymentType).build());
         payment.setGatewayVerifiedAt(now);
+        payment.setCheckoutQrPayload(null);
+        payment.setCheckoutQrSandbox(null);
 
         if (!"SUCCESS".equalsIgnoreCase(webhook.status())) {
             payment.setStatus("FAILED");

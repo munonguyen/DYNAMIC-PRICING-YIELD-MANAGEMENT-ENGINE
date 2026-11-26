@@ -269,6 +269,15 @@ class QrTicketEmailAndMoMoTest {
         // Validator blocks amount below MoMo minimum threshold before calling gateway
         assertThrows(IllegalArgumentException.class,
                 () -> liveService.createPaymentSession(UUID.randomUUID(), 100L, "ORDER_123", "Too small", ""));
+        assertTrue(liveService.isSandbox());
+
+        when(okResp.body()).thenReturn("""
+                {"partnerCode":"MOMO_TEST","orderId":"ORDER_123","requestId":"ORDER_123","amount":50000,
+                 "resultCode":0,"payUrl":"https://test-payment.momo.vn/v2/gateway/pay?t=ABC"}
+                """);
+        var missingQr = assertThrows(IllegalStateException.class,
+                () -> liveService.createPaymentSession(UUID.randomUUID(), 50_000L, "ORDER_123", "Test chua cap QR", ""));
+        assertTrue(missingQr.getMessage().contains("chưa cấp mã QR"));
 
         java.net.http.HttpResponse<String> errResp = org.mockito.Mockito.mock(java.net.http.HttpResponse.class);
         when(errResp.statusCode()).thenReturn(200);

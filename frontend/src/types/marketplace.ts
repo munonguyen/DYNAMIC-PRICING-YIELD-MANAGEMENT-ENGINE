@@ -209,6 +209,7 @@ export interface BookingPaymentStatus {
   provider: CheckoutProvider | null;
   providerReference: string | null;
   verifiedAt: string | null;
+  paymentQr: { payload: string; holdUntil: string; sandbox: boolean } | null;
 }
 
 export interface MoMoPaymentSession {
@@ -222,19 +223,6 @@ export interface MoMoPaymentSession {
   resultCode: number;
   message: string;
   liveGatewayResponse: boolean;
-}
-
-export interface VnPayPaymentUrlResult {
-  code: string;
-  message: string;
-  paymentUrl: string;
-  txnRef: string;
-  reservationId: string;
-  amountVnd: number;
-  vnpAmount: number;
-  createDate: string;
-  expireDate: string;
-  status: string;
 }
 
 export interface VnPayReturnResult {

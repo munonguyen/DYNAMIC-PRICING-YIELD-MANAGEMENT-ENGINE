@@ -12,7 +12,10 @@ public record BookingPaymentStatus(
         Long requestedAmount,
         String provider,
         String providerReference,
-        Instant verifiedAt
+        Instant verifiedAt,
+        PaymentQr paymentQr
 ) {
+    public record PaymentQr(String payload, Instant holdUntil, boolean sandbox) {}
+
     public enum State { NOT_STARTED, PENDING, FAILED, VERIFIED, NO_DEPOSIT, EXPIRED, UNVERIFIED, REVIEW_REQUIRED }
 }

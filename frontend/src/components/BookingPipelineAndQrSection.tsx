@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
 import { QRCodeSVG } from 'qrcode.react';
-import { Lock, ShieldCheck } from 'lucide-react';
+import { Lock, ScanLine } from 'lucide-react';
 import type {
   AuthSession,
   BookingPaymentStatus,
@@ -20,6 +20,7 @@ import { getActiveLessorServices } from '../data/courtServicesData';
 import { isValidVietnamTaxCode } from '../utils/lessorLegalValidator';
 import { EXPO_EASE, ScrollReveal } from './motionPrimitives';
 import { ActionButton } from './FairwayControls';
+import { MoMoCheckoutQr } from './MoMoCheckoutQr';
 
 interface BookingPipelineAndQrSectionProps {
   activeListing: PublishedListing | null;
@@ -41,11 +42,6 @@ interface BookingPipelineAndQrSectionProps {
   selectedServiceQuantities?: Record<string, number>;
   onChangeServiceQuantity?: (serviceId: string, nextQty: number) => void;
 }
-
-const GATEWAYS: { code: CheckoutProvider; title: string; subtitle: string }[] = [
-  { code: 'VNPAY_ESCROW', title: 'VNPay', subtitle: 'QR và thẻ do cổng VNPay hỗ trợ' },
-  { code: 'MOMO_WALLET', title: 'MoMo', subtitle: 'Thanh toán qua ví MoMo' },
-];
 
 const stateMessages: Record<BookingPaymentStatus['paymentStatus'], string> = {
   NOT_STARTED: 'Chưa tạo giao dịch thanh toán.',
@@ -79,10 +75,8 @@ export const BookingPipelineAndQrSection: React.FC<BookingPipelineAndQrSectionPr
   onChangeServiceQuantity,
 }) => {
   const [planMode, setPlanMode] = useState<PaymentPlanMode>('DEPOSIT_ESCROW');
-  const [gateway, setGateway] = useState<CheckoutProvider>('VNPAY_ESCROW');
   const [providers, setProviders] = useState<CheckoutProvider[] | null>(null);
   const [paymentStatus, setPaymentStatus] = useState<BookingPaymentStatus | null>(null);
-  const [paymentUrl, setPaymentUrl] = useState<{ reservationId: string; href: string } | null>(null);
   const [paymentBusy, setPaymentBusy] = useState(false);
   const [statusError, setStatusError] = useState<string | null>(null);
   const [rememberedReservation, setRememberedReservation] = useState<string | null>(null);
@@ -107,20 +101,14 @@ export const BookingPipelineAndQrSection: React.FC<BookingPipelineAndQrSectionPr
   const state = currentPayment?.paymentStatus;
   const issued = state === 'VERIFIED' || state === 'NO_DEPOSIT';
   const activeTicket = issued ? myTickets.find(ticket => ticket.reservationId === trackedReservation) : null;
-  const selectedGateway = providers?.includes(gateway) ? gateway : providers?.[0];
-  const selectedGatewayObj = GATEWAYS.find(provider => provider.code === selectedGateway);
+  const hasMoMoCheckout = providers?.includes('MOMO_WALLET') ?? false;
+  const activePaymentQr = state === 'PENDING' ? currentPayment?.paymentQr : null;
 
   useEffect(() => {
     let active = true;
     if (!trackingKey) return;
     setRememberedReservation(window.sessionStorage.getItem(trackingKey));
-    try {
-      const saved = window.sessionStorage.getItem(`${trackingKey}:url`);
-      const link = saved ? JSON.parse(saved) as { reservationId: string; href: string } : null;
-      setPaymentUrl(link && new URL(link.href).protocol === 'https:' ? link : null);
-    } catch {
-      setPaymentUrl(null);
-    }
+    window.sessionStorage.removeItem(`${trackingKey}:url`);
     setMyTickets([]);
     setPaymentStatus(null);
     marketplaceApi.getCheckoutProviders().then(data => {
@@ -168,10 +156,6 @@ export const BookingPipelineAndQrSection: React.FC<BookingPipelineAndQrSectionPr
         if (!request.signal.aborted) {
           setPaymentStatus(status);
           setStatusError(null);
-          if (status.paymentStatus !== 'PENDING' && status.paymentStatus !== 'NOT_STARTED') {
-            setPaymentUrl(url => url?.reservationId === trackedReservation ? null : url);
-            if (trackingKey) window.sessionStorage.removeItem(`${trackingKey}:url`);
-          }
         }
       } catch {
         if (!request.signal.aborted) setStatusError('Chưa kiểm tra được giao dịch. Vui lòng thử lại.');
@@ -187,7 +171,7 @@ export const BookingPipelineAndQrSection: React.FC<BookingPipelineAndQrSectionPr
       request.abort();
       window.clearInterval(timer);
     };
-  }, [ownerId, trackingKey, trackedReservation, statusRequest, cancelResult]);
+  }, [ownerId, trackedReservation, statusRequest, cancelResult]);
 
   useEffect(() => {
     if (!ownerId) return;
@@ -244,7 +228,7 @@ export const BookingPipelineAndQrSection: React.FC<BookingPipelineAndQrSectionPr
     : currentPayment?.requestedAmount ?? (planMode === 'FULL_ONLINE' ? lockedPrice : depositAmount);
   const remainingAtVenue = issued && currentPayment ? currentPayment.remainingAtVenue : Math.max(0, lockedPrice - payableNow);
   const displaysFullPayment = payableNow > 0 && payableNow === lockedPrice;
-  const canStartPayment = Boolean(holdResult && selectedGateway && !isHoldExpired && !cancelResult
+  const canStartPayment = Boolean(holdResult && hasMoMoCheckout && !isHoldExpired && !cancelResult
     && (state === 'NOT_STARTED' || state === 'FAILED'));
   const paymentLocked = Boolean(paymentBusy || issued || state === 'PENDING' || cancelResult);
   const canVenueOperate = activeRole === 'STAFF' || activeRole === 'MANAGER' || activeRole === 'ADMIN';
@@ -263,7 +247,7 @@ export const BookingPipelineAndQrSection: React.FC<BookingPipelineAndQrSectionPr
 
   const validateAndSubmitPayment = async () => {
     setPaymentError(null);
-    if (!canStartPayment || !holdResult || !selectedGateway) return;
+    if (!canStartPayment || !holdResult) return;
     const cleanPhone = customerPhone.replace(/\s+/g, '');
     if (customerName.trim().split(/\s+/).length < 2) {
       setPaymentError('Vui lòng nhập đầy đủ họ tên người nhận sân (ít nhất 2 từ).');
@@ -295,13 +279,7 @@ export const BookingPipelineAndQrSection: React.FC<BookingPipelineAndQrSectionPr
     };
     setPaymentBusy(true);
     try {
-      const href = selectedGateway === 'VNPAY_ESCROW'
-        ? (await marketplaceApi.createVnPayPaymentUrl(holdResult, customer)).paymentUrl
-        : (await marketplaceApi.createMoMoPaymentSession(holdResult, customer)).payUrl;
-      if (!href || new URL(href).protocol !== 'https:') throw new Error('Cổng chưa trả về liên kết thanh toán.');
-      const link = { reservationId: holdResult.reservationId, href };
-      setPaymentUrl(link);
-      if (trackingKey) window.sessionStorage.setItem(`${trackingKey}:url`, JSON.stringify(link));
+      await marketplaceApi.createMoMoPaymentSession(holdResult, customer);
     } catch (error) {
       setPaymentError(error instanceof Error ? error.message : 'Chưa tạo được giao dịch thanh toán.');
     } finally {
@@ -313,7 +291,7 @@ export const BookingPipelineAndQrSection: React.FC<BookingPipelineAndQrSectionPr
   const steps = [
     { step: 1, title: 'Khóa giá 10 phút', sub: 'Đã cố định giá thuê ca' },
     { step: 2, title: 'Giữ sân vật lý', sub: 'Khóa sân chống đặt trùng' },
-    { step: 3, title: 'Thanh toán ký quỹ', sub: 'VNPay hoặc MoMo' },
+    { step: 3, title: 'Quét mã thanh toán', sub: 'QR MoMo trên checkout' },
     { step: 4, title: 'Biên lai & Vé QR', sub: 'Quét mã một lần vào sân' },
   ];
 
@@ -543,55 +521,19 @@ export const BookingPipelineAndQrSection: React.FC<BookingPipelineAndQrSectionPr
               </div>
             </ScrollReveal>
 
-            {/* BLOCK 2: Multi-Gateway Payment Method Selector */}
             <ScrollReveal delay={0.05} className="rounded-[26px] border border-neutral-200/90 bg-white p-6 sm:p-7 shadow-xs">
-              <h3 className="text-base sm:text-lg font-semibold text-[#0F172A]">
-                2. Phương thức thanh toán
-              </h3>
-
-              <div className="mt-4 grid grid-cols-1 gap-2.5 sm:grid-cols-2">
-                {GATEWAYS.filter(item => providers?.includes(item.code)).map((item) => {
-                  const active = selectedGateway === item.code;
-                  return (
-                    <button
-                      key={item.code}
-                      type="button"
-                      disabled={paymentLocked}
-                      onClick={() => {
-                        setGateway(item.code);
-                        setPaymentError(null);
-                      }}
-                      className={`rounded-2xl p-3.5 text-left border transition-colors ${
-                        active
-                          ? 'border-[#0F172A] bg-[#0F172A] text-white'
-                          : 'border-neutral-200 bg-[#F8F9FA] text-[#0F172A] hover:bg-white'
-                      } disabled:opacity-75 disabled:cursor-not-allowed`}
-                    >
-                      <div className="flex items-start justify-between gap-2.5">
-                        <div className="flex items-center gap-2.5 min-w-0">
-                          <ShieldCheck aria-hidden="true" className="h-5 w-5 shrink-0" />
-                          <span className="text-xs sm:text-[13px] font-semibold leading-snug">
-                            {item.title}
-                          </span>
-                        </div>
-                      </div>
-                      <p
-                        className={`mt-2 text-[11px] leading-snug ${
-                          active ? 'text-white/75' : 'text-neutral-500'
-                        }`}
-                      >
-                        {item.subtitle}
-                      </p>
-                    </button>
-                  );
-                })}
+              <h3 className="text-base sm:text-lg font-semibold text-[#0F172A]">2. Phương thức thanh toán</h3>
+              <div className="mt-4 flex gap-3 rounded-2xl border border-[#16422C]/15 bg-[#F4F8F4] p-4">
+                <ScanLine aria-hidden="true" className="h-5 w-5 shrink-0 text-[#16422C]" />
+                <div>
+                  <p className="text-sm font-semibold text-[#16422C]">Quét QR MoMo</p>
+                  <p className="mt-1 text-sm text-neutral-700">
+                    {hasMoMoCheckout
+                      ? 'Mã QR theo đơn sẽ xuất hiện trong phần tóm tắt đặt sân sau khi bạn tạo mã.'
+                      : providers === null ? 'Đang kiểm tra cổng thanh toán…' : 'Thanh toán QR MoMo chưa được cấu hình.'}
+                  </p>
+                </div>
               </div>
-
-              {providers?.length === 0 ? (
-                <p className="mt-4 text-sm text-neutral-600">Chưa có cổng thanh toán được cấu hình.</p>
-              ) : (
-                <p className="mt-4 text-sm text-neutral-600">Hoàn tất giao dịch tại cổng đã chọn. Vé xuất hiện khi cổng gửi xác nhận.</p>
-              )}
             </ScrollReveal>
 
             {/* BLOCK 3: Booker Contact & VAT Invoice */}
@@ -973,7 +915,7 @@ export const BookingPipelineAndQrSection: React.FC<BookingPipelineAndQrSectionPr
                       )
                     </span>
                     <span className="text-[11px] text-neutral-400">
-                      Qua {GATEWAYS.find(provider => provider.code === currentPayment?.provider)?.title ?? selectedGatewayObj?.title ?? 'cổng thanh toán'}
+                      {issued && state === 'NO_DEPOSIT' ? 'Thanh toán tại sân' : currentPayment?.provider === 'VNPAY_ESCROW' ? 'Qua VNPay' : 'Qua QR MoMo'}
                     </span>
                   </div>
                   <span className="tabular-nums text-2xl font-bold text-[#16422C]">
@@ -1021,14 +963,8 @@ export const BookingPipelineAndQrSection: React.FC<BookingPipelineAndQrSectionPr
 
                 {canStartPayment && (
                   <ActionButton variant="forest" size="lg" fullWidth disabled={paymentBusy} onClick={validateAndSubmitPayment}>
-                    {paymentBusy ? 'Đang tạo giao dịch…' : `Tạo giao dịch ${formatVnd(payableNow)}`}
+                    {paymentBusy ? 'Đang lấy mã QR…' : `Tạo mã QR · ${formatVnd(payableNow)}`}
                   </ActionButton>
-                )}
-                {(state === 'PENDING' || !currentPayment) && paymentUrl?.reservationId === trackedReservation && (
-                  <a className="block rounded-full bg-[#16422C] px-4 py-3 text-center text-sm font-semibold text-white"
-                    href={paymentUrl.href} target="_blank" rel="noopener noreferrer">
-                    Mở cổng thanh toán
-                  </a>
                 )}
                 {trackedReservation && !cancelResult && (
                   <ActionButton variant="outline" size="sm" onClick={() => setStatusRequest(value => value + 1)}>
@@ -1036,6 +972,10 @@ export const BookingPipelineAndQrSection: React.FC<BookingPipelineAndQrSectionPr
                   </ActionButton>
                 )}
               </div>
+
+              {activePaymentQr && currentPayment?.requestedAmount != null && currentPayment.providerReference && !cancelResult && (
+                <MoMoCheckoutQr qr={activePaymentQr} amount={currentPayment.requestedAmount} reference={currentPayment.providerReference} />
+              )}
 
               {trackedReservation && !cancelResult && (
                 <div className="mt-4 rounded-2xl border border-neutral-200 p-4 text-sm" role="status">
@@ -1045,6 +985,13 @@ export const BookingPipelineAndQrSection: React.FC<BookingPipelineAndQrSectionPr
                       <p>Đã thu {formatVnd(currentPayment.paidAmount)} · Còn trả tiền sân {formatVnd(currentPayment.remainingAtVenue)}</p>
                       <p className="mt-1 text-xs text-neutral-600">Mã giao dịch {currentPayment.providerReference}</p>
                     </>
+                  )}
+                  {state === 'PENDING' && !activePaymentQr && !paymentBusy && (
+                    <p className="mt-1 text-xs text-neutral-600">
+                      {currentPayment?.provider === 'VNPAY_ESCROW'
+                        ? 'Giao dịch VNPay đã tạo đang được theo dõi.'
+                        : 'Chưa có mã QR cho giao dịch này. Bạn có thể kiểm tra lại trạng thái.'}
+                    </p>
                   )}
                   {state === 'REVIEW_REQUIRED' && <p>Mã giao dịch {currentPayment?.providerReference}</p>}
                   {statusError && <p className="mt-2 text-xs text-rose-700">{statusError}</p>}
