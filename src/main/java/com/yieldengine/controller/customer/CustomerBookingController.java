@@ -41,7 +41,10 @@ public class CustomerBookingController {
             @RequestHeader(value = SystemConstant.HEADER_IDEMPOTENCY_KEY, required = false) String idempotencyKey,
             @Valid @RequestBody HoldSlotRequest request
     ) {
-        rbacGuard.requireAuthenticated();
+        String owner = rbacGuard.requireAuthenticated().userId().toString();
+        if (!owner.equals(request.getUserId())) {
+            throw new com.yieldengine.exception.ForbiddenAccessException("Lượt giữ sân phải thuộc phiên đăng nhập hiện tại.");
+        }
         HoldSlotResponse response = bookingOrchestratorService.holdSlot(request, idempotencyKey);
         return ResponseEntity.status(HttpStatus.CREATED).body(response);
     }
