@@ -1,0 +1,44 @@
+{
+  "branch": "service/shared/auth-session",
+  "title": "Đăng nhập và quản lý phiên",
+  "scope": "Đăng ký, đăng nhập, đọc hồ sơ đang dùng và kết thúc phiên.",
+  "operations": [
+    {
+      "method": "POST",
+      "path": "/api/v1/auth/register",
+      "operationId": "register"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/auth/login",
+      "operationId": "login"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/auth/logout",
+      "operationId": "logout"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/users/me",
+      "operationId": "getMyProfile"
+    }
+  ],
+  "source": [
+    {
+      "file": "src/main/java/com/yieldengine/controller/auth/AuthSessionController.java",
+      "anchors": [
+        "register(",
+        "login(",
+        "logout(",
+        "getMyProfile("
+      ]
+    },
+    {
+      "file": "frontend/src/components/LoginPage.tsx",
+      "anchors": [
+        "LoginPage"
+      ]
+    }
+  ]
+}
