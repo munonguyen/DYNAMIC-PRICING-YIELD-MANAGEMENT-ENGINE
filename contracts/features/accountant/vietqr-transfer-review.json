@@ -1,0 +1,32 @@
+{
+  "branch": "service/accountant/vietqr-transfer-review",
+  "title": "Đối soát ngoại lệ VietQR",
+  "scope": "Xem và xử lý khoản chuyển VietQR cần đối soát thủ công.",
+  "operations": [
+    {
+      "method": "GET",
+      "path": "/api/v1/payments/vietqr/review",
+      "operationId": "reviewQueue"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/v1/payments/vietqr/review/{id}",
+      "operationId": "closeReview"
+    }
+  ],
+  "source": [
+    {
+      "file": "src/main/java/com/yieldengine/controller/accountant/AccountantFinanceController.java",
+      "anchors": [
+        "reviewQueue(",
+        "closeReview("
+      ]
+    },
+    {
+      "file": "src/main/java/com/yieldengine/service/VietQrTransferService.java",
+      "anchors": [
+        "reviewQueue("
+      ]
+    }
+  ]
+}
