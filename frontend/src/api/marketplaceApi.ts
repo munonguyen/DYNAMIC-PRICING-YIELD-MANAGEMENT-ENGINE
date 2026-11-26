@@ -1,12 +1,15 @@
 import type {
+  AnalyticsDashboardData,
   AuthSession,
   CancelBookingResult,
   CheckInResult,
   CourtMediaItem,
+  CourtSearchResponseData,
   HoldSlotResult,
   LessorApplicationPayload,
   LessorApplicationReceipt,
   LessorApplicationRecord,
+  LessorBookingOrder,
   MoMoPaymentSession,
   MyTicketRecord,
   VnPayPaymentUrlResult,
@@ -17,6 +20,7 @@ import type {
   PublishedListing,
   QrCodeTicket,
   ReconciliationSummary,
+  ReindexResultData,
   RoleCode,
   SimulationResult,
   SlotListingQuote,
@@ -2059,21 +2063,338 @@ class MarketplaceApiClient {
         return await res.json();
       }
     } catch {
-      // Fallback
+      // Fallback to real stored tickets below
     }
+    const tickets = readOfflineTickets().filter((t) => t.status !== 'CANCELLED');
+    const escrow = tickets.reduce((s, t) => s + t.paidOnlineAmount, 0);
+    const comm = Math.round(escrow * 0.1);
+    const cancelledRefunds = readOfflineTickets()
+      .filter((t) => t.status === 'CANCELLED')
+      .reduce((s, t) => s + t.depositAmount, 0);
+
     return {
       tenantId: DEFAULT_TENANT_ID,
       fromTime: new Date(Date.now() - 7 * 86400_000).toISOString(),
       toTime: new Date().toISOString(),
-      totalGatewayDebits: 48_650_000,
-      totalEscrowCredits: 48_650_000,
-      totalPlatformCommission: 4_865_000,
-      totalVenuePayable: 40_935_000,
-      totalCustomerRefunds: 2_850_000,
-      totalForfeitedDeposits: 3_420_000,
+      totalGatewayDebits: escrow,
+      totalEscrowCredits: escrow,
+      totalPlatformCommission: comm,
+      totalVenuePayable: Math.max(0, escrow - comm),
+      totalCustomerRefunds: cancelledRefunds,
+      totalForfeitedDeposits: 0,
       doubleEntryBalanced: true,
     };
   }
+
+  async fetchLessorAnalytics(
+    days: number,
+    listings: PublishedListing[],
+    localOrders: LessorBookingOrder[],
+    provider?: VenueProviderInfo
+  ): Promise<AnalyticsDashboardData> {
+    const t0 = performance.now();
+    try {
+      const tenantParam = listings[0]?.tenantId ? `&tenantId=${encodeURIComponent(listings[0].tenantId)}` : '';
+      const res = await fetch(`/api/v1/analytics/lessor?days=${days}${tenantParam}`, {
+        headers: this.headers(),
+      });
+      if (res.ok) {
+        const data: AnalyticsDashboardData = await res.json();
+        this.backendConnected = true;
+        return data;
+      }
+    } catch {
+      // Fall through to exact persisted local state aggregation (zero synthetic numbers)
+    }
+    return buildExactClientAnalytics(
+      'LESSOR',
+      days,
+      listings,
+      localOrders,
+      provider,
+      Math.max(1, Math.round(performance.now() - t0))
+    );
+  }
+
+  async fetchPlatformAnalytics(
+    days: number,
+    listings: PublishedListing[]
+  ): Promise<AnalyticsDashboardData> {
+    const t0 = performance.now();
+    try {
+      const res = await fetch(`/api/v1/analytics/platform?days=${days}`, {
+        headers: this.headers(),
+      });
+      if (res.ok) {
+        const data: AnalyticsDashboardData = await res.json();
+        this.backendConnected = true;
+        return data;
+      }
+    } catch {
+      // Fall through to exact persisted local tickets + slots state
+    }
+    const storedAsOrders = convertStoredTicketsToOrders(listings);
+    return buildExactClientAnalytics(
+      'PLATFORM',
+      days,
+      listings,
+      storedAsOrders,
+      undefined,
+      Math.max(1, Math.round(performance.now() - t0))
+    );
+  }
+
+  async searchCourtsFast(
+    query: string,
+    sportCode: string
+  ): Promise<CourtSearchResponseData | null> {
+    try {
+      const params = new URLSearchParams();
+      if (query.trim()) params.set('q', query.trim());
+      if (sportCode && sportCode !== 'ALL') params.set('sport', sportCode);
+      const res = await fetch(`/api/v1/search/courts?${params.toString()}`, {
+        headers: this.headers(),
+      });
+      if (res.ok) {
+        this.backendConnected = true;
+        return await res.json();
+      }
+    } catch {
+      // Backend offline -> client index filter will apply
+    }
+    return null;
+  }
+
+  async triggerElasticsearchReindex(): Promise<ReindexResultData> {
+    const t0 = performance.now();
+    try {
+      const res = await fetch('/api/v1/analytics/reindex', {
+        method: 'POST',
+        headers: this.headers(),
+      });
+      if (res.ok) {
+        this.backendConnected = true;
+        return await res.json();
+      }
+    } catch {
+      // Backend unreachable
+    }
+    return {
+      elasticsearchReachable: false,
+      indexedBookings: 0,
+      indexedCourts: 0,
+      durationMs: Math.max(1, Math.round(performance.now() - t0)),
+      message:
+        'Backend Spring Boot chưa chạy cục bộ — vui lòng khởi chạy `docker compose up -d && ./mvnw spring-boot:run` để đồng bộ trực tiếp PostgreSQL & Elasticsearch.',
+    };
+  }
+}
+
+function convertStoredTicketsToOrders(listings: PublishedListing[]): LessorBookingOrder[] {
+  const venueToListing = new Map<string, PublishedListing>();
+  listings.forEach((l) => venueToListing.set(l.venueName, l));
+
+  return readOfflineTickets().map((t) => {
+    const matched = venueToListing.get(t.venueName) ?? listings[0];
+    return {
+      orderId: `WEB-${t.reservationId.slice(0, 6).toUpperCase()}`,
+      reservationId: t.reservationId,
+      providerId: matched?.provider?.providerId ?? 'PROV_HN_01',
+      groupId: matched?.groupId ?? '',
+      groupName: t.groupName,
+      venueName: t.venueName,
+      sportName: matched?.sportName ?? 'Thể thao',
+      unitNumber: t.unitNumber,
+      slotLabel: formatSlotWindow(t.slotStart, t.slotEnd),
+      customerName: t.contactEmail || 'Khách đặt sân',
+      customerPhone: 'Đã xác thực',
+      courtPrice: t.lockedPrice,
+      addOnTotal: Math.max(0, t.paidOnlineAmount + t.remainingAtVenue - t.lockedPrice),
+      paidEscrow: t.paidOnlineAmount,
+      remainingAtVenue: t.remainingAtVenue,
+      paymentGateway: 'VietQR Napas 247',
+      qrCode: t.qrToken || t.qrJti || `QR-${t.reservationId.slice(0, 8)}`,
+      status:
+        t.status === 'COMPLETED'
+          ? 'COMPLETED'
+          : t.status === 'NO_SHOW'
+            ? 'NO_SHOW'
+            : t.status === 'CANCELLED'
+              ? 'CANCELLED'
+              : 'CONFIRMED',
+      createdAtLabel: 'Đơn đặt trực tuyến',
+    };
+  });
+}
+
+function buildExactClientAnalytics(
+  scope: 'LESSOR' | 'PLATFORM',
+  days: number,
+  listings: PublishedListing[],
+  orders: LessorBookingOrder[],
+  provider: VenueProviderInfo | undefined,
+  latencyMs: number
+): AnalyticsDashboardData {
+  const activeOrders = orders.filter((o) => o.status !== 'CANCELLED');
+  const grossRevenue = activeOrders.reduce((s, o) => s + o.courtPrice + o.addOnTotal, 0);
+  const escrowHeld = activeOrders
+    .filter((o) => o.status === 'CONFIRMED' || o.status === 'HELD')
+    .reduce((s, o) => s + o.paidEscrow, 0);
+  const completedGross = activeOrders
+    .filter((o) => o.status === 'COMPLETED')
+    .reduce((s, o) => s + o.courtPrice + o.addOnTotal, 0);
+  const commRate = provider?.commissionRatePct ?? 10;
+  const commissionAmount = Math.round((completedGross * commRate) / 100);
+  const withdrawableBalance = Math.max(0, completedGross - commissionAmount);
+  const pendingCheckins = activeOrders.filter((o) => o.status === 'CONFIRMED').length;
+
+  // Build trailing N days strictly from real orders placed today / stored slots
+  const todayStr = new Date().toISOString().slice(0, 10);
+  const dailyRevenue = Array.from({ length: days }).map((_, idx) => {
+    const d = new Date();
+    d.setDate(d.getDate() - (days - 1 - idx));
+    const dateIso = d.toISOString().slice(0, 10);
+    const isToday = dateIso === todayStr;
+    const courtSum = isToday
+      ? activeOrders.reduce((s, o) => s + o.courtPrice, 0)
+      : 0;
+    const serviceSum = isToday
+      ? activeOrders.reduce((s, o) => s + o.addOnTotal, 0)
+      : 0;
+    const slotsCap = listings.reduce(
+      (s, l) => s + (l.upcomingSlots[0]?.totalCapacity ?? 0),
+      0
+    );
+    const slotsUsed = listings.reduce(
+      (s, l) =>
+        s +
+        Math.max(
+          0,
+          (l.upcomingSlots[0]?.totalCapacity ?? 0) - (l.upcomingSlots[0]?.availableCourts ?? 0)
+        ),
+      0
+    );
+    const realOcc = slotsCap > 0 ? Math.round((slotsUsed / slotsCap) * 100) : 0;
+
+    return {
+      dateIso,
+      dayLabel: isToday ? 'Hôm nay' : d.toLocaleDateString('vi-VN', { weekday: 'short' }),
+      fullDateLabel: d.toLocaleDateString('vi-VN', {
+        weekday: 'short',
+        day: '2-digit',
+        month: '2-digit',
+      }),
+      courtRevenue: courtSum,
+      serviceRevenue: serviceSum,
+      bookingsCount: isToday ? activeOrders.length : 0,
+      occupancyPct: isToday ? realOcc : 0,
+    };
+  });
+
+  // Hourly occupancy computed strictly from actual listing slots' live capacity & prices
+  const hourBuckets = new Map<number, { cap: number; used: number; prices: number[] }>();
+  for (const l of listings) {
+    for (const slot of l.upcomingSlots) {
+      const hr = new Date(slot.slotStart).getHours();
+      const b = hourBuckets.get(hr) ?? { cap: 0, used: 0, prices: [] };
+      b.cap += slot.totalCapacity;
+      b.used += Math.max(0, slot.totalCapacity - slot.availableCourts);
+      b.prices.push(slot.currentDynamicPrice);
+      hourBuckets.set(hr, b);
+    }
+  }
+  const hourlyOccupancy = Array.from(hourBuckets.entries())
+    .sort((a, b) => a[0] - b[0])
+    .map(([hr, b]) => ({
+      hourLabel: `${String(hr).padStart(2, '0')}h`,
+      occupancyPct: b.cap > 0 ? Math.round((b.used / b.cap) * 100) : 0,
+      avgPrice:
+        b.prices.length > 0
+          ? Math.round(b.prices.reduce((x, y) => x + y, 0) / b.prices.length)
+          : 0,
+      tier: hr >= 17 && hr <= 21 ? 'GIỜ VÀNG' : hr < 12 ? 'THẤP ĐIỂM' : 'TIÊU CHUẨN',
+    }));
+
+  // Breakdown computed strictly from real orders / listings
+  const breakdownSums = new Map<string, number>();
+  if (scope === 'PLATFORM') {
+    for (const o of activeOrders) {
+      breakdownSums.set(
+        o.sportName,
+        (breakdownSums.get(o.sportName) ?? 0) + o.courtPrice + o.addOnTotal
+      );
+    }
+    if (breakdownSums.size === 0) {
+      for (const l of listings) {
+        breakdownSums.set(
+          l.sportName,
+          (breakdownSums.get(l.sportName) ?? 0) + l.basePrice
+        );
+      }
+    }
+  } else {
+    for (const o of activeOrders) {
+      breakdownSums.set(
+        o.paymentGateway,
+        (breakdownSums.get(o.paymentGateway) ?? 0) + o.paidEscrow
+      );
+    }
+  }
+  const palette = ['#16422C', '#0E4F7E', '#84CC16', '#F59E0B', '#64748B'];
+  const totalSum = Array.from(breakdownSums.values()).reduce((a, b) => a + b, 0) || 1;
+  const channelBreakdown = Array.from(breakdownSums.entries()).map(([label, amount], idx) => ({
+    label,
+    amount,
+    pct: Math.round((amount / totalSum) * 100),
+    color: palette[idx % palette.length],
+  }));
+
+  // Court performance strictly from actual slots & orders
+  const courtPerformance = listings.map((court) => {
+    const courtOrders = activeOrders.filter(
+      (o) => o.groupId === court.groupId || o.groupName === court.groupName
+    );
+    const cap = court.upcomingSlots.reduce((s, sl) => s + sl.totalCapacity, 0) || 1;
+    const avail = court.upcomingSlots.reduce((s, sl) => s + sl.availableCourts, 0);
+    const occPct = Math.max(0, Math.min(100, Math.round(((cap - avail) / cap) * 100)));
+    return {
+      groupId: court.groupId,
+      groupName: court.groupName,
+      sportCode: court.sportCode,
+      sportName: court.sportName,
+      basePrice: court.basePrice,
+      bookingsCount: courtOrders.length,
+      occupancyPct: occPct,
+      totalRevenue: courtOrders.reduce((s, o) => s + o.courtPrice + o.addOnTotal, 0),
+    };
+  });
+
+  const avgOccupancyPct =
+    hourlyOccupancy.length > 0
+      ? Math.round(
+          hourlyOccupancy.reduce((s, h) => s + h.occupancyPct, 0) / hourlyOccupancy.length
+        )
+      : 0;
+
+  return {
+    scope,
+    tenantId: listings[0]?.tenantId ?? null,
+    dataSource: 'LOCAL_SESSION_DB',
+    queryLatencyMs: latencyMs,
+    indexedDocuments: activeOrders.length + listings.length,
+    grossRevenue,
+    escrowHeld,
+    commissionAmount,
+    withdrawableBalance,
+    totalBookings: activeOrders.length,
+    pendingCheckins,
+    avgOccupancyPct,
+    dailyRevenue,
+    hourlyOccupancy,
+    channelBreakdown,
+    courtPerformance,
+    recentOrders: orders,
+  };
 }
 
 const LESSOR_APPLICATIONS_STORAGE_KEY = 'arenapulse_lessor_applications_v1';

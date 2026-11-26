@@ -39,6 +39,15 @@ spring:
       port: ${SPRING_DATA_REDIS_PORT:6380}
       timeout: 2000ms
 
+elasticsearch:
+  enabled: ${ELASTICSEARCH_ENABLED:true}
+  uris: ${ELASTICSEARCH_URIS:http://localhost:9200}
+  connect-timeout-ms: 1500
+  read-timeout-ms: 3500
+  sync-interval-ms: 30000
+  bookings-index: arenapulse_bookings_analytics
+  courts-index: arenapulse_court_search
+
   threads:
     virtual:
       enabled: false # Set to true when running on Java 21+

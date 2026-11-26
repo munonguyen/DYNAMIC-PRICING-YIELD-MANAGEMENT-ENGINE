@@ -71,3 +71,60 @@ export const AnimatedVnd: React.FC<AnimatedVndProps> = ({ value, className = '' 
     </span>
   );
 };
+
+interface AnimatedCounterProps {
+  value: number;
+  suffix?: string;
+  formatAsVnd?: boolean;
+  className?: string;
+}
+
+export const AnimatedCounter: React.FC<AnimatedCounterProps> = ({
+  value,
+  suffix = '',
+  formatAsVnd = false,
+  className = '',
+}) => {
+  const prefersReduced = useReducedMotion();
+  const spring = useSpring(0, { stiffness: 120, damping: 22, mass: 0.8 });
+  const [display, setDisplay] = useState<number>(prefersReduced ? value : 0);
+
+  useEffect(() => {
+    if (prefersReduced) {
+      setDisplay(value);
+      return;
+    }
+    spring.set(value);
+    const unsub = spring.on('change', (latest) => {
+      setDisplay(Math.round(latest));
+    });
+    return () => unsub();
+  }, [value, spring, prefersReduced]);
+
+  return (
+    <span className={`tabular-nums ${className}`}>
+      {formatAsVnd ? `${display.toLocaleString('vi-VN')}₫` : `${display.toLocaleString('vi-VN')}${suffix}`}
+    </span>
+  );
+};
+
+export const DASHBOARD_STAGGER_CONTAINER = {
+  hidden: { opacity: 0 },
+  show: {
+    opacity: 1,
+    transition: {
+      staggerChildren: 0.065,
+      delayChildren: 0.04,
+    },
+  },
+};
+
+export const DASHBOARD_STAGGER_ITEM = {
+  hidden: { opacity: 0, y: 18, scale: 0.985 },
+  show: {
+    opacity: 1,
+    y: 0,
+    scale: 1,
+    transition: { duration: 0.52, ease: EXPO_EASE },
+  },
+};

@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import type {
+  AnalyticsDashboardData,
   AppPageId,
   AuthSession,
   CourtServiceOption,
@@ -20,8 +21,14 @@ import {
   formatSlotWindow,
   formatVnd,
   getStoredTicketsForLessor,
+  marketplaceApi,
 } from '../api/marketplaceApi';
-import { EXPO_EASE } from './motionPrimitives';
+import {
+  AnimatedCounter,
+  DASHBOARD_STAGGER_CONTAINER,
+  DASHBOARD_STAGGER_ITEM,
+  EXPO_EASE,
+} from './motionPrimitives';
 import { ActionButton, PillSelect } from './FairwayControls';
 import { LessorAddOnServicesManager } from './LessorAddOnServicesManager';
 import { LessorAnalyticsDashboard } from './LessorAnalyticsDashboard';
@@ -80,94 +87,6 @@ const PRESET_COURT_COVERS: { label: string; url: string }[] = [
   { label: 'Sân Tennis Acrylic Tiêu Chuẩn', url: '/images/court-tennis-pro.jpg' },
   { label: 'Sân Bóng Rổ Sàn Gỗ FIBA', url: '/images/court-basketball-fiba.jpg' },
 ];
-
-function createSeedOrdersForProvider(
-  provider: VenueProviderInfo,
-  providerListings: PublishedListing[]
-): LessorBookingOrder[] {
-  const first = providerListings[0];
-  const second = providerListings[1] ?? first;
-  if (!first) return [];
-
-  const activeAddons = (first.addOnServices ?? []).filter((s) => s.enabled !== false);
-  const sampleAddon = activeAddons[0];
-  const addonSummary = sampleAddon ? `2x ${sampleAddon.name}` : undefined;
-  const addonTotal = sampleAddon ? sampleAddon.unitPrice * 2 : 0;
-  const firstGross = first.basePrice + addonTotal;
-  const firstDeposit = Math.round((first.basePrice * first.depositPercent) / 100) + addonTotal;
-
-  const secondPrice = second.maxPrice;
-  const secondDeposit = Math.round((secondPrice * second.depositPercent) / 100);
-
-  return [
-    {
-      orderId: `ORD-${provider.providerId.slice(-4)}-901`,
-      reservationId: `RES-${provider.providerId}-01`,
-      providerId: provider.providerId,
-      groupId: first.groupId,
-      groupName: first.groupName,
-      venueName: first.venueName,
-      sportName: first.sportName,
-      unitNumber: 'Sân 02',
-      slotLabel: 'Hôm nay • 18:00 – 19:00',
-      customerName: 'Nguyễn Minh Quân',
-      customerPhone: '0988 776 655',
-      courtPrice: first.basePrice,
-      addOnSummary: addonSummary,
-      addOnTotal: addonTotal,
-      paidEscrow: firstDeposit,
-      remainingAtVenue: Math.max(0, firstGross - firstDeposit),
-      paymentGateway: 'VNPAY Ký quỹ',
-      qrCode: `QR-${provider.providerId.replace(/_/g, '')}-8821`,
-      status: 'CONFIRMED',
-      createdAtLabel: '14 phút trước',
-    },
-    {
-      orderId: `ORD-${provider.providerId.slice(-4)}-902`,
-      reservationId: `RES-${provider.providerId}-02`,
-      providerId: provider.providerId,
-      groupId: second.groupId,
-      groupName: second.groupName,
-      venueName: second.venueName,
-      sportName: second.sportName,
-      unitNumber: 'Sân 05',
-      slotLabel: 'Hôm nay • 19:30 – 21:00',
-      customerName: 'Trần Hoàng Bách',
-      customerPhone: '0904 512 889',
-      courtPrice: secondPrice,
-      addOnSummary: undefined,
-      addOnTotal: 0,
-      paidEscrow: secondPrice,
-      remainingAtVenue: 0,
-      paymentGateway: 'VietQR Napas 247',
-      qrCode: `QR-${provider.providerId.replace(/_/g, '')}-9940`,
-      status: 'CONFIRMED',
-      createdAtLabel: '38 phút trước',
-    },
-    {
-      orderId: `ORD-${provider.providerId.slice(-4)}-899`,
-      reservationId: `RES-${provider.providerId}-03`,
-      providerId: provider.providerId,
-      groupId: first.groupId,
-      groupName: first.groupName,
-      venueName: first.venueName,
-      sportName: first.sportName,
-      unitNumber: 'Sân 01',
-      slotLabel: 'Hôm nay • 07:30 – 08:30',
-      customerName: 'Lê Thảo Vy',
-      customerPhone: '0912 339 401',
-      courtPrice: first.minPrice,
-      addOnSummary: sampleAddon ? `1x ${sampleAddon.name}` : undefined,
-      addOnTotal: sampleAddon ? sampleAddon.unitPrice : 0,
-      paidEscrow: first.minPrice + (sampleAddon ? sampleAddon.unitPrice : 0),
-      remainingAtVenue: 0,
-      paymentGateway: 'Ví MoMo',
-      qrCode: `QR-${provider.providerId.replace(/_/g, '')}-7715`,
-      status: 'COMPLETED',
-      createdAtLabel: 'Sáng nay • Đã quét QR',
-    },
-  ];
-}
 
 function readPersistedOrders(): Record<string, LessorBookingOrder[]> {
   if (typeof window === 'undefined') return {};
@@ -302,7 +221,7 @@ export const LessorPartnerPortal: React.FC<LessorPartnerPortalProps> = ({
     window.setTimeout(() => setToastMsg(null), 3200);
   };
 
-  // --- BOOKING ORDERS & QR CHECK-IN STATE ---
+  // --- BOOKING ORDERS & QR CHECK-IN STATE (REAL STORED TICKETS + DB/ES ORDERS) ---
   const [ordersByProvider, setOrdersByProvider] = useState<Record<string, LessorBookingOrder[]>>(
     () => readPersistedOrders()
   );
@@ -310,19 +229,19 @@ export const LessorPartnerPortal: React.FC<LessorPartnerPortalProps> = ({
     'ALL' | 'CONFIRMED' | 'COMPLETED' | 'NO_SHOW'
   >('ALL');
   const [qrScanInput, setQrScanInput] = useState<string>('');
+  const [analyticsDays, setAnalyticsDays] = useState<number>(7);
+  const [analyticsData, setAnalyticsData] = useState<AnalyticsDashboardData | null>(null);
+  const [analyticsLoading, setAnalyticsLoading] = useState<boolean>(false);
+  const [reindexingEs, setReindexingEs] = useState<boolean>(false);
 
-  const providerOrders = useMemo<LessorBookingOrder[]>(() => {
-    const baseOrders =
-      ordersByProvider[activeProvider.providerId] ??
-      createSeedOrdersForProvider(activeProvider, myListings);
-
-    // Merge real player checkout tickets belonging to any venue of this provider
+  const localProviderOrders = useMemo<LessorBookingOrder[]>(() => {
+    const savedOrders = ordersByProvider[activeProvider.providerId] ?? [];
     const myVenueNames = new Set(myListings.map((l) => l.venueName));
     const storedTickets = getStoredTicketsForLessor().filter((t) =>
       myVenueNames.has(t.venueName)
     );
     const convertedLiveTickets: LessorBookingOrder[] = storedTickets
-      .filter((t) => !baseOrders.some((o) => o.reservationId === t.reservationId))
+      .filter((t) => !savedOrders.some((o) => o.reservationId === t.reservationId))
       .map((t) => ({
         orderId: `WEB-${t.reservationId.slice(0, 6).toUpperCase()}`,
         reservationId: t.reservationId,
@@ -349,11 +268,51 @@ export const LessorPartnerPortal: React.FC<LessorPartnerPortalProps> = ({
               : t.status === 'CANCELLED'
                 ? 'CANCELLED'
                 : 'CONFIRMED',
-        createdAtLabel: 'Đặt trực tiếp từ Web',
+        createdAtLabel: 'Đơn đặt thực tế',
       }));
 
-    return [...convertedLiveTickets, ...baseOrders];
-  }, [ordersByProvider, activeProvider, myListings]);
+    return [...convertedLiveTickets, ...savedOrders];
+  }, [ordersByProvider, activeProvider.providerId, myListings]);
+
+  const loadAnalyticsFromDbOrEs = async () => {
+    setAnalyticsLoading(true);
+    try {
+      const data = await marketplaceApi.fetchLessorAnalytics(
+        analyticsDays,
+        myListings,
+        localProviderOrders,
+        activeProvider
+      );
+      setAnalyticsData(data);
+    } finally {
+      setAnalyticsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    let active = true;
+    setAnalyticsLoading(true);
+    marketplaceApi
+      .fetchLessorAnalytics(analyticsDays, myListings, localProviderOrders, activeProvider)
+      .then((data) => {
+        if (active) setAnalyticsData(data);
+      })
+      .finally(() => {
+        if (active) setAnalyticsLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [analyticsDays, activeProvider.providerId, myListings, localProviderOrders]);
+
+  const providerOrders = useMemo<LessorBookingOrder[]>(() => {
+    const dbOrders = analyticsData?.recentOrders ?? [];
+    const seen = new Set(localProviderOrders.map((o) => o.reservationId));
+    return [
+      ...localProviderOrders,
+      ...dbOrders.filter((d) => d.reservationId && !seen.has(d.reservationId)),
+    ];
+  }, [localProviderOrders, analyticsData?.recentOrders]);
 
   const updateOrderStatus = (
     orderId: string,
@@ -567,7 +526,7 @@ export const LessorPartnerPortal: React.FC<LessorPartnerPortalProps> = ({
     [payouts, activeProvider.providerId]
   );
 
-  // --- COMPUTED METRICS FOR THIS LESSOR ---
+  // --- COMPUTED METRICS FOR THIS LESSOR (100% REAL DATA FROM DB/ES + STORED ORDERS) ---
   const metrics = useMemo(() => {
     const publishedGroups = myListings.filter((l) => l.published !== false);
     const totalPhysicalCourts = myListings.reduce(
@@ -578,34 +537,45 @@ export const LessorPartnerPortal: React.FC<LessorPartnerPortalProps> = ({
       (sum, l) => sum + (l.addOnServices ?? []).filter((s) => s.enabled !== false).length,
       0
     );
+    const useRemoteAnalytics =
+      analyticsData && analyticsData.dataSource !== 'LOCAL_SESSION_DB';
+
     const activeOrders = providerOrders.filter((o) => o.status !== 'CANCELLED');
-    const grossRevenue = activeOrders.reduce((s, o) => s + o.courtPrice + o.addOnTotal, 0);
-    const escrowHeld = providerOrders
+    const localGross = activeOrders.reduce((s, o) => s + o.courtPrice + o.addOnTotal, 0);
+    const localEscrow = providerOrders
       .filter((o) => o.status === 'CONFIRMED' || o.status === 'HELD')
       .reduce((s, o) => s + o.paidEscrow, 0);
-    const completedGross = providerOrders
+    const localCompletedGross = providerOrders
       .filter((o) => o.status === 'COMPLETED')
       .reduce((s, o) => s + o.courtPrice + o.addOnTotal, 0);
 
-    // Add baseline weekly historical volume so wallet feels realistic
-    const weeklyGross = completedGross + 34_800_000;
-    const commissionAmt = Math.round((weeklyGross * activeProvider.commissionRatePct) / 100);
+    const grossRevenue = useRemoteAnalytics ? analyticsData.grossRevenue : localGross;
+    const escrowHeld = useRemoteAnalytics ? analyticsData.escrowHeld : localEscrow;
+    const weeklyGross = useRemoteAnalytics ? analyticsData.grossRevenue : localCompletedGross;
+    const commissionAmt = useRemoteAnalytics
+      ? analyticsData.commissionAmount
+      : Math.round((localCompletedGross * activeProvider.commissionRatePct) / 100);
     const withdrawnNet = myPayouts.reduce((s, p) => s + p.netReceived, 0);
-    const withdrawableBalance = Math.max(0, weeklyGross - commissionAmt - withdrawnNet);
+    const rawWithdrawable = useRemoteAnalytics
+      ? analyticsData.withdrawableBalance
+      : Math.max(0, localCompletedGross - commissionAmt);
+    const withdrawableBalance = Math.max(0, rawWithdrawable - withdrawnNet);
 
     return {
       publishedCount: publishedGroups.length,
       totalGroups: myListings.length,
       totalPhysicalCourts,
       totalActiveAddons,
-      pendingCheckins: providerOrders.filter((o) => o.status === 'CONFIRMED').length,
-      grossRevenue: weeklyGross + escrowHeld,
+      pendingCheckins: useRemoteAnalytics
+        ? analyticsData.pendingCheckins
+        : providerOrders.filter((o) => o.status === 'CONFIRMED').length,
+      grossRevenue,
       escrowHeld,
       weeklyGross,
       commissionAmt,
       withdrawableBalance,
     };
-  }, [myListings, providerOrders, activeProvider.commissionRatePct, myPayouts]);
+  }, [myListings, providerOrders, activeProvider.commissionRatePct, myPayouts, analyticsData]);
 
   const handleRequestPayout = () => {
     if (metrics.withdrawableBalance < 100_000) {
@@ -891,45 +861,62 @@ export const LessorPartnerPortal: React.FC<LessorPartnerPortalProps> = ({
                   transition={{ duration: 0.24, ease: EXPO_EASE }}
                   className="space-y-6"
                 >
-                  {/* 4 Executive KPI Cards */}
-                  <div className="grid grid-cols-2 gap-3.5 xl:grid-cols-4">
-                    <div className="rounded-[24px] border border-neutral-200/90 bg-white p-5 shadow-xs">
+                  {/* 4 Executive KPI Cards with Staggered Reveal + Animated Count-up */}
+                  <motion.div
+                    variants={DASHBOARD_STAGGER_CONTAINER}
+                    initial="hidden"
+                    animate="show"
+                    className="grid grid-cols-2 gap-3.5 xl:grid-cols-4"
+                  >
+                    <motion.div
+                      variants={DASHBOARD_STAGGER_ITEM}
+                      className="rounded-[24px] border border-neutral-200/90 bg-white p-5 shadow-xs"
+                    >
                       <span className="text-[11px] font-semibold text-neutral-500">
-                        Doanh thu gộp 7 ngày
+                        Doanh thu thực tế ({analyticsDays} ngày)
                       </span>
-                      <div className="mt-1.5 tabular-nums text-xl sm:text-2xl font-bold text-[#0F172A]">
-                        {formatVnd(metrics.grossRevenue)}
+                      <div className="mt-1.5 text-xl sm:text-2xl font-bold text-[#0F172A]">
+                        <AnimatedCounter value={metrics.grossRevenue} formatAsVnd />
                       </div>
                       <span className="mt-1 inline-block text-[11px] font-semibold text-[#16422C]">
                         ↑ Tiền sân + Nước &amp; Dịch vụ
                       </span>
-                    </div>
+                    </motion.div>
 
-                    <div className="rounded-[24px] border border-neutral-200/90 bg-white p-5 shadow-xs">
+                    <motion.div
+                      variants={DASHBOARD_STAGGER_ITEM}
+                      className="rounded-[24px] border border-neutral-200/90 bg-white p-5 shadow-xs"
+                    >
                       <span className="text-[11px] font-semibold text-neutral-500">
                         Tiền cọc giữ tại Ký quỹ
                       </span>
-                      <div className="mt-1.5 tabular-nums text-xl sm:text-2xl font-bold text-[#0E4F7E]">
-                        {formatVnd(metrics.escrowHeld)}
+                      <div className="mt-1.5 text-xl sm:text-2xl font-bold text-[#0E4F7E]">
+                        <AnimatedCounter value={metrics.escrowHeld} formatAsVnd />
                       </div>
                       <span className="mt-1 inline-block text-[11px] text-neutral-500">
                         Giải ngân ngay khi quét QR
                       </span>
-                    </div>
+                    </motion.div>
 
-                    <div className="rounded-[24px] border border-neutral-200/90 bg-white p-5 shadow-xs">
+                    <motion.div
+                      variants={DASHBOARD_STAGGER_ITEM}
+                      className="rounded-[24px] border border-neutral-200/90 bg-white p-5 shadow-xs"
+                    >
                       <span className="text-[11px] font-semibold text-neutral-500">
                         Đơn chờ khách nhận sân
                       </span>
-                      <div className="mt-1.5 tabular-nums text-xl sm:text-2xl font-bold text-[#16422C]">
-                        {metrics.pendingCheckins} ca
+                      <div className="mt-1.5 text-xl sm:text-2xl font-bold text-[#16422C]">
+                        <AnimatedCounter value={metrics.pendingCheckins} suffix=" ca" />
                       </div>
                       <span className="mt-1 inline-block text-[11px] text-neutral-500">
                         Ân hạn trễ tối đa 15 phút
                       </span>
-                    </div>
+                    </motion.div>
 
-                    <div className="rounded-[24px] border border-neutral-200/90 bg-white p-5 shadow-xs">
+                    <motion.div
+                      variants={DASHBOARD_STAGGER_ITEM}
+                      className="rounded-[24px] border border-neutral-200/90 bg-white p-5 shadow-xs"
+                    >
                       <span className="text-[11px] font-semibold text-neutral-500">
                         Quy mô mở thuê hiện tại
                       </span>
@@ -939,16 +926,28 @@ export const LessorPartnerPortal: React.FC<LessorPartnerPortalProps> = ({
                       <span className="mt-1 inline-block text-[11px] text-neutral-500">
                         {metrics.totalPhysicalCourts} sân con • {metrics.totalActiveAddons} dịch vụ
                       </span>
-                    </div>
-                  </div>
+                    </motion.div>
+                  </motion.div>
 
                   {/* Interactive Revenue, Occupancy & Channel Charts Dashboard */}
-                  {!isStaffOnly && (
+                  {!isStaffOnly && analyticsData && (
                     <LessorAnalyticsDashboard
                       mode="LESSOR"
-                      provider={activeProvider}
-                      listings={myListings}
-                      orders={providerOrders}
+                      analytics={analyticsData}
+                      days={analyticsDays}
+                      onChangeDays={setAnalyticsDays}
+                      loading={analyticsLoading}
+                      reindexing={reindexingEs}
+                      onReindexEs={async () => {
+                        setReindexingEs(true);
+                        try {
+                          const res = await marketplaceApi.triggerElasticsearchReindex();
+                          flashToast(res.message);
+                          await loadAnalyticsFromDbOrEs();
+                        } finally {
+                          setReindexingEs(false);
+                        }
+                      }}
                     />
                   )}
 
@@ -1115,6 +1114,14 @@ export const LessorPartnerPortal: React.FC<LessorPartnerPortalProps> = ({
                           </div>
                         </div>
                       ))}
+
+                      {filteredOrders.length === 0 && (
+                        <div className="p-8 text-center text-xs text-neutral-500">
+                          Chưa có đơn đặt sân nào trong bộ lọc này. Khi khách hàng đăng nhập và hoàn
+                          tất thanh toán đặt sân cho cơ sở của bạn (hoặc khi kết nối PostgreSQL +
+                          Elasticsearch), đơn đặt sẽ tự động hiển thị tại đây.
+                        </div>
+                      )}
                     </div>
                   </div>
                 </motion.div>

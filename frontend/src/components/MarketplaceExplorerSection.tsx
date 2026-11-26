@@ -1,6 +1,7 @@
 import React, { useEffect, useLayoutEffect, useState } from 'react';
 import { motion } from 'framer-motion';
 import type {
+  CourtSearchResponseData,
   PriceQuote,
   PublishedListing,
   RoleCode,
@@ -8,7 +9,7 @@ import type {
   VenueAnnouncement,
   VenueLocationInfo,
 } from '../types/marketplace';
-import { formatSlotWindow, formatVnd } from '../api/marketplaceApi';
+import { formatSlotWindow, formatVnd, marketplaceApi } from '../api/marketplaceApi';
 import { EXPO_EASE, ScrollReveal } from './motionPrimitives';
 import { ActionButton, PillSelect } from './FairwayControls';
 import { CourtDetailView } from './CourtDetailView';
@@ -91,6 +92,25 @@ export const MarketplaceExplorerSection: React.FC<MarketplaceExplorerSectionProp
   const [durationFilter, setDurationFilter] = useState<'ALL' | '60' | '90'>('ALL');
   const [sortBy, setSortBy] = useState<'RECOMMENDED' | 'PRICE_ASC' | 'CAPACITY_DESC' | 'RATING_DESC'>('RECOMMENDED');
   const [detailListingId, setDetailListingId] = useState<string | null>(null);
+  const [esSearchInfo, setEsSearchInfo] = useState<CourtSearchResponseData | null>(null);
+
+  useEffect(() => {
+    const q = searchQuery.trim();
+    if (!q && selectedSport === 'ALL') {
+      setEsSearchInfo(null);
+      return;
+    }
+    let active = true;
+    const timer = window.setTimeout(() => {
+      marketplaceApi.searchCourtsFast(q, selectedSport).then((resp) => {
+        if (active && resp) setEsSearchInfo(resp);
+      });
+    }, 220);
+    return () => {
+      active = false;
+      window.clearTimeout(timer);
+    };
+  }, [searchQuery, selectedSport]);
 
   const selectedLocationObj =
     locations.find((loc) => loc.locationId === selectedLocationId) ?? null;
@@ -333,6 +353,17 @@ export const MarketplaceExplorerSection: React.FC<MarketplaceExplorerSectionProp
                     onChange={(e) => setSearchQuery(e.target.value)}
                     className="w-full rounded-full border border-neutral-200/90 bg-white py-2.5 pl-10 pr-4 text-xs sm:text-[13px] text-[#0F172A] placeholder:text-neutral-400 focus:border-[#16422C] focus:outline-none"
                   />
+                  {esSearchInfo && (
+                    <div className="mt-1.5 flex items-center gap-1.5 px-2 text-[10.5px] font-semibold text-[#16422C]">
+                      <span>
+                        {esSearchInfo.dataSource === 'ELASTICSEARCH_CQRS'
+                          ? '⚡ Đọc từ Elasticsearch'
+                          : '🗄 Đọc từ PostgreSQL DB'}
+                      </span>
+                      <span className="text-neutral-400">•</span>
+                      <span className="tabular-nums">{esSearchInfo.queryLatencyMs}ms</span>
+                    </div>
+                  )}
                 </div>
 
                 {/* Availability Filter (Còn sân hay không) */}

@@ -366,6 +366,76 @@ export interface LessorPayoutRecord {
   status: 'SETTLED' | 'PROCESSING';
 }
 
+export interface DailyRevenuePoint {
+  dateIso: string;
+  dayLabel: string;
+  fullDateLabel: string;
+  courtRevenue: number;
+  serviceRevenue: number;
+  bookingsCount: number;
+  occupancyPct: number;
+}
+
+export interface HourlyOccupancyPoint {
+  hourLabel: string;
+  occupancyPct: number;
+  avgPrice: number;
+  tier: 'THẤP ĐIỂM' | 'TIÊU CHUẨN' | 'GIỜ VÀNG' | string;
+}
+
+export interface ChannelBreakdownItem {
+  label: string;
+  pct: number;
+  amount: number;
+  color: string;
+}
+
+export interface CourtPerformanceItem {
+  groupId: string;
+  groupName: string;
+  sportCode: string;
+  sportName: string;
+  basePrice: number;
+  bookingsCount: number;
+  occupancyPct: number;
+  totalRevenue: number;
+}
+
+export interface AnalyticsDashboardData {
+  scope: 'LESSOR' | 'PLATFORM' | string;
+  tenantId: string | null;
+  dataSource: 'ELASTICSEARCH_CQRS' | 'POSTGRESQL_DB' | 'LOCAL_SESSION_DB' | string;
+  queryLatencyMs: number;
+  indexedDocuments: number;
+  grossRevenue: number;
+  escrowHeld: number;
+  commissionAmount: number;
+  withdrawableBalance: number;
+  totalBookings: number;
+  pendingCheckins: number;
+  avgOccupancyPct: number;
+  dailyRevenue: DailyRevenuePoint[];
+  hourlyOccupancy: HourlyOccupancyPoint[];
+  channelBreakdown: ChannelBreakdownItem[];
+  courtPerformance: CourtPerformanceItem[];
+  recentOrders: LessorBookingOrder[];
+}
+
+export interface CourtSearchResponseData {
+  dataSource: 'ELASTICSEARCH_CQRS' | 'POSTGRESQL_DB' | 'LOCAL_FILTER' | string;
+  queryLatencyMs: number;
+  totalHits: number;
+  hits: { groupId: string; score: number }[];
+}
+
+export interface ReindexResultData {
+  elasticsearchReachable: boolean;
+  indexedBookings: number;
+  indexedCourts: number;
+  durationMs: number;
+  message: string;
+}
+
 export type AppPageId =
   | 'home'
   | 'courts'

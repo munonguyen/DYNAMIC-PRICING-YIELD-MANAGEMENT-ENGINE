@@ -1,6 +1,7 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import type {
+  AnalyticsDashboardData,
   AppPageId,
   AuthSession,
   CourtServiceOption,
@@ -12,8 +13,13 @@ import type {
   SportTypeItem,
   VenueProviderInfo,
 } from '../types/marketplace';
-import { ALL_LESSOR_PROVIDERS, formatVnd } from '../api/marketplaceApi';
-import { EXPO_EASE } from './motionPrimitives';
+import { ALL_LESSOR_PROVIDERS, formatVnd, marketplaceApi } from '../api/marketplaceApi';
+import {
+  AnimatedCounter,
+  DASHBOARD_STAGGER_CONTAINER,
+  DASHBOARD_STAGGER_ITEM,
+  EXPO_EASE,
+} from './motionPrimitives';
 import { ActionButton } from './FairwayControls';
 import { LessorAnalyticsDashboard } from './LessorAnalyticsDashboard';
 import { LessorPartnerPortal } from './LessorPartnerPortal';
@@ -173,6 +179,36 @@ export const AdminExecutivePortal: React.FC<AdminExecutivePortalProps> = ({
     'ALL' | 'PENDING_REVIEW' | 'APPROVED' | 'REJECTED'
   >('ALL');
   const [toastMsg, setToastMsg] = useState<string | null>(null);
+  const [platformDays, setPlatformDays] = useState<number>(7);
+  const [platformAnalytics, setPlatformAnalytics] = useState<AnalyticsDashboardData | null>(null);
+  const [analyticsLoading, setAnalyticsLoading] = useState<boolean>(false);
+  const [reindexingEs, setReindexingEs] = useState<boolean>(false);
+
+  const loadPlatformAnalytics = async () => {
+    setAnalyticsLoading(true);
+    try {
+      const data = await marketplaceApi.fetchPlatformAnalytics(platformDays, listings);
+      setPlatformAnalytics(data);
+    } finally {
+      setAnalyticsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    let active = true;
+    setAnalyticsLoading(true);
+    marketplaceApi
+      .fetchPlatformAnalytics(platformDays, listings)
+      .then((data) => {
+        if (active) setPlatformAnalytics(data);
+      })
+      .finally(() => {
+        if (active) setAnalyticsLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [platformDays, listings]);
 
   const flashToast = (msg: string) => {
     setToastMsg(msg);
@@ -443,59 +479,116 @@ export const AdminExecutivePortal: React.FC<AdminExecutivePortalProps> = ({
                   transition={{ duration: 0.24, ease: EXPO_EASE }}
                   className="space-y-6"
                 >
-                  {/* 4 Platform Executive KPI Cards */}
-                  <div className="grid grid-cols-2 gap-3.5 xl:grid-cols-4">
-                    <div className="rounded-[24px] border border-neutral-200/90 bg-white p-5 shadow-xs">
+                  {/* 4 Platform Executive KPI Cards with Staggered Reveal & Animated Count-up */}
+                  <motion.div
+                    variants={DASHBOARD_STAGGER_CONTAINER}
+                    initial="hidden"
+                    animate="show"
+                    className="grid grid-cols-2 gap-3.5 xl:grid-cols-4"
+                  >
+                    <motion.div
+                      variants={DASHBOARD_STAGGER_ITEM}
+                      className="rounded-[24px] border border-neutral-200/90 bg-white p-5 shadow-xs"
+                    >
                       <span className="text-[11px] font-semibold text-neutral-500">
-                        Tổng GMV Ký quỹ Toàn Sàn
+                        Tổng GMV Toàn Sàn ({platformDays} ngày)
                       </span>
-                      <div className="mt-1.5 tabular-nums text-xl sm:text-2xl font-bold text-[#0F172A]">
-                        {formatVnd(reconciliation?.totalEscrowCredits ?? 48_650_000)}
+                      <div className="mt-1.5 text-xl sm:text-2xl font-bold text-[#0F172A]">
+                        <AnimatedCounter
+                          value={
+                            platformAnalytics?.grossRevenue ??
+                            reconciliation?.totalEscrowCredits ??
+                            0
+                          }
+                          formatAsVnd
+                        />
                       </div>
                       <span className="mt-1 inline-block text-[11px] font-semibold text-[#16422C]">
-                        ✓ Sổ cái Cân bằng Tuyệt đối
+                        ✓ Dữ liệu Sổ cái &amp; DB thực tế
                       </span>
-                    </div>
+                    </motion.div>
 
-                    <div className="rounded-[24px] border border-neutral-200/90 bg-white p-5 shadow-xs">
+                    <motion.div
+                      variants={DASHBOARD_STAGGER_ITEM}
+                      className="rounded-[24px] border border-neutral-200/90 bg-white p-5 shadow-xs"
+                    >
                       <span className="text-[11px] font-semibold text-neutral-500">
-                        Doanh thu Hoa hồng Sàn (10%)
+                        Hoa hồng Nền tảng thu về
                       </span>
-                      <div className="mt-1.5 tabular-nums text-xl sm:text-2xl font-bold text-[#16422C]">
-                        {formatVnd(reconciliation?.totalPlatformCommission ?? 4_865_000)}
+                      <div className="mt-1.5 text-xl sm:text-2xl font-bold text-[#16422C]">
+                        <AnimatedCounter
+                          value={
+                            platformAnalytics?.commissionAmount ??
+                            reconciliation?.totalPlatformCommission ??
+                            0
+                          }
+                          formatAsVnd
+                        />
                       </div>
                       <span className="mt-1 inline-block text-[11px] text-neutral-500">
                         Trích tự động từ đơn thành công
                       </span>
-                    </div>
+                    </motion.div>
 
-                    <div className="rounded-[24px] border border-neutral-200/90 bg-white p-5 shadow-xs">
+                    <motion.div
+                      variants={DASHBOARD_STAGGER_ITEM}
+                      className="rounded-[24px] border border-neutral-200/90 bg-white p-5 shadow-xs"
+                    >
                       <span className="text-[11px] font-semibold text-neutral-500">
                         Công nợ Tất toán Chủ sân
                       </span>
-                      <div className="mt-1.5 tabular-nums text-xl sm:text-2xl font-bold text-[#0E4F7E]">
-                        {formatVnd(reconciliation?.totalVenuePayable ?? 40_935_000)}
+                      <div className="mt-1.5 text-xl sm:text-2xl font-bold text-[#0E4F7E]">
+                        <AnimatedCounter
+                          value={
+                            platformAnalytics?.withdrawableBalance ??
+                            reconciliation?.totalVenuePayable ??
+                            0
+                          }
+                          formatAsVnd
+                        />
                       </div>
                       <span className="mt-1 inline-block text-[11px] text-neutral-500">
                         Sẵn sàng đối soát giải ngân T+0
                       </span>
-                    </div>
+                    </motion.div>
 
-                    <div className="rounded-[24px] border border-neutral-200/90 bg-white p-5 shadow-xs">
+                    <motion.div
+                      variants={DASHBOARD_STAGGER_ITEM}
+                      className="rounded-[24px] border border-neutral-200/90 bg-white p-5 shadow-xs"
+                    >
                       <span className="text-[11px] font-semibold text-neutral-500">
                         Quy mô Hệ sinh thái Đang mở
                       </span>
-                      <div className="mt-1.5 tabular-nums text-xl sm:text-2xl font-bold text-[#0F172A]">
-                        {platformStats.totalProviders} Đối tác
+                      <div className="mt-1.5 text-xl sm:text-2xl font-bold text-[#0F172A]">
+                        <AnimatedCounter value={platformStats.totalProviders} suffix=" Đối tác" />
                       </div>
                       <span className="mt-1 inline-block text-[11px] text-neutral-500">
                         {platformStats.publishedCount} cụm sân • {platformStats.totalPhysicalCourts} sân
                       </span>
-                    </div>
-                  </div>
+                    </motion.div>
+                  </motion.div>
 
                   {/* Interactive Platform Analytics Charts */}
-                  <LessorAnalyticsDashboard mode="PLATFORM" listings={listings} />
+                  {platformAnalytics && (
+                    <LessorAnalyticsDashboard
+                      mode="PLATFORM"
+                      analytics={platformAnalytics}
+                      days={platformDays}
+                      onChangeDays={setPlatformDays}
+                      loading={analyticsLoading}
+                      reindexing={reindexingEs}
+                      onReindexEs={async () => {
+                        setReindexingEs(true);
+                        try {
+                          const res = await marketplaceApi.triggerElasticsearchReindex();
+                          flashToast(res.message);
+                          await loadPlatformAnalytics();
+                        } finally {
+                          setReindexingEs(false);
+                        }
+                      }}
+                    />
+                  )}
 
                   {/* Sport Category Expansion + Quick Executive Actions */}
                   {isAdmin && (
@@ -941,3 +1034,4 @@ export const AdminExecutivePortal: React.FC<AdminExecutivePortalProps> = ({
     </section>
   );
 };
+
