@@ -28,16 +28,6 @@ Bản kiểm tra ngày 27/11/2026 bắt đầu từ `ce8bebc`. Spring Boot, Post
 - 82 kiểm tra có kỳ vọng riêng về quyền, phản hồi hoặc nghiệp vụ, bao gồm xác nhận dữ liệu từ DB sau khi ghi. Có thêm 12 yêu cầu giữ cùng ca với hai sân trống. Kết quả có hai lượt thành công và mười phản hồi 409.
 - Maven chạy 66 kiểm thử. Web đã build và mobile đã qua TypeScript. Kiểm tra trình duyệt thực hiện ở năm cổng. Giao dịch thật, thiết bị quét vật lý và kiểm thử tải dài chưa được xác minh.
 
-## Nhánh hoạt động theo service
+## Danh mục nhánh hiện hành
 
-| Nhánh | Phạm vi |
-| --- | --- |
-| `service/shared/role-controllers-and-auth` | Hợp đồng API chung, đăng nhập, điều hướng theo quyền, danh mục và dữ liệu dùng chung |
-| `service/shared/payments/gateway-integration` | Cổng thanh toán, trạng thái giao dịch và xác nhận của đối tác |
-| `service/customer/checkout-and-payment-history` | Quyền chủ đơn, giữ sân, lịch sử và vé |
-| `service/lessor/venue-operations` | Cấu hình sân, ca, công bố và quy tắc giá |
-| `service/staff/checkin-and-support` | Danh sách nhận sân, QR, PIN và chat |
-| `service/accountant/finance-reconciliation` | Sổ cái, phân quyền đối soát và hoàn tiền |
-| `service/admin/platform-governance-and-kyc` | Quản trị, KYC và điều hành toàn sàn |
-
-Mỗi nhánh hoạt động xác định nơi tích hợp thay đổi của service. Các nhánh dùng chung nền Spring Boot, PostgreSQL và frontend. `main` ghép các thay đổi đã kiểm thử. Nhánh `service/shared/payments/vietqr-transfer` và các nhánh feature cũ lưu lịch sử phát triển.
+[Mở danh mục nhánh theo hệ thống và chức năng](feature-branches.md).

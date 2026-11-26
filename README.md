@@ -4,6 +4,8 @@
 
 Hệ thống tối ưu hóa doanh thu cho các tài sản có tính chất hết hạn theo thời gian (**Perishable Inventory**) như cụm sân thể thao (Pickleball, Cầu lông, bóng đá), phòng lưu trú hoặc phương tiện cho thuê.
 
+[Mở danh mục nhánh theo hệ thống và chức năng](docs/feature-branches.md).
+
 ---
 
 ## 1. Chuẩn Tham Chiếu Quốc Tế
