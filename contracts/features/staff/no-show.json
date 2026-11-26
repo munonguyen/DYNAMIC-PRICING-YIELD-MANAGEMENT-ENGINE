@@ -1,0 +1,26 @@
+{
+  "branch": "service/staff/no-show",
+  "title": "Ghi nhận khách bỏ lịch",
+  "scope": "Đánh dấu đơn bỏ lịch tại quầy.",
+  "operations": [
+    {
+      "method": "POST",
+      "path": "/api/v1/checkins/{reservationId}/no-show",
+      "operationId": "markNoShow"
+    }
+  ],
+  "source": [
+    {
+      "file": "src/main/java/com/yieldengine/controller/staff/StaffCheckInController.java",
+      "anchors": [
+        "markNoShow("
+      ]
+    },
+    {
+      "file": "frontend/src/components/LessorPartnerPortal.tsx",
+      "anchors": [
+        "NO_SHOW"
+      ]
+    }
+  ]
+}
