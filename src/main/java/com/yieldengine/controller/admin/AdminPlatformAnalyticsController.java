@@ -20,7 +20,7 @@ public class AdminPlatformAnalyticsController {
     private final SearchAndAnalyticsSyncService syncService;
     private final RbacGuard rbacGuard;
 
-    @Operation(summary = "[ADMIN / ACCOUNTANT] Get platform-wide analytics dashboard from Elasticsearch / PostgreSQL")
+    @Operation(summary = "[ADMIN / ACCOUNTANT] Get platform-wide analytics from PostgreSQL")
     @GetMapping("/platform")
     public ResponseEntity<AnalyticsDashboardResponse> getPlatformAnalytics(
             @RequestParam(defaultValue = "7") int days
@@ -29,10 +29,10 @@ public class AdminPlatformAnalyticsController {
         return ResponseEntity.ok(syncService.getDashboardAnalytics("PLATFORM", null, days));
     }
 
-    @Operation(summary = "[AUTHENTICATED] Trigger full PostgreSQL -> Elasticsearch 8 CQRS synchronization")
+    @Operation(summary = "[ADMIN] Trigger PostgreSQL to Elasticsearch synchronization")
     @PostMapping("/reindex")
     public ResponseEntity<ReindexResponse> reindexElasticsearch() {
-        rbacGuard.requireAuthenticated();
+        rbacGuard.requirePlatformRole(SystemConstant.ROLE_ADMIN);
         return ResponseEntity.ok(syncService.syncAllFromDatabase());
     }
 }
