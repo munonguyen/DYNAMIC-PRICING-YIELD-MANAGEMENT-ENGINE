@@ -13,6 +13,7 @@ import java.util.UUID;
 @NoArgsConstructor
 @AllArgsConstructor
 public class HoldSlotResponse {
+    private UUID bookingId;
     private UUID reservationId;
     private UUID unitId;
     private String unitNumber;
@@ -20,6 +21,8 @@ public class HoldSlotResponse {
     private Instant slotStart;
     private String userId;
     private Long lockedPrice;
+    private Long depositAmount;
     private String status;
     private Instant holdExpiresAt;
+    private String qrToken;
 }

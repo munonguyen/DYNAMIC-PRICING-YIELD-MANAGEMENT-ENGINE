@@ -1,5 +1,7 @@
 package com.yieldengine.dto.request;
 
+import com.yieldengine.validate.annotation.ValidPriceBounds;
+import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
@@ -14,9 +16,13 @@ import java.util.UUID;
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
+@ValidPriceBounds
 public class ResourceGroupRequest {
 
     private UUID tenantId;
+
+    @Builder.Default
+    private String sportCode = "PICKLEBALL";
 
     @NotBlank(message = "code is required")
     private String code;
@@ -45,4 +51,19 @@ public class ResourceGroupRequest {
 
     @Builder.Default
     private Integer holdTtlSeconds = 600;
+
+    @Min(0)
+    @Max(100)
+    @Builder.Default
+    private Short depositPercent = 0;
+
+    private UUID cancellationPolicyId;
+
+    @Min(5)
+    @Max(120)
+    @Builder.Default
+    private Integer noshowGraceMinutes = 15;
+
+    @Builder.Default
+    private String timezone = "Asia/Ho_Chi_Minh";
 }

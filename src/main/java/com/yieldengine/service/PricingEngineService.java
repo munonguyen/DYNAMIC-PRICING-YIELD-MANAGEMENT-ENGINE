@@ -2,11 +2,14 @@ package com.yieldengine.service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.yieldengine.config.CacheConfig;
-import com.yieldengine.dto.response.PriceQuoteResponse;
 import com.yieldengine.dto.PricingAuditDto;
+import com.yieldengine.dto.response.PriceQuoteResponse;
 import com.yieldengine.entity.*;
+import com.yieldengine.enums.TokenPurpose;
 import com.yieldengine.exception.ResourceNotFoundException;
 import com.yieldengine.repository.*;
+import com.yieldengine.utils.MoneyMathUtils;
+import com.yieldengine.utils.TimeAndRangeUtils;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.cache.annotation.CachePut;
@@ -34,14 +37,10 @@ public class PricingEngineService {
     private final TimeOfDayFactorRepository timeOfDayFactorRepository;
     private final ContextFactorRepository contextFactorRepository;
     private final SlotPriceCurrentRepository slotPriceCurrentRepository;
-    private final SlotPriceHistoryRepository slotPriceHistoryRepository;
     private final TokenSigningKeyRepository tokenSigningKeyRepository;
     private final PriceLockTokenService priceLockTokenService;
     private final ObjectMapper objectMapper;
 
-    /**
-     * Get dynamic price quote for a slot (Read-optimized, zero DB write).
-     */
     @Transactional(readOnly = true)
     @Cacheable(value = CacheConfig.CACHE_SLOT_PRICES, key = "#groupId.toString() + '_' + #slotStart.toString()")
     public PriceQuoteResponse getPriceQuote(UUID groupId, Instant slotStart, String userId) {
@@ -52,15 +51,12 @@ public class PricingEngineService {
         return computeQuote(timeSlot, userId, Instant.now());
     }
 
-    /**
-     * Internal method to calculate price and generate stateless HMAC token with kid.
-     */
     public PriceQuoteResponse computeQuote(TimeSlot timeSlot, String userId, Instant calculationTime) {
         PricingAuditDto audit = calculatePrice(timeSlot, calculationTime);
 
         UUID tokenJti = UUID.randomUUID();
         Instant expiresAt = calculationTime.plus(Duration.ofMinutes(10));
-        String kid = getActiveKeyId();
+        String kid = getActivePriceKeyId();
 
         String token = priceLockTokenService.generateToken(
                 kid,
@@ -86,11 +82,6 @@ public class PricingEngineService {
                 .build();
     }
 
-    /**
-     * Deterministic Mathematical Yield Formula (BigDecimal):
-     * Praw = Pbase * Mtime * Mmatrix(rocc, delta_tlead) * Mcontext
-     * Pfinal = min(Pmax, max(Pmin, round(Praw, -3)))
-     */
     public PricingAuditDto calculatePrice(TimeSlot timeSlot, Instant calculationTime) {
         ResourceGroup group = resourceGroupRepository.findById(timeSlot.getGroupId())
                 .orElseThrow(() -> new ResourceNotFoundException("ResourceGroup not found: " + timeSlot.getGroupId()));
@@ -99,35 +90,23 @@ public class PricingEngineService {
         Long minPrice = group.getMinPrice();
         Long maxPrice = group.getMaxPrice();
 
-        // 1. Calculate Occupancy % (rocc) from slot_inventory
         BigDecimal occupancyPct = calculateOccupancyPercentage(timeSlot.getGroupId(), timeSlot.getSlotStart(), timeSlot.getTotalCapacity());
-
-        // 2. Calculate Lead Time in Hours (delta_tlead)
         BigDecimal leadHours = calculateLeadTimeHours(timeSlot.getSlotStart(), calculationTime);
 
-        // 3. Tra cứu RuleSet đang ACTIVE
         Optional<YieldRuleSet> activeRuleSet = yieldRuleSetRepository.findActiveRuleSetForTime(group.getId(), timeSlot.getSlotStart());
 
-        // 4. Multipliers
-        BigDecimal timeMultiplier = calculateTimeMultiplier(activeRuleSet, timeSlot.getSlotStart());
+        ZoneId groupZone = TimeAndRangeUtils.resolveZoneId(group.getTimezone());
+        BigDecimal timeMultiplier = calculateTimeMultiplier(activeRuleSet, timeSlot.getSlotStart(), groupZone);
         BigDecimal matrixMultiplier = resolveMatrixMultiplier(activeRuleSet, occupancyPct, leadHours);
         BigDecimal contextMultiplier = resolveContextMultiplier(group.getId(), timeSlot.getSlotStart(), timeSlot.getContextMultiplier());
 
-        // 5. Compute Raw Price
         BigDecimal rawPrice = BigDecimal.valueOf(basePrice)
                 .multiply(timeMultiplier)
                 .multiply(matrixMultiplier)
                 .multiply(contextMultiplier)
                 .setScale(2, RoundingMode.HALF_UP);
 
-        // 6. Round to nearest 1,000 VND (round(Praw, -3))
-        long roundedPrice = rawPrice
-                .divide(BigDecimal.valueOf(1000), 0, RoundingMode.HALF_UP)
-                .multiply(BigDecimal.valueOf(1000))
-                .longValue();
-
-        // 7. Clamping
-        long clampedPrice = Math.min(maxPrice, Math.max(minPrice, roundedPrice));
+        long clampedPrice = MoneyMathUtils.roundAndClampPrice(rawPrice, minPrice, maxPrice);
 
         return PricingAuditDto.builder()
                 .basePrice(basePrice)
@@ -142,34 +121,46 @@ public class PricingEngineService {
                 .build();
     }
 
-    /**
-     * Recalculates price, updates slot_price_current & slot_price_history, and warms cache.
-     */
     @Transactional
     @CachePut(value = CacheConfig.CACHE_SLOT_PRICES, key = "#timeSlot.groupId.toString() + '_' + #timeSlot.slotStart.toString()")
     public PriceQuoteResponse recalculateAndSnapshot(TimeSlot timeSlot) {
-        PricingAuditDto audit = calculatePrice(timeSlot, Instant.now());
+        Instant now = Instant.now();
+        PricingAuditDto audit = calculatePrice(timeSlot, now);
         SlotId slotId = timeSlot.getId();
 
         Optional<YieldRuleSet> ruleSetOpt = yieldRuleSetRepository.findActiveRuleSetForTime(timeSlot.getGroupId(), timeSlot.getSlotStart());
         if (ruleSetOpt.isPresent()) {
             YieldRuleSet ruleSet = ruleSetOpt.get();
+            long nextSeq = System.currentTimeMillis();
             try {
-                String appliedFactorsJson = objectMapper.writeValueAsString(audit.toMap());
-                slotPriceCurrentRepository.updatePriceIfSequenceHigher(
-                        timeSlot.getGroupId(),
-                        timeSlot.getSlotStart(),
-                        audit.getClampedPrice(),
-                        ruleSet.getId(),
-                        appliedFactorsJson,
-                        System.currentTimeMillis()
-                );
+                if (!slotPriceCurrentRepository.existsById(slotId)) {
+                    SlotPriceCurrent initialCurrent = SlotPriceCurrent.builder()
+                            .id(slotId)
+                            .tenantId(timeSlot.getTenantId())
+                            .currentPrice(audit.getClampedPrice())
+                            .ruleSet(ruleSet)
+                            .appliedFactors(audit.toMap())
+                            .priceSeq(nextSeq)
+                            .computedAt(now)
+                            .build();
+                    slotPriceCurrentRepository.save(initialCurrent);
+                } else {
+                    String appliedFactorsJson = objectMapper.writeValueAsString(audit.toMap());
+                    slotPriceCurrentRepository.updatePriceIfSequenceHigher(
+                            timeSlot.getGroupId(),
+                            timeSlot.getSlotStart(),
+                            audit.getClampedPrice(),
+                            ruleSet.getId(),
+                            appliedFactorsJson,
+                            nextSeq
+                    );
+                }
             } catch (Exception e) {
                 log.warn("Failed to update slot_price_current: {}", e.getMessage());
             }
         }
 
-        return computeQuote(timeSlot, "SYSTEM", Instant.now());
+        return computeQuote(timeSlot, "SYSTEM", now);
     }
 
     public BigDecimal calculateOccupancyPercentage(UUID groupId, Instant slotStart, int totalCapacity) {
@@ -185,14 +176,11 @@ public class PricingEngineService {
     }
 
     public BigDecimal calculateLeadTimeHours(Instant slotStart, Instant calculationTime) {
-        Duration duration = Duration.between(calculationTime, slotStart);
-        long seconds = Math.max(0, duration.getSeconds());
-        return BigDecimal.valueOf(seconds)
-                .divide(BigDecimal.valueOf(3600), 2, RoundingMode.HALF_UP);
+        return TimeAndRangeUtils.nonNegativeLeadHours(calculationTime, slotStart);
     }
 
-    private BigDecimal calculateTimeMultiplier(Optional<YieldRuleSet> ruleSetOpt, Instant slotStart) {
-        ZonedDateTime zdt = slotStart.atZone(ZoneId.of("Asia/Ho_Chi_Minh"));
+    private BigDecimal calculateTimeMultiplier(Optional<YieldRuleSet> ruleSetOpt, Instant slotStart, ZoneId zoneId) {
+        ZonedDateTime zdt = slotStart.atZone(zoneId);
         short dayOfWeek = (short) zdt.getDayOfWeek().getValue();
         short hour = (short) zdt.getHour();
 
@@ -232,10 +220,16 @@ public class PricingEngineService {
         return mult;
     }
 
-    private String getActiveKeyId() {
-        return tokenSigningKeyRepository.findFirstByStatusOrderByNotBeforeDesc("ACTIVE")
+    public String getActivePriceKeyId() {
+        return tokenSigningKeyRepository.findFirstByPurposeAndStatusOrderByNotBeforeDesc(TokenPurpose.PRICE_LOCK.name(), "ACTIVE")
                 .map(TokenSigningKey::getKid)
                 .orElse("KEY_2026_V1");
+    }
+
+    public String getActiveQrKeyId() {
+        return tokenSigningKeyRepository.findFirstByPurposeAndStatusOrderByNotBeforeDesc(TokenPurpose.QR_CHECKIN.name(), "ACTIVE")
+                .map(TokenSigningKey::getKid)
+                .orElse("QR_KEY_2026_V1");
     }
 
     public static BigDecimal fallbackMatrixMultiplier(BigDecimal occ, BigDecimal lead) {

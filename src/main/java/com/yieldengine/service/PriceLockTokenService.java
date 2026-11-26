@@ -2,32 +2,24 @@ package com.yieldengine.service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.yieldengine.config.PricingProperties;
+import com.yieldengine.enums.TokenPurpose;
 import com.yieldengine.exception.InvalidTokenSignatureException;
-import com.yieldengine.exception.TokenExpiredException;
+import com.yieldengine.utils.CryptoHashUtils;
+import com.yieldengine.validate.TokenFormatValidator;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
-import javax.crypto.Mac;
-import javax.crypto.spec.SecretKeySpec;
-import java.nio.charset.StandardCharsets;
-import java.security.InvalidKeyException;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
 import java.time.Instant;
-import java.util.Base64;
 import java.util.UUID;
 
-@Slf4j
 @Service
 @RequiredArgsConstructor
 public class PriceLockTokenService {
 
-    private static final String HMAC_ALGORITHM = "HmacSHA256";
     private final PricingProperties pricingProperties;
     private final ObjectMapper objectMapper;
 
@@ -46,77 +38,105 @@ public class PriceLockTokenService {
         private Instant expiresAt;
     }
 
-    public String generateToken(String kid, UUID tokenJti, UUID tenantId, String userId, UUID groupId, Instant slotStart, Long lockedPrice, Instant expiresAt) {
-        try {
-            TokenPayload payload = TokenPayload.builder()
-                    .kid(kid)
-                    .tokenJti(tokenJti)
-                    .tenantId(tenantId)
-                    .userId(userId)
-                    .groupId(groupId)
-                    .slotStart(slotStart)
-                    .lockedPrice(lockedPrice)
-                    .expiresAt(expiresAt)
-                    .build();
+    @Data
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class QrTokenPayload {
+        private String purpose;
+        private String kid;
+        private UUID qrJti;
+        private UUID tenantId;
+        private UUID reservationId;
+        private Instant slotStart;
+        private Instant expiresAt;
+    }
 
-            String payloadJson = objectMapper.writeValueAsString(payload);
-            String encodedPayload = Base64.getUrlEncoder().withoutPadding().encodeToString(payloadJson.getBytes(StandardCharsets.UTF_8));
-            String signature = sign(encodedPayload);
-
-            return encodedPayload + "." + signature;
-        } catch (Exception e) {
-            throw new RuntimeException("Failed to generate price lock token", e);
-        }
+    public String generateToken(
+            String kid,
+            UUID tokenJti,
+            UUID tenantId,
+            String userId,
+            UUID groupId,
+            Instant slotStart,
+            Long lockedPrice,
+            Instant expiresAt
+    ) {
+        TokenPayload payload = TokenPayload.builder()
+                .kid(kid)
+                .tokenJti(tokenJti)
+                .tenantId(tenantId)
+                .userId(userId)
+                .groupId(groupId)
+                .slotStart(slotStart)
+                .lockedPrice(lockedPrice)
+                .expiresAt(expiresAt)
+                .build();
+        return serializeAndSign(payload, TokenPurpose.PRICE_LOCK);
     }
 
     public TokenPayload verifyAndExtract(String token) {
-        if (token == null || !token.contains(".")) {
-            throw new InvalidTokenSignatureException("Invalid token format");
-        }
-
-        String[] parts = token.split("\\.");
-        if (parts.length != 2) {
-            throw new InvalidTokenSignatureException("Invalid token structure");
-        }
-
-        String encodedPayload = parts[0];
-        String signature = parts[1];
-
-        // 1. Verify HMAC signature (constant-time comparison)
-        String expectedSignature = sign(encodedPayload);
-        if (!MessageDigest.isEqual(signature.getBytes(StandardCharsets.UTF_8), expectedSignature.getBytes(StandardCharsets.UTF_8))) {
-            throw new InvalidTokenSignatureException("PriceLockToken signature verification failed");
-        }
-
-        // 2. Deserialize payload
-        TokenPayload payload;
-        try {
-            byte[] decoded = Base64.getUrlDecoder().decode(encodedPayload);
-            payload = objectMapper.readValue(decoded, TokenPayload.class);
-        } catch (Exception e) {
-            throw new InvalidTokenSignatureException("Failed to parse token payload");
-        }
-
-        // 3. Verify expiration
-        if (payload.getExpiresAt() == null || payload.getExpiresAt().isBefore(Instant.now())) {
-            throw new TokenExpiredException("PriceLockToken has expired at: " + payload.getExpiresAt());
-        }
-
+        String encodedPayload = TokenFormatValidator.validateEnvelopeAndSignature(
+                token, resolveSecret(TokenPurpose.PRICE_LOCK), TokenPurpose.PRICE_LOCK
+        );
+        TokenPayload payload = deserializePayload(encodedPayload, TokenPayload.class);
+        TokenFormatValidator.validateNotExpired(payload.getExpiresAt(), "PriceLockToken");
         return payload;
     }
 
-    private String sign(String data) {
+    public String generateQrToken(
+            String kid,
+            UUID qrJti,
+            UUID tenantId,
+            UUID reservationId,
+            Instant slotStart,
+            Instant expiresAt
+    ) {
+        QrTokenPayload payload = QrTokenPayload.builder()
+                .purpose(TokenPurpose.QR_CHECKIN.name())
+                .kid(kid)
+                .qrJti(qrJti)
+                .tenantId(tenantId)
+                .reservationId(reservationId)
+                .slotStart(slotStart)
+                .expiresAt(expiresAt)
+                .build();
+        return serializeAndSign(payload, TokenPurpose.QR_CHECKIN);
+    }
+
+    public QrTokenPayload verifyAndExtractQrToken(String qrToken) {
+        String encodedPayload = TokenFormatValidator.validateEnvelopeAndSignature(
+                qrToken, resolveSecret(TokenPurpose.QR_CHECKIN), TokenPurpose.QR_CHECKIN
+        );
+        QrTokenPayload payload = deserializePayload(encodedPayload, QrTokenPayload.class);
+        TokenFormatValidator.validatePurpose(payload.getPurpose(), TokenPurpose.QR_CHECKIN);
+        TokenFormatValidator.validateNotExpired(payload.getExpiresAt(), "QR check-in token");
+        return payload;
+    }
+
+    private String serializeAndSign(Object payload, TokenPurpose purpose) {
         try {
-            Mac mac = Mac.getInstance(HMAC_ALGORITHM);
-            SecretKeySpec secretKeySpec = new SecretKeySpec(
-                    pricingProperties.getToken().getSecretKey().getBytes(StandardCharsets.UTF_8),
-                    HMAC_ALGORITHM
-            );
-            mac.init(secretKeySpec);
-            byte[] hmacBytes = mac.doFinal(data.getBytes(StandardCharsets.UTF_8));
-            return Base64.getUrlEncoder().withoutPadding().encodeToString(hmacBytes);
-        } catch (NoSuchAlgorithmException | InvalidKeyException e) {
-            throw new RuntimeException("Error computing HMAC signature", e);
+            String payloadJson = objectMapper.writeValueAsString(payload);
+            String encodedPayload = CryptoHashUtils.base64UrlEncodeUtf8(payloadJson);
+            String signature = CryptoHashUtils.hmacSha256Base64Url(encodedPayload, resolveSecret(purpose));
+            return encodedPayload + "." + signature;
+        } catch (Exception e) {
+            throw new IllegalStateException("Failed to generate signed " + purpose + " token", e);
         }
+    }
+
+    private <T> T deserializePayload(String encodedPayload, Class<T> targetType) {
+        try {
+            byte[] decoded = CryptoHashUtils.base64UrlDecode(encodedPayload);
+            return objectMapper.readValue(decoded, targetType);
+        } catch (Exception e) {
+            throw new InvalidTokenSignatureException("Failed to parse signed token payload");
+        }
+    }
+
+    private String resolveSecret(TokenPurpose purpose) {
+        return purpose == TokenPurpose.QR_CHECKIN
+                ? pricingProperties.getToken().getQrSecretKey()
+                : pricingProperties.getToken().getSecretKey();
     }
 }

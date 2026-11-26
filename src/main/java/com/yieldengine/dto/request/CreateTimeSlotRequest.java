@@ -1,5 +1,6 @@
 package com.yieldengine.dto.request;
 
+import com.yieldengine.validate.annotation.ValidSlotWindow;
 import jakarta.validation.constraints.NotNull;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -14,6 +15,7 @@ import java.util.UUID;
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
+@ValidSlotWindow
 public class CreateTimeSlotRequest {
 
     @NotNull(message = "groupId is required")
@@ -30,4 +32,3 @@ public class CreateTimeSlotRequest {
     @Builder.Default
     private BigDecimal contextMultiplier = BigDecimal.valueOf(1.000);
 }
-
