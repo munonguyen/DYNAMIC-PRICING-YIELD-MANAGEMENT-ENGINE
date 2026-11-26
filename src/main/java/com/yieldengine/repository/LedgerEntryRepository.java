@@ -19,6 +19,8 @@ public interface LedgerEntryRepository extends JpaRepository<LedgerEntry, Ledger
     @Query("""
         SELECT le FROM LedgerEntry le
         WHERE (:tenantId IS NULL OR le.tenantId = :tenantId)
+          AND EXISTS (SELECT 1 FROM LedgerJournal lj WHERE lj.id = le.journalId
+              AND substring(lj.idempotencyKey, 1, 13) <> 'SEED_V10_JRN_')
           AND le.id.occurredAt >= :fromTime
           AND le.id.occurredAt <= :toTime
         ORDER BY le.id.occurredAt DESC
@@ -44,6 +46,8 @@ public interface LedgerEntryRepository extends JpaRepository<LedgerEntry, Ledger
     @Query("""
         SELECT COALESCE(SUM(le.amount), 0) FROM LedgerEntry le
         WHERE (:tenantId IS NULL OR le.tenantId = :tenantId)
+          AND EXISTS (SELECT 1 FROM LedgerJournal lj WHERE lj.id = le.journalId
+              AND substring(lj.idempotencyKey, 1, 13) <> 'SEED_V10_JRN_')
           AND le.accountCode = :accountCode
           AND le.direction = :direction
           AND le.id.occurredAt >= :fromTime

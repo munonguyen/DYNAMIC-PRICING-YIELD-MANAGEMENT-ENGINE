@@ -11,6 +11,6 @@ import java.util.UUID;
 
 @Repository
 public interface MessageRepository extends JpaRepository<Message, MessageId> {
-    List<Message> findByConversationIdOrderByIdCreatedAtAsc(UUID conversationId, Pageable pageable);
+    List<Message> findByConversationIdOrderByIdCreatedAtDescIdIdDesc(UUID conversationId, Pageable pageable);
 }
 

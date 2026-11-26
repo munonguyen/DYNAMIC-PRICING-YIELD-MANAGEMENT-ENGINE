@@ -1,5 +1,11 @@
 package com.yieldengine.controller.staff;
 
+import com.yieldengine.security.RbacGuard;
+import com.yieldengine.service.SearchAndAnalyticsSyncService;
+import com.yieldengine.record.analytics.LessorOrderSummaryDto;
+import org.springframework.http.CacheControl;
+import java.util.List;
+
 import com.yieldengine.entity.Reservation;
 import com.yieldengine.record.ops.CheckInResponse;
 import com.yieldengine.record.ops.QrInspectResponse;
@@ -23,6 +29,15 @@ import java.util.UUID;
 public class StaffCheckInController {
 
     private final CheckInService checkInService;
+    private final RbacGuard rbac;
+    private final SearchAndAnalyticsSyncService orders;
+
+    @GetMapping("/orders")
+    public ResponseEntity<List<LessorOrderSummaryDto>> venueOrders(@RequestParam(required = false) UUID tenantId,
+            @RequestParam(defaultValue = "0") int page, @RequestParam(defaultValue = "50") int size) {
+        UUID venue = rbac.resolveAuthorizedTenantId(tenantId, "STAFF", "MANAGER");
+        return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(orders.loadRecentOrdersFromDb(venue, page, size));
+    }
 
     @Operation(summary = "[STAFF / MANAGER] Inspect customer QR ticket layers & identity")
     @PostMapping("/inspect")
