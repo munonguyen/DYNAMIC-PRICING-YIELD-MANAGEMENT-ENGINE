@@ -1,0 +1,20 @@
+{
+  "branch": "service/accountant/financial-audit",
+  "title": "Kiểm toán tài chính",
+  "scope": "Tra cứu nhật ký kiểm toán trong phạm vi được cấp quyền.",
+  "operations": [
+    {
+      "method": "GET",
+      "path": "/api/v1/audit-logs",
+      "operationId": "searchAuditLogs"
+    }
+  ],
+  "source": [
+    {
+      "file": "src/main/java/com/yieldengine/controller/accountant/AuditTrailController.java",
+      "anchors": [
+        "searchAuditLogs("
+      ]
+    }
+  ]
+}
