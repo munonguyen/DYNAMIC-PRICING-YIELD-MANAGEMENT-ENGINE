@@ -1,0 +1,48 @@
+{
+  "branch": "service/lessor/court-media",
+  "title": "Quản lý ảnh sân",
+  "scope": "Tải ảnh, đổi ảnh bìa và xóa ảnh sân.",
+  "operations": [
+    {
+      "method": "GET",
+      "path": "/api/v1/listings/{groupId}/media",
+      "operationId": "listCourtMedia"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/listings/{groupId}/media",
+      "operationId": "uploadCourtMedia"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/v1/listings/{groupId}/media/{mediaId}/cover",
+      "operationId": "setCoverCourtMedia"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/v1/listings/{groupId}/media/{mediaId}",
+      "operationId": "deleteCourtMedia"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/media/{mediaId}/content",
+      "operationId": "serveMediaContent"
+    }
+  ],
+  "source": [
+    {
+      "file": "src/main/java/com/yieldengine/controller/lessor/LessorCourtMediaController.java",
+      "anchors": [
+        "uploadCourtMedia(",
+        "setCoverCourtMedia(",
+        "deleteCourtMedia("
+      ]
+    },
+    {
+      "file": "src/main/java/com/yieldengine/controller/publicapi/PublicCourtMediaController.java",
+      "anchors": [
+        "serveMediaContent("
+      ]
+    }
+  ]
+}
