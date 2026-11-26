@@ -86,7 +86,7 @@ export const AnimatedCounter: React.FC<AnimatedCounterProps> = ({
   className = '',
 }) => {
   const prefersReduced = useReducedMotion();
-  const spring = useSpring(0, { stiffness: 120, damping: 22, mass: 0.8 });
+  const spring = useSpring(0, { stiffness: 68, damping: 18, mass: 1 });
   const [display, setDisplay] = useState<number>(prefersReduced ? value : 0);
 
   useEffect(() => {
