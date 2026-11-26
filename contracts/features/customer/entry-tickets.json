@@ -1,0 +1,38 @@
+{
+  "branch": "service/customer/entry-tickets",
+  "title": "Vé nhận sân",
+  "scope": "Xem vé, lấy QR và yêu cầu gửi lại email.",
+  "operations": [
+    {
+      "method": "GET",
+      "path": "/api/v1/bookings/my-tickets",
+      "operationId": "listMyTickets"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/bookings/{reservationId}/qr",
+      "operationId": "getBookingQr"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/bookings/{reservationId}/resend-qr-email",
+      "operationId": "resendQrEmail"
+    }
+  ],
+  "source": [
+    {
+      "file": "src/main/java/com/yieldengine/controller/customer/CustomerBookingController.java",
+      "anchors": [
+        "listMyTickets(",
+        "getBookingQr(",
+        "resendQrEmail("
+      ]
+    },
+    {
+      "file": "frontend/src/components/BookingPipelineAndQrSection.tsx",
+      "anchors": [
+        "Vé vừa phát hành"
+      ]
+    }
+  ]
+}
