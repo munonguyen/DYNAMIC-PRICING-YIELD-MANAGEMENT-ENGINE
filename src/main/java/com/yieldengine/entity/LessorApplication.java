@@ -62,7 +62,7 @@ public class LessorApplication extends BaseEntity {
     @Column(name = "contact_phone", nullable = false, length = 20)
     private String contactPhone;
 
-    @Column(name = "contact_email", nullable = false)
+    @Column(name = "contact_email", columnDefinition = "citext", nullable = false)
     private String contactEmail;
 
     @Column(name = "tax_code", nullable = false, length = 14)

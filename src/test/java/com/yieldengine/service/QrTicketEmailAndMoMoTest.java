@@ -111,6 +111,7 @@ class QrTicketEmailAndMoMoTest {
         when(bookingRepository.findById(bookingId)).thenReturn(Optional.of(booking));
         when(resourceGroupRepository.findById(groupId)).thenReturn(Optional.of(group));
         when(paymentRepository.sumSuccessfulPaidByBookingId(bookingId)).thenReturn(70_000L);
+        when(paymentRepository.sumSuccessfulEscrowByBookingId(bookingId)).thenReturn(70_000L);
         when(pricingEngineService.getActiveQrKeyId()).thenReturn("QR_KEY_2026_V1");
         when(priceLockTokenService.generateQrToken(any(), any(), any(), any(), any(), any()))
                 .thenReturn("eyJwbGFjZWhvbGRlciI6InFyIn0.SIGNATURE_HMAC");
@@ -167,6 +168,7 @@ class QrTicketEmailAndMoMoTest {
         when(bookingRepository.findById(bookingId)).thenReturn(Optional.of(booking));
         when(resourceGroupRepository.findById(groupId)).thenReturn(Optional.of(group));
         when(paymentRepository.sumSuccessfulPaidByBookingId(bookingId)).thenReturn(60_000L);
+        when(paymentRepository.sumSuccessfulEscrowByBookingId(bookingId)).thenReturn(60_000L);
         when(priceLockTokenService.deriveCheckInPin(reservationId, qrJti)).thenReturn("651905");
 
         EmailDispatchResult result =
@@ -190,8 +192,7 @@ class QrTicketEmailAndMoMoTest {
         props.setAccessKey("ACCESS_TEST");
         props.setSecretKey("SECRET_KEY_2026");
         props.setRedirectUrl("http://localhost:5174/checkout");
-        props.setIpnUrl("http://localhost:8080/ipn");
-        props.setLiveHttpEnabled(false);
+        props.setIpnUrl("https://merchant.example.test/api/v1/payments/momo/ipn");
 
         MoMoPaymentGatewayService momo = new MoMoPaymentGatewayService(
                 props,
@@ -201,23 +202,22 @@ class QrTicketEmailAndMoMoTest {
                 java.net.http.HttpClient.newHttpClient()
         );
         UUID resId = UUID.randomUUID();
-        var init = momo.createPaymentSession(resId, 70_000L, "Dat san", "");
-        assertNotNull(init.signature());
+        String orderId = "ORDER_TEST";
 
-        String ipnRaw = "accessKey=ACCESS_TEST&amount=70000&extraData=&message=Successful.&orderId=" + init.orderId()
-                + "&orderInfo=Dat san&orderType=momo_wallet&partnerCode=MOMO_TEST&payType=qr&requestId=" + init.requestId()
+        String ipnRaw = "accessKey=ACCESS_TEST&amount=70000&extraData=&message=Successful.&orderId=" + orderId
+                + "&orderInfo=Dat san&orderType=momo_wallet&partnerCode=MOMO_TEST&payType=qr&requestId=" + orderId
                 + "&responseTime=1795650000&resultCode=0&transId=999888777";
         String validIpnSig = com.yieldengine.utils.CryptoHashUtils.hmacSha256Hex(ipnRaw, "SECRET_KEY_2026");
 
         var validIpnReq = new com.yieldengine.record.ops.MoMoIpnCallbackRequest(
-                "MOMO_TEST", init.orderId(), init.requestId(), 70_000L,
+                "MOMO_TEST", orderId, orderId, 70_000L,
                 "Dat san", "momo_wallet", 999888777L, 0, "Successful.", "qr", 1795650000L, "", validIpnSig, resId
         );
         assertTrue(momo.verifyIpnSignature(validIpnReq));
 
         // Tampered amount must fail HMAC
         var tamperedIpnReq = new com.yieldengine.record.ops.MoMoIpnCallbackRequest(
-                "MOMO_TEST", init.orderId(), init.requestId(), 1_000L,
+                "MOMO_TEST", orderId, orderId, 1_000L,
                 "Dat san", "momo_wallet", 999888777L, 0, "Successful.", "qr", 1795650000L, "", validIpnSig, resId
         );
         assertFalse(momo.verifyIpnSignature(tamperedIpnReq));
@@ -232,9 +232,9 @@ class QrTicketEmailAndMoMoTest {
         when(okResp.statusCode()).thenReturn(200);
         when(okResp.body()).thenReturn("""
                 {
-                  "partnerCode": "MOMOBKUN20180529",
+                  "partnerCode": "MOMO_TEST",
                   "orderId": "ORDER_123",
-                  "requestId": "REQ_123",
+                  "requestId": "ORDER_123",
                   "amount": 50000,
                   "resultCode": 0,
                   "message": "Thành công.",
@@ -248,6 +248,10 @@ class QrTicketEmailAndMoMoTest {
                 .thenReturn(okResp);
 
         com.yieldengine.config.MoMoGatewayProperties liveProps = new com.yieldengine.config.MoMoGatewayProperties();
+        liveProps.setPartnerCode("MOMO_TEST");
+        liveProps.setIpnUrl("https://merchant.example.test/api/v1/payments/momo/ipn");
+        liveProps.setAccessKey("ACCESS_TEST");
+        liveProps.setSecretKey("SECRET_TEST");
         MoMoPaymentGatewayService liveService = new MoMoPaymentGatewayService(
                 liveProps,
                 new com.yieldengine.validate.MoMoPaymentValidator(),
@@ -256,7 +260,7 @@ class QrTicketEmailAndMoMoTest {
                 mockHttp
         );
 
-        var session = liveService.createPaymentSession(UUID.randomUUID(), 50_000L, "Dat san test", "");
+        var session = liveService.createPaymentSession(UUID.randomUUID(), 50_000L, "ORDER_123", "Dat san test", "");
         assertTrue(session.liveGatewayResponse());
         assertEquals(0, session.resultCode());
         assertEquals("https://test-payment.momo.vn/v2/gateway/pay?t=ABC", session.payUrl());
@@ -264,7 +268,16 @@ class QrTicketEmailAndMoMoTest {
 
         // Validator blocks amount below MoMo minimum threshold before calling gateway
         assertThrows(IllegalArgumentException.class,
-                () -> liveService.createPaymentSession(UUID.randomUUID(), 100L, "Too small", ""));
+                () -> liveService.createPaymentSession(UUID.randomUUID(), 100L, "ORDER_123", "Too small", ""));
+        assertTrue(liveService.isSandbox());
+
+        when(okResp.body()).thenReturn("""
+                {"partnerCode":"MOMO_TEST","orderId":"ORDER_123","requestId":"ORDER_123","amount":50000,
+                 "resultCode":0,"payUrl":"https://test-payment.momo.vn/v2/gateway/pay?t=ABC"}
+                """);
+        var missingQr = assertThrows(IllegalStateException.class,
+                () -> liveService.createPaymentSession(UUID.randomUUID(), 50_000L, "ORDER_123", "Test chua cap QR", ""));
+        assertTrue(missingQr.getMessage().contains("chưa cấp mã QR"));
 
         java.net.http.HttpResponse<String> errResp = org.mockito.Mockito.mock(java.net.http.HttpResponse.class);
         when(errResp.statusCode()).thenReturn(200);
@@ -274,8 +287,8 @@ class QrTicketEmailAndMoMoTest {
         when(mockHttp.send(any(java.net.http.HttpRequest.class), any(java.net.http.HttpResponse.BodyHandler.class)))
                 .thenReturn(errResp);
 
-        IllegalStateException thrown = assertThrows(IllegalStateException.class,
-                () -> liveService.createPaymentSession(UUID.randomUUID(), 50_000L, "Invalid gateway state", ""));
-        assertTrue(thrown.getMessage().contains("Số tiền không hợp lệ"));
+        var thrown = assertThrows(com.yieldengine.exception.MoMoSessionRejectedException.class,
+                () -> liveService.createPaymentSession(UUID.randomUUID(), 50_000L, "ORDER_123", "Invalid gateway state", ""));
+        assertTrue(thrown.getMessage().contains("không chấp nhận"));
     }
 }

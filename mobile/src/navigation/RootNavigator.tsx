@@ -119,10 +119,6 @@ export const RootNavigator: React.FC = () => {
         {app.activeModal === 'checkout' ? (
           <CheckoutScreen
             listing={app.activeListing}
-            quote={app.activeQuote}
-            countdownLabel={app.countdown.formatted}
-            holdResult={app.holdResult}
-            onUpdateHoldResult={app.setHoldResult}
             onBack={() => app.setActiveModal('courtDetail')}
           />
         ) : null}

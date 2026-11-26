@@ -12,7 +12,7 @@ public enum VnPayTransactionStatus {
     REFUNDED;
 
     public boolean isFinalized() {
-        return this == SUCCESS || this == CANCELLED || this == REFUNDED;
+        return this == SUCCESS || this == CANCELLED || this == REFUND_PENDING || this == REFUNDED;
     }
 }
 

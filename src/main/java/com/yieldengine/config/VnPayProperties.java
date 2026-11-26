@@ -16,8 +16,8 @@ public class VnPayProperties {
 
     private String payUrl = "https://sandbox.vnpayment.vn/paymentv2/vpcpay.html";
     private String apiUrl = "https://sandbox.vnpayment.vn/merchant_webapi/api/transaction";
-    private String tmnCode = "ARENAPULSE";
-    private String hashSecret = "VNPAY_SANDBOX_HASH_SECRET_KEY_CONFIGURE_IN_ENV";
+    private String tmnCode;
+    private String hashSecret;
     private String version = "2.1.0";
     private String commandPay = "pay";
     private String currCode = "VND";

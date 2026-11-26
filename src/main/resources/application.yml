@@ -85,19 +85,31 @@ storage:
 momo:
   gateway:
     endpoint: ${MOMO_ENDPOINT:https://test-payment.momo.vn/v2/gateway/api/create}
-    partner-code: ${MOMO_PARTNER_CODE:MOMOBKUN20180529}
-    access-key: ${MOMO_ACCESS_KEY:klm05TvNBzhg7h7j}
-    secret-key: ${MOMO_SECRET_KEY:at67qH6mk8w5Y1nAyMoYKMWACiEi2bsa}
+    partner-code: ${MOMO_PARTNER_CODE:}
+    access-key: ${MOMO_ACCESS_KEY:}
+    secret-key: ${MOMO_SECRET_KEY:}
     redirect-url: ${MOMO_REDIRECT_URL:http://127.0.0.1:5174/checkout}
-    ipn-url: ${MOMO_IPN_URL:http://localhost:8080/api/v1/payments/momo/ipn}
+    ipn-url: ${MOMO_IPN_URL:}
     live-http-enabled: ${MOMO_LIVE_HTTP_ENABLED:true}
-    sandbox-auto-approve: ${MOMO_SANDBOX_AUTO_APPROVE:true}
+
+vietqr:
+  enabled: ${VIETQR_ENABLED:false}
+  mode: ${VIETQR_MODE:SANDBOX}
+  sandbox-base-url: ${VIETQR_SANDBOX_BASE_URL:https://dev.vietqr.org}
+  merchant-username: ${VIETQR_MERCHANT_USERNAME:}
+  merchant-password: ${VIETQR_MERCHANT_PASSWORD:}
+  callback-username: ${VIETQR_CALLBACK_USERNAME:}
+  callback-password: ${VIETQR_CALLBACK_PASSWORD:}
+  callback-secret: ${VIETQR_CALLBACK_SECRET:}
+  bank-code: ${VIETQR_BANK_CODE:}
+  bank-account: ${VIETQR_BANK_ACCOUNT:}
+  account-name: ${VIETQR_ACCOUNT_NAME:}
 
 vnpay:
   pay-url: ${VNPAY_PAY_URL:https://sandbox.vnpayment.vn/paymentv2/vpcpay.html}
   api-url: ${VNPAY_API_URL:https://sandbox.vnpayment.vn/merchant_webapi/api/transaction}
-  tmn-code: ${VNPAY_TMN_CODE:ARENAPULSE}
-  hash-secret: ${VNPAY_HASH_SECRET:VNPAY_SANDBOX_HASH_SECRET_KEY_CONFIGURE_IN_ENV}
+  tmn-code: ${VNPAY_TMN_CODE:}
+  hash-secret: ${VNPAY_HASH_SECRET:}
   version: ${VNPAY_VERSION:2.1.0}
   command-pay: ${VNPAY_COMMAND_PAY:pay}
   curr-code: ${VNPAY_CURR_CODE:VND}

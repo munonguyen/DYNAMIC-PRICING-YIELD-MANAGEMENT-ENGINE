@@ -23,7 +23,7 @@ public class LessorOtpVerification extends BaseEntity {
     @Column(name = "contact_phone", nullable = false, length = 20)
     private String contactPhone;
 
-    @Column(name = "contact_email", nullable = false)
+    @Column(name = "contact_email", columnDefinition = "citext", nullable = false)
     private String contactEmail;
 
     @Column(name = "otp_sha256", nullable = false, length = 64)

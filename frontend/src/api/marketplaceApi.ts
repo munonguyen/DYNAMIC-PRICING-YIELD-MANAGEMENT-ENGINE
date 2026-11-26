@@ -17,9 +17,7 @@ import type {
   LessorApplicationReceipt,
   LessorApplicationRecord,
   LessorBookingOrder,
-  MoMoPaymentSession,
   MyTicketRecord,
-  VnPayPaymentUrlResult,
   VnPayReturnResult,
   OtpChallengeResult,
   PriceQuote,
@@ -1263,117 +1261,35 @@ class MarketplaceApiClient {
     userId = 'player_fairway_vip'
   ): Promise<{ hold: HoldSlotResult; live: boolean; idempotencyKey: string }> {
     const idempotencyKey = `idem-${crypto.randomUUID()}`;
-    try {
-      const res = await fetch('/api/v1/bookings/hold', {
-        method: 'POST',
-        headers: this.headers({ 'Idempotency-Key': idempotencyKey }),
-        body: JSON.stringify({
-          tenantId: listing.tenantId,
-          groupId: listing.groupId,
-          slotStart: quote.slotStart,
-          userId,
-          priceLockToken: quote.priceLockToken,
-          idempotencyKey,
-        }),
-      });
-      if (res.ok) {
-        const hold: HoldSlotResult = await res.json();
-        return { hold, live: true, idempotencyKey };
-      }
-    } catch {
-      // Fallback ACID hold simulation
-    }
-
-    const depositAmount = Math.floor((quote.currentPrice * listing.depositPercent) / 100);
-    const reservationId = crypto.randomUUID();
-    return {
-      live: false,
+    const hold = await this.checkoutRequest<HoldSlotResult>('/bookings/hold', {
+      tenantId: listing.tenantId,
+      groupId: listing.groupId,
+      slotStart: quote.slotStart,
+      userId,
+      priceLockToken: quote.priceLockToken,
       idempotencyKey,
-      hold: {
-        bookingId: crypto.randomUUID(),
-        reservationId,
-        unitId: crypto.randomUUID(),
-        unitNumber: `${listing.sportCode.slice(0, 3)}-04`,
-        groupId: listing.groupId,
-        slotStart: quote.slotStart,
-        userId,
-        lockedPrice: quote.currentPrice,
-        depositAmount,
-        status: depositAmount === 0 ? 'CONFIRMED' : 'HELD',
-        holdExpiresAt: new Date(Date.now() + 10 * 60_000).toISOString(),
-      },
-    };
+    });
+    return { hold, live: true, idempotencyKey };
   }
 
-  async confirmDepositAndIssueQr(
-    hold: HoldSlotResult,
-    options?: {
-      provider?: 'VIETQR_NAPAS' | 'VNPAY_ESCROW' | 'MOMO_WALLET' | 'INTL_CARD';
-      paidAmount?: number;
-      customerName?: string;
-      customerPhone?: string;
-      customerEmail?: string;
-      needVatInvoice?: boolean;
-      vatCompanyName?: string;
-      vatTaxCode?: string;
-      bookingNote?: string;
+  private async checkoutRequest<T>(path: string, body?: object, signal?: AbortSignal): Promise<T> {
+    const response = await fetch(`/api/v1${path}`, {
+      method: body ? 'POST' : 'GET', headers: this.headers(),
+      body: body ? JSON.stringify(body) : undefined, signal,
+    });
+    if (!response.ok) {
+      const problem = await response.json().catch(() => null);
+      throw new Error(problem?.message || 'Hệ thống chưa xác nhận được thao tác.');
     }
-  ): Promise<{ qr: QrCodeTicket; live: boolean; providerRef: string }> {
-    const provider = options?.provider ?? 'VIETQR_NAPAS';
-    const amountToPay = options?.paidAmount ?? hold.depositAmount;
-    if (amountToPay <= 0) {
-      throw new Error('Số tiền thanh toán phải lớn hơn 0₫.');
-    }
-    const providerRef = `${provider.split('_')[0]}_${Date.now().toString().slice(-8)}`;
-    try {
-      const webhookRes = await fetch('/api/v1/payments/webhook', {
-        method: 'POST',
-        headers: this.headers(),
-        body: JSON.stringify({
-          provider,
-          providerRef,
-          reservationId: hold.reservationId,
-          slotStart: hold.slotStart,
-          amount: amountToPay,
-          status: 'SUCCESS',
-          customerName: options?.customerName,
-          customerPhone: options?.customerPhone,
-          customerEmail: options?.customerEmail,
-          needVatInvoice: options?.needVatInvoice,
-          vatCompanyName: options?.vatCompanyName,
-          vatTaxCode: options?.vatTaxCode,
-          bookingNote: options?.bookingNote,
-        }),
-      });
-      if (webhookRes.ok) {
-        const qrRes = await fetch(`/api/v1/bookings/${hold.reservationId}/qr`, {
-          headers: this.headers(),
-        });
-        if (qrRes.ok) {
-          const qr: QrCodeTicket = await qrRes.json();
-          return { qr, live: true, providerRef };
-        }
-      } else if (webhookRes.status >= 400 && webhookRes.status < 500) {
-        const err = await webhookRes.json().catch(() => ({ message: 'Thanh toán không hợp lệ.' }));
-        throw new Error(err.message);
-      }
-    } catch (e) {
-      if (e instanceof Error && e.message && !e.message.includes('Failed to fetch')) {
-        throw e;
-      }
-    }
+    return response.json();
+  }
 
-    const qrJti = crypto.randomUUID();
-    return {
-      live: false,
-      providerRef,
-      qr: {
-        reservationId: hold.reservationId,
-        qrJti,
-        qrToken: `QR_KEY_2026_V1.${btoa(`${qrJti}:${hold.reservationId}:${hold.unitNumber}`).replace(/=+$/, '')}.HMAC256_SINGLE_USE`,
-        expiresAt: new Date(new Date(hold.slotStart).getTime() + 2 * 3600_000).toISOString(),
-      },
-    };
+  getCheckoutProviders(): Promise<import('../types/marketplace').CheckoutProvider[]> {
+    return this.checkoutRequest('/payments/providers');
+  }
+
+  getBookingPaymentStatus(reservationId: string, signal?: AbortSignal): Promise<import('../types/marketplace').BookingPaymentStatus> {
+    return this.checkoutRequest(`/bookings/${reservationId}/payment-status`, undefined, signal);
   }
 
   async resendQrTicketEmail(
@@ -1404,7 +1320,8 @@ class MarketplaceApiClient {
     };
   }
 
-  async createMoMoPaymentSession(
+  async createInlineQrPayment(
+    provider: 'MOMO_WALLET' | 'VIETQR_NAPAS',
     hold: HoldSlotResult,
     options: {
       amount: number;
@@ -1416,115 +1333,25 @@ class MarketplaceApiClient {
       vatTaxCode?: string;
       bookingNote?: string;
     }
-  ): Promise<MoMoPaymentSession> {
-    try {
-      const res = await fetch('/api/v1/payments/momo/create', {
-        method: 'POST',
-        headers: this.headers(),
-        body: JSON.stringify({
-          reservationId: hold.reservationId,
-          amount: options.amount,
-          customerName: options.customerName,
-          customerPhone: options.customerPhone,
-          customerEmail: options.customerEmail,
-          needVatInvoice: options.needVatInvoice,
-          vatCompanyName: options.vatCompanyName,
-          vatTaxCode: options.vatTaxCode,
-          bookingNote: options.bookingNote,
-        }),
-      });
-      if (res.ok) {
-        return (await res.json()) as MoMoPaymentSession;
-      }
-      const err = await res.json().catch(() => ({ message: 'Không khởi tạo được giao dịch MoMo Sandbox.' }));
-      throw new Error(err.message || 'Không khởi tạo được giao dịch MoMo Sandbox.');
-    } catch (e) {
-      if (e instanceof Error && e.message && !e.message.includes('Failed to fetch')) {
-        throw e;
-      }
-    }
-
-    throw new Error(
-      'Cần khởi động Backend Spring Boot (port 8080) để ký HMAC-SHA256 và gọi tới https://test-payment.momo.vn/v2/gateway/api/create.'
-    );
+  ): Promise<void> {
+    const path = provider === 'VIETQR_NAPAS' ? '/payments/vietqr/create' : '/payments/momo/create';
+    await this.checkoutRequest(path, { reservationId: hold.reservationId, ...options });
   }
 
-  async completeMoMoIpnCallback(params: {
-    partnerCode: string;
-    orderId: string;
-    requestId: string;
-    amount: number;
-    orderInfo: string;
-    orderType: string;
-    transId: number;
-    resultCode: number;
-    message: string;
-    payType: string;
-    responseTime: number;
-    extraData: string;
-    signature: string;
-    reservationId?: string;
-  }): Promise<{ reservationId: string; status: string; qr?: QrCodeTicket }> {
-    const res = await fetch('/api/v1/payments/momo/ipn', {
-      method: 'POST',
-      headers: this.headers(),
-      body: JSON.stringify(params),
-    });
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({ message: 'Xác thực chữ ký MoMo IPN thất bại.' }));
-      throw new Error(err.message || 'Xác thực chữ ký MoMo IPN thất bại.');
-    }
-    const payload = (await res.json()) as { resultCode: number; reservationId: string; status: string };
-    let qr: QrCodeTicket | undefined;
-    if (payload.reservationId && payload.status === 'CONFIRMED') {
-      const qrRes = await fetch(`/api/v1/bookings/${payload.reservationId}/qr`, {
-        headers: this.headers(),
-      });
-      if (qrRes.ok) {
-        qr = (await qrRes.json()) as QrCodeTicket;
-      }
-    }
-    return { reservationId: payload.reservationId, status: payload.status, qr };
+  getVietQrReviewQueue(signal?: AbortSignal): Promise<import('../types/marketplace').VietQrReviewItem[]> {
+    return this.checkoutRequest('/payments/vietqr/review', undefined, signal);
   }
 
-  async createVnPayPaymentUrl(
-    hold: HoldSlotResult,
-    options: {
-      amount: number;
-      bankCode?: string;
-      locale?: 'vn' | 'en';
-      customerName?: string;
-      customerPhone?: string;
-      customerEmail?: string;
-      needVatInvoice?: boolean;
-      vatCompanyName?: string;
-      vatTaxCode?: string;
-      bookingNote?: string;
-    }
-  ): Promise<VnPayPaymentUrlResult> {
-    const res = await fetch('/api/v1/payments/vnpay/create-payment', {
-      method: 'POST',
+  async closeVietQrReview(id: string, note: string): Promise<void> {
+    const response = await fetch(`/api/v1/payments/vietqr/review/${encodeURIComponent(id)}`, {
+      method: 'PATCH',
       headers: this.headers(),
-      body: JSON.stringify({
-        reservationId: hold.reservationId,
-        amount: options.amount,
-        bankCode: options.bankCode || undefined,
-        locale: options.locale ?? 'vn',
-        orderType: 'other',
-        customerName: options.customerName,
-        customerPhone: options.customerPhone,
-        customerEmail: options.customerEmail,
-        needVatInvoice: options.needVatInvoice,
-        vatCompanyName: options.vatCompanyName,
-        vatTaxCode: options.vatTaxCode,
-        bookingNote: options.bookingNote,
-      }),
+      body: JSON.stringify({ note }),
     });
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({ message: 'Không khởi tạo được URL thanh toán VNPAY.' }));
-      throw new Error(err.message || 'Không khởi tạo được URL thanh toán VNPAY.');
+    if (!response.ok) {
+      const problem = await response.json().catch(() => null);
+      throw new Error(problem?.message || 'Chưa lưu được kết quả đối soát.');
     }
-    return (await res.json()) as VnPayPaymentUrlResult;
   }
 
   async verifyVnPayReturnParams(rawQueryString: string): Promise<VnPayReturnResult> {
@@ -1539,378 +1366,49 @@ class MarketplaceApiClient {
     return (await res.json()) as VnPayReturnResult;
   }
 
-  async getMyTickets(): Promise<MyTicketRecord[]> {
-    try {
-      const res = await fetch('/api/v1/bookings/my-tickets', {
-        headers: this.headers(),
-      });
-      if (res.ok) {
-        const list: MyTicketRecord[] = await res.json();
-        return list;
-      }
-    } catch {
-      // Offline fallback
-    }
-    return readOfflineTickets();
+  getMyTickets(): Promise<MyTicketRecord[]> {
+    return this.checkoutRequest('/bookings/my-tickets');
   }
 
-  saveOfflineTicket(ticket: MyTicketRecord): void {
-    const existing = readOfflineTickets().filter((t) => t.reservationId !== ticket.reservationId);
-    writeOfflineTickets([ticket, ...existing]);
-  }
-
-  async inspectQrTicket(
-    rawInput: string,
-    providerOrders: LessorBookingOrder[],
-    allSystemOrders: LessorBookingOrder[],
-    activeProviderId: string
-  ): Promise<import('../types/marketplace').QrInspectResult> {
-    const query = rawInput.trim();
-    if (!query) {
-      return {
-        valid: false,
-        verdictCode: 'NOT_FOUND',
-        verdictMessage: 'Vui lòng quét ảnh QR, nhập mã vé hoặc dán chuỗi Token ký số.',
-        signatureValid: false,
-        notExpired: false,
-        venueMatched: false,
-        unusedAntiReplay: false,
-      };
-    }
-
-    if (query.includes('.')) {
-      try {
-        const res = await fetch('/api/v1/checkins/inspect', {
-          method: 'POST',
-          headers: this.headers(),
-          body: JSON.stringify({ qrToken: query }),
-        });
-        if (res.ok) {
-          return await res.json();
-        }
-      } catch {
-        // Fallback to deterministic signed-envelope verification below
-      }
-    }
-
-    const maskPhone = (phone: string) => {
-      const clean = phone.replace(/\s+/g, '');
-      if (clean.length >= 4) {
-        return `${clean.slice(0, 4)} ••• •••`;
-      }
-      return phone || 'Chưa cung cấp';
-    };
-
-    const normalize = query.toLowerCase();
-    const matchOrder = (list: LessorBookingOrder[]) =>
-      list.find(
-        (o) =>
-          o.qrToken?.toLowerCase() === normalize ||
-          o.qrCode.toLowerCase() === normalize ||
-          o.orderId.toLowerCase() === normalize ||
-          o.orderId.replace('#', '').toLowerCase() === normalize.replace('#', '') ||
-          o.qrJti?.toLowerCase() === normalize ||
-          o.reservationId.toLowerCase() === normalize ||
-          o.qrCode.toLowerCase().endsWith(normalize) ||
-          o.orderId.toLowerCase().endsWith(normalize)
-      );
-
-    // If user scanned an envelope token (`payload.sig`), verify structure & signature tag first
-    if (query.includes('.')) {
-      const parts = query.split('.');
-      const sigOk = parts.length === 2 && parts[0].length >= 16 && parts[1].length >= 12;
-      const inOwn = matchOrder(providerOrders);
-      const inOther = !inOwn ? matchOrder(allSystemOrders) : undefined;
-      const found = inOwn ?? inOther;
-
-      if (!sigOk || !found || found.qrToken !== query) {
-        return {
-          valid: false,
-          verdictCode: 'INVALID_SIGNATURE',
-          verdictMessage:
-            'Cảnh báo: Mã vé không hợp lệ hoặc đã bị chỉnh sửa!',
-          signatureValid: false,
-          notExpired: false,
-          venueMatched: false,
-          unusedAntiReplay: false,
-        };
-      }
-    }
-
-    const inOwn = matchOrder(providerOrders);
-    const inOther = !inOwn ? matchOrder(allSystemOrders) : undefined;
-    const target = inOwn ?? inOther;
-
-    if (!target) {
-      return {
-        valid: false,
-        verdictCode: 'NOT_FOUND',
-        verdictMessage:
-          'Không tìm thấy mã vé QR hoặc mã đơn này trên hệ thống ArenaPulse. Tuyệt đối không mở sân nếu khách chỉ đưa ảnh chụp không rõ nguồn.',
-        signatureValid: false,
-        notExpired: false,
-        venueMatched: false,
-        unusedAntiReplay: false,
-      };
-    }
-
-    const masked = maskPhone(target.customerPhone);
-    const basePayload = {
-      reservationId: target.reservationId,
-      qrJti: target.qrJti ?? target.qrCode,
-      orderId: target.orderId,
-      unitNumber: target.unitNumber,
-      groupName: target.groupName,
-      slotLabel: target.slotLabel,
-      customerName: target.customerName,
-      customerPhoneMasked: masked,
-      customerEmail: target.customerEmail ?? 'Chưa cập nhật email',
-      totalPrice: target.courtPrice + target.addOnTotal,
-      paidAmount: target.paidEscrow,
-      remainingAtVenue: target.remainingAtVenue,
-      status: target.status,
-    };
-
-    if (target.providerId !== activeProviderId) {
-      return {
-        ...basePayload,
-        valid: false,
-        verdictCode: 'WRONG_VENUE',
-        verdictMessage: `Sai cơ sở! Vé này thuộc cụm "${target.venueName}", không thuộc cơ sở của bạn.`,
-        signatureValid: true,
-        notExpired: true,
-        venueMatched: false,
-        unusedAntiReplay: target.status !== 'COMPLETED',
-      };
-    }
-
-    if (target.status === 'COMPLETED') {
-      return {
-        ...basePayload,
-        valid: false,
-        verdictCode: 'ALREADY_USED',
-        verdictMessage: `Vé ${target.orderId} đã được sử dụng để nhận sân trước đó (${target.createdAtLabel}). Không thể quét lại lần thứ hai.`,
-        signatureValid: true,
-        notExpired: true,
-        venueMatched: true,
-        unusedAntiReplay: false,
-        previousScannedAt: target.createdAtLabel,
-      };
-    }
-
-    if (target.status === 'NO_SHOW' || target.status === 'CANCELLED') {
-      return {
-        ...basePayload,
-        valid: false,
-        verdictCode: 'CANCELLED_OR_NO_SHOW',
-        verdictMessage: `Vé ${target.orderId} đã hết hiệu lực (${target.status === 'NO_SHOW' ? 'Quá 15p bỏ lịch' : 'Đã hủy hoàn tiền'}).`,
-        signatureValid: true,
-        notExpired: false,
-        venueMatched: true,
-        unusedAntiReplay: false,
-      };
-    }
-
+  async inspectQrTicket(rawInput: string, providerOrders: LessorBookingOrder[]): Promise<import('../types/marketplace').QrInspectResult> {
+    const inspected = await this.checkoutRequest<import('../types/marketplace').QrInspectResult & {
+      slotStart?: string; slotEnd?: string;
+    }>('/checkins/inspect', { qrToken: rawInput.trim() });
     return {
-      ...basePayload,
-      valid: true,
-      verdictCode: 'VALID_READY',
-      verdictMessage:
-        'Vé hợp lệ (Đã xác thực chữ ký điện tử • Đúng cơ sở • Chưa sử dụng). Hãy đối chiếu tên & hỏi khách 4 số cuối SĐT trước khi mở sân.',
-      signatureValid: true,
-      notExpired: true,
-      venueMatched: true,
-      unusedAntiReplay: true,
+      ...inspected,
+      orderId: providerOrders.find(order => order.reservationId === inspected.reservationId)?.orderId ?? inspected.reservationId,
+      slotLabel: inspected.slotStart ? formatSlotWindow(inspected.slotStart, inspected.slotEnd) : undefined,
     };
   }
 
   async confirmQrCheckInWithPhoneChallenge(
-    orderId: string,
-    qrTokenOrCode: string,
-    phoneLast4Input: string,
-    providerOrders: LessorBookingOrder[]
+    qrToken: string, phoneLast4: string
   ): Promise<{ ok: boolean; message: string }> {
-    const cleanLast4 = phoneLast4Input.replace(/\D/g, '');
-    if (cleanLast4.length !== 4) {
-      return {
-        ok: false,
-        message: 'Vui lòng nhập đủ 4 số cuối SĐT mà khách hàng đọc để xác nhận chính chủ.',
-      };
+    try {
+      await this.checkoutRequest<CheckInResult>('/checkins/scan', { qrToken: qrToken.trim(), phoneLast4: phoneLast4.trim() || undefined });
+      return { ok: true, message: 'Đã xác nhận nhận sân.' };
+    } catch (error) {
+      return { ok: false, message: error instanceof Error ? error.message : 'Chưa xác nhận được vé.' };
     }
-    const target = providerOrders.find((o) => o.orderId === orderId);
-    if (!target) {
-      return { ok: false, message: 'Không tìm thấy đơn cần mở sân.' };
-    }
-    if (qrTokenOrCode.includes('.')) {
-      try {
-        const res = await fetch('/api/v1/checkins/scan', {
-          method: 'POST',
-          headers: this.headers(),
-          body: JSON.stringify({ qrToken: qrTokenOrCode, phoneLast4: cleanLast4 }),
-        });
-        if (res.ok) {
-          return { ok: true, message: `✓ Đã xác thực & mở sân thành công cho đơn ${orderId}.` };
-        }
-        const err = await res.json().catch(() => null);
-        if (err?.message) {
-          return { ok: false, message: String(err.message) };
-        }
-      } catch {
-        // Fallback to local verification when backend is offline
-      }
-    }
-
-    const expectedLast4 = target.customerPhone.replace(/\D/g, '').slice(-4);
-    if (expectedLast4.length === 4 && cleanLast4 !== expectedLast4) {
-      return {
-        ok: false,
-        message: '4 số cuối SĐT khách đọc không khớp với thông tin đặt sân — từ chối mở sân.',
-      };
-    }
-    return { ok: true, message: `✓ Đã xác thực & mở sân thành công cho đơn ${orderId}.` };
   }
 
-  async verifyPinAtVenue(
-    order: LessorBookingOrder,
-    pinInput: string,
-    phoneLast4Input?: string
-  ): Promise<{ ok: boolean; message: string; remainingAttempts?: number; locked?: boolean }> {
-    const cleanPin = pinInput.replace(/\D/g, '');
-    if (cleanPin.length !== 6) {
-      return { ok: false, message: 'Vui lòng nhập đủ 6 chữ số Mã PIN nhận sân từ Email khách.' };
-    }
-
+  async verifyPinAtVenue(order: LessorBookingOrder, pinCode: string, phoneLast4?: string):
+    Promise<{ ok: boolean; message: string; remainingAttempts?: number; locked?: boolean }> {
     try {
-      const res = await fetch('/api/v1/checkins/verify-pin', {
-        method: 'POST',
-        headers: this.headers(),
-        body: JSON.stringify({
-          reservationId: order.reservationId,
-          pinCode: cleanPin,
-          phoneLast4: phoneLast4Input?.trim() || undefined,
-        }),
+      await this.checkoutRequest<CheckInResult>('/checkins/verify-pin', {
+        reservationId: order.reservationId, pinCode, phoneLast4: phoneLast4?.trim() || undefined,
       });
-      if (res.ok) {
-        return {
-          ok: true,
-          message: `✓ Xác thực PIN 6 số thành công! Đã mở ${order.unitNumber} cho khách ${order.customerName}.`,
-        };
-      }
-      const errBody = await res.json().catch(() => null);
-      if (errBody?.message) {
-        return { ok: false, message: String(errBody.message) };
-      }
-    } catch {
-      // Backend offline -> enforce identical cryptographic PIN & brute-force check in client DB
+      return { ok: true, message: 'Đã xác nhận nhận sân.' };
+    } catch (error) {
+      return { ok: false, message: error instanceof Error ? error.message : 'Chưa xác nhận được PIN.' };
     }
-
-    if (order.status === 'COMPLETED') {
-      return {
-        ok: false,
-        message: 'CHẶN DÙNG LẠI: Mã PIN này đã được xác thực nhận sân trước đó rồi.',
-      };
-    }
-    const attempts = order.pinFailedAttempts ?? 0;
-    if (attempts >= 5) {
-      return {
-        ok: false,
-        locked: true,
-        remainingAttempts: 0,
-        message: 'Đã nhập sai mã PIN 5 lần — hệ thống tạm khóa xác thực đơn này để chống đoán mã.',
-      };
-    }
-
-    const expectedPin = order.checkinPin || deriveDeterministicPin(`${order.reservationId}:${order.qrJti ?? order.qrCode}`);
-    if (cleanPin !== expectedPin) {
-      const nextAttempts = attempts + 1;
-      const left = Math.max(0, 5 - nextAttempts);
-      return {
-        ok: false,
-        remainingAttempts: left,
-        locked: left === 0,
-        message:
-          left > 0
-            ? `Mã PIN 6 số không đúng! Còn ${left} lần thử trước khi tạm khóa.`
-            : 'Sai mã PIN 5 lần liên tiếp — tạm khóa đơn này 5 phút để chống đoán mã.',
-      };
-    }
-
-    const cleanLast4 = (phoneLast4Input ?? '').replace(/\D/g, '');
-    const orderLast4 = order.customerPhone.replace(/\D/g, '').slice(-4);
-    if (cleanLast4.length === 4 && orderLast4.length === 4 && cleanLast4 !== orderLast4) {
-      return {
-        ok: false,
-        message: '4 số cuối SĐT khách đọc không khớp với số điện thoại đặt sân!',
-      };
-    }
-
-    return {
-      ok: true,
-      message: `✓ Xác thực PIN 6 số & thông tin chủ vé thành công! Đã mở ${order.unitNumber} cho ${order.customerName}.`,
-    };
   }
 
-  async scanQrAtVenue(qrToken: string, reservationId: string, tenantId: string): Promise<CheckInResult> {
-    try {
-      const res = await fetch('/api/v1/checkins/scan', {
-        method: 'POST',
-        headers: this.headers(),
-        body: JSON.stringify({ qrToken }),
-      });
-      if (res.ok) {
-        return await res.json();
-      }
-    } catch {
-      // Fallback
-    }
-    return {
-      checkInId: crypto.randomUUID(),
-      reservationId,
-      tenantId,
-      method: 'QR_SCAN',
-      reservationStatus: 'COMPLETED',
-      scannedAt: new Date().toISOString(),
-    };
-  }
-
-  async cancelReservation(
-    hold: HoldSlotResult,
-    hoursRemainingSimulated: number,
-    venueInitiated: boolean
-  ): Promise<CancelBookingResult> {
-    try {
-      const res = await fetch(`/api/v1/bookings/${hold.reservationId}/cancel`, {
-        method: 'POST',
-        headers: this.headers(),
-        body: JSON.stringify({
-          slotStart: hold.slotStart,
-          reason: venueInitiated ? 'Mưa lớn / Bảo trì mặt sân' : 'Người chơi thay đổi lịch trình',
-        }),
-      });
-      if (res.ok) {
-        return await res.json();
-      }
-    } catch {
-      // Fallback exact tier math matching CancellationRefundPolicyEvaluator
-    }
-    const appliedRefundPercent = venueInitiated
-      ? 100
-      : hoursRemainingSimulated >= 11
-        ? 100
-        : hoursRemainingSimulated >= 4
-          ? 50
-          : 0;
-    const refundAmount = Math.floor((hold.depositAmount * appliedRefundPercent) / 100);
-    return {
-      reservationId: hold.reservationId,
-      status: 'CANCELLED',
-      depositAmount: hold.depositAmount,
-      refundAmount,
-      forfeitedAmount: hold.depositAmount - refundAmount,
-      appliedRefundPercent,
-      venueInitiated,
-      cancelledAt: new Date().toISOString(),
-    };
+  async cancelReservation(hold: HoldSlotResult, venueInitiated: boolean): Promise<CancelBookingResult> {
+    return this.checkoutRequest(`/bookings/${hold.reservationId}/cancel`, {
+      slotStart: hold.slotStart,
+      reason: venueInitiated ? 'Mưa lớn / Bảo trì mặt sân' : 'Người chơi thay đổi lịch trình',
+    });
   }
 
   async runMonteCarloSimulation(
@@ -2393,49 +1891,8 @@ class MarketplaceApiClient {
     return updatedItem;
   }
 
-  async getReconciliation(): Promise<ReconciliationSummary> {
-    try {
-      const res = await fetch('/api/v1/finance/reconciliation', {
-        headers: this.headers(),
-      });
-      if (res.ok) {
-        return await res.json();
-      }
-    } catch {
-      // Aggregate directly from persisted operational orders ledger
-    }
-    const allListings = mergeOfflineMediaIntoListings(createCuratedListings());
-    const storedMap = ensureSeededOperationalOrdersMap(allListings);
-    const allOrders = [
-      ...convertStoredTicketsToOrders(allListings),
-      ...Object.values(storedMap).flat(),
-    ];
-    const activeOrders = allOrders.filter((o) => o.status !== 'CANCELLED');
-    const escrowCredits = activeOrders.reduce((s, o) => s + o.paidEscrow, 0);
-    const completedEscrow = activeOrders
-      .filter((o) => o.status === 'COMPLETED')
-      .reduce((s, o) => s + o.paidEscrow, 0);
-    const comm = Math.round(completedEscrow * 0.1);
-    const payable = Math.max(0, completedEscrow - comm);
-    const forfeited = activeOrders
-      .filter((o) => o.status === 'NO_SHOW')
-      .reduce((s, o) => s + o.paidEscrow, 0);
-    const refunded = allOrders
-      .filter((o) => o.status === 'CANCELLED')
-      .reduce((s, o) => s + o.paidEscrow, 0);
-
-    return {
-      tenantId: DEFAULT_TENANT_ID,
-      fromTime: new Date(Date.now() - 14 * 86400_000).toISOString(),
-      toTime: new Date().toISOString(),
-      totalGatewayDebits: escrowCredits,
-      totalEscrowCredits: escrowCredits,
-      totalPlatformCommission: comm,
-      totalVenuePayable: payable,
-      totalCustomerRefunds: refunded,
-      totalForfeitedDeposits: forfeited,
-      doubleEntryBalanced: true,
-    };
+  getReconciliation(signal?: AbortSignal): Promise<ReconciliationSummary> {
+    return this.checkoutRequest('/finance/reconciliation', undefined, signal);
   }
 
   async fetchLessorAnalytics(
@@ -3764,14 +3221,7 @@ function readOfflineTickets(): MyTicketRecord[] {
   }
 }
 
-function writeOfflineTickets(items: MyTicketRecord[]): void {
-  if (typeof window === 'undefined') return;
-  try {
-    window.localStorage.setItem(MY_TICKETS_STORAGE_KEY, JSON.stringify(items));
-  } catch {
-    // Ignore storage quota errors
-  }
-}
+
 
 function readOfflineLessorApplications(): LessorApplicationRecord[] {
   if (typeof window === 'undefined') return [];

@@ -5,7 +5,7 @@ import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotNull;
 
 import java.util.UUID;
-public record CreateMoMoPaymentRequest(
+public record CreateQrPaymentRequest(
         @NotNull UUID reservationId,
         @NotNull @Min(1) Long amount,
         String customerName,

@@ -259,7 +259,7 @@ export const FloatingChatWidget: React.FC<FloatingChatWidgetProps> = ({
         const replyBody = attachedListing
           ? `${activeProvider.providerName} đã nhận thông tin hỏi về "${attachedListing.groupName}". Lịch trống hiển thị trên sàn là real-time 100%, bạn bấm đặt ca để khóa giá trong 10 phút nhé!`
           : lower.includes('mưa') || lower.includes('hoàn cọc')
-            ? 'Khi thời tiết mưa bão hoặc cụm sân gặp sự cố kỹ thuật, ArenaPulse tự động hoàn 100% tiền cọc về ví thanh toán của bạn ngay lập tức ạ.'
+            ? 'Nếu chủ sân hủy, bạn có thể xem khoản hoàn theo chính sách và trạng thái xác nhận trong mục Thanh toán & Vé.'
             : lower.includes('vợt') || lower.includes('bóng')
               ? 'Quầy lễ tân tại cụm sân luôn có sẵn vợt, bóng thi đấu mới và nước uống ướp lạnh phục vụ theo từng ca đặt.'
               : `${activeProvider.providerName} đã tiếp nhận tin nhắn (${activeProvider.responseTimeLabel}). Bạn có thể chọn khung giờ sáng đèn trên lịch hoặc ghé Gian hàng để xem tất cả mặt sân nhé!`;

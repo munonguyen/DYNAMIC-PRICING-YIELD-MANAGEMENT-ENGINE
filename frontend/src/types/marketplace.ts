@@ -197,6 +197,41 @@ export interface MyTicketRecord {
 
 export type PaymentGatewayCode = 'VIETQR_NAPAS' | 'VNPAY_ESCROW' | 'MOMO_WALLET' | 'INTL_CARD';
 
+export type CheckoutProvider = 'VNPAY_ESCROW' | 'MOMO_WALLET' | 'VIETQR_NAPAS';
+
+export interface VietQrBankTransfer {
+  bankCode: string;
+  bankName: string;
+  bankAccount: string;
+  virtualAccount: string;
+  accountName: string;
+  content: string;
+}
+
+export interface VietQrReviewItem {
+  id: string;
+  reservationId: string | null;
+  reference: string;
+  amount: number;
+  content: string;
+  reason: string;
+  receivedAt: string;
+}
+
+export interface BookingPaymentStatus {
+  reservationId: string;
+  reservationStatus: string;
+  paymentStatus: 'NOT_STARTED' | 'PENDING' | 'FAILED' | 'VERIFIED' | 'NO_DEPOSIT' | 'EXPIRED'
+    | 'CANCELLED' | 'UNVERIFIED' | 'REVIEW_REQUIRED' | 'REFUND_PENDING' | 'REFUNDED';
+  paidAmount: number;
+  remainingAtVenue: number;
+  requestedAmount: number | null;
+  provider: CheckoutProvider | null;
+  providerReference: string | null;
+  verifiedAt: string | null;
+  paymentQr: { payload: string; holdUntil: string; sandbox: boolean; transfer: VietQrBankTransfer | null } | null;
+}
+
 export interface MoMoPaymentSession {
   partnerCode: string;
   orderId: string;
@@ -208,20 +243,6 @@ export interface MoMoPaymentSession {
   resultCode: number;
   message: string;
   liveGatewayResponse: boolean;
-  signature: string;
-}
-
-export interface VnPayPaymentUrlResult {
-  code: string;
-  message: string;
-  paymentUrl: string;
-  txnRef: string;
-  reservationId: string;
-  amountVnd: number;
-  vnpAmount: number;
-  createDate: string;
-  expireDate: string;
-  status: string;
 }
 
 export interface VnPayReturnResult {
@@ -298,6 +319,7 @@ export interface ReconciliationSummary {
   totalPlatformCommission: number;
   totalVenuePayable: number;
   totalCustomerRefunds: number;
+  totalCustomerRefundsPending: number;
   totalForfeitedDeposits: number;
   doubleEntryBalanced: boolean;
 }

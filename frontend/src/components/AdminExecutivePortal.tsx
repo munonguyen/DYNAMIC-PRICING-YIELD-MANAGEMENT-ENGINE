@@ -31,6 +31,7 @@ import { EXPO_EASE } from './motionPrimitives';
 import { ActionButton } from './FairwayControls';
 import { AdminPlatformDashboard } from './AdminPlatformDashboard';
 import { AdminAccountManager } from './AdminAccountManager';
+import { VietQrReviewPanel } from './VietQrReviewPanel';
 import { LessorPartnerPortal } from './LessorPartnerPortal';
 import type { AdminHeaderTabId } from './FairwayHeader';
 
@@ -507,7 +508,11 @@ export const AdminExecutivePortal: React.FC<AdminExecutivePortalProps> = ({
                 <div className="flex items-center justify-between rounded-xl bg-[#F8FAFC] px-3 py-2 border border-neutral-200/60">
                   <span className="text-neutral-600">Sổ cái Kế toán Kép</span>
                   <span className="font-bold text-[#0F766E]">
-                    {reconciliation?.doubleEntryBalanced ? '✓ Nợ = Có' : 'Đang đồng bộ'}
+                    {reconciliation
+                      ? reconciliation.doubleEntryBalanced
+                        ? '✓ Nợ = Có'
+                        : 'Cần kiểm tra'
+                      : 'Đang đồng bộ'}
                   </span>
                 </div>
 
@@ -975,6 +980,12 @@ export const AdminExecutivePortal: React.FC<AdminExecutivePortalProps> = ({
                       {formatVnd(reconciliation?.totalForfeitedDeposits ?? 3_420_000)}
                     </strong>
                   </div>
+                  <div className="rounded-2xl bg-amber-50/70 p-4 border border-amber-200/80 flex justify-between items-center">
+                    <span className="text-xs text-amber-900 font-semibold">Tiền còn phải hoàn</span>
+                    <strong className="tabular-nums text-sm text-amber-900">
+                      {formatVnd(reconciliation?.totalCustomerRefundsPending ?? 0)}
+                    </strong>
+                  </div>
                 </div>
               </div>
 
@@ -1017,6 +1028,12 @@ export const AdminExecutivePortal: React.FC<AdminExecutivePortalProps> = ({
                   ))}
                 </div>
               </div>
+
+              {(activeRole === 'ADMIN' || activeRole === 'ACCOUNTANT') && (
+                <div className="lg:col-span-12">
+                  <VietQrReviewPanel />
+                </div>
+              )}
             </motion.div>
           )}
 

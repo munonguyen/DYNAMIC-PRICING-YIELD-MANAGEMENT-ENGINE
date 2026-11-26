@@ -168,7 +168,7 @@ public class FinanceLedgerService {
         legs.add(new JournalLeg("PLATFORM_ESCROW_LIABILITY", "ADJUSTMENT", "DEBIT", effectiveEscrow));
 
         if (refund > 0) {
-            legs.add(new JournalLeg("GATEWAY_CLEARING", "REFUND", "CREDIT", refund));
+            legs.add(new JournalLeg("CUSTOMER_REFUND_PAYABLE", "REFUND", "CREDIT", refund));
         }
         if (forfeit > 0) {
             BigDecimal rate = resolveCommissionRate(reservation.getTenantId(), sportTypeId, Instant.now(), true);
@@ -188,8 +188,24 @@ public class FinanceLedgerService {
                 reservation.getReservationId(),
                 refundPayment != null ? refundPayment.getId() : null,
                 "CANCELLATION_REFUND",
-                "Cancellation settlement: refund=" + refund + ", forfeit=" + forfeit,
+                "Cancellation settlement: refund payable=" + refund + ", forfeit=" + forfeit,
                 legs
+        );
+    }
+
+    @Transactional
+    public void recordRefundPaid(Reservation reservation, Payment refund) {
+        postBalancedJournal(
+                "REFUND_PAID:" + refund.getId(),
+                reservation.getTenantId(),
+                reservation.getReservationId(),
+                refund.getId(),
+                "CANCELLATION_REFUND",
+                "Gateway confirmed refund",
+                List.of(
+                        new JournalLeg("CUSTOMER_REFUND_PAYABLE", "REFUND", "DEBIT", refund.getAmount()),
+                        new JournalLeg("GATEWAY_CLEARING", "REFUND", "CREDIT", refund.getAmount())
+                )
         );
     }
 
@@ -294,8 +310,12 @@ public class FinanceLedgerService {
         long commissionCredits = ledgerEntryRepository.sumAmountByAccountAndDirection(tenantId, "PLATFORM_COMMISSION_REVENUE", "CREDIT", f, t);
         long venuePayableCredits = ledgerEntryRepository.sumAmountByAccountAndDirection(tenantId, "VENUE_PAYABLE", "CREDIT", f, t);
 
-        long totalAllDebits = gatewayDebits + escrowDebits;
-        long totalAllCredits = gatewayRefundCredits + escrowCredits + commissionCredits + venuePayableCredits;
+        long refundPayableDebits = ledgerEntryRepository.sumAmountByAccountAndDirection(tenantId, "CUSTOMER_REFUND_PAYABLE", "DEBIT", f, t);
+        long refundPayableCredits = ledgerEntryRepository.sumAmountByAccountAndDirection(tenantId, "CUSTOMER_REFUND_PAYABLE", "CREDIT", f, t);
+        long totalAllDebits = gatewayDebits + escrowDebits + refundPayableDebits;
+        long totalAllCredits = gatewayRefundCredits + escrowCredits + commissionCredits + venuePayableCredits + refundPayableCredits;
+        long pendingRefunds = ledgerEntryRepository.sumAmountByAccountAndDirection(tenantId, "CUSTOMER_REFUND_PAYABLE", "CREDIT", Instant.EPOCH, t)
+                - ledgerEntryRepository.sumAmountByAccountAndDirection(tenantId, "CUSTOMER_REFUND_PAYABLE", "DEBIT", Instant.EPOCH, t);
 
         long forfeitedDeposits = ledgerEntryRepository.findEntriesFiltered(tenantId, f, t, Pageable.unpaged()).stream()
                 .filter(e -> "FORFEITED_DEPOSIT".equals(e.getEntryType()) && "CREDIT".equals(e.getDirection()))
@@ -310,7 +330,8 @@ public class FinanceLedgerService {
                 escrowCredits,
                 commissionCredits,
                 venuePayableCredits,
-                gatewayRefundCredits,
+                ledgerEntryRepository.sumVerifiedRefunds(tenantId, f, t),
+                pendingRefunds,
                 forfeitedDeposits,
                 totalAllDebits == totalAllCredits
         );

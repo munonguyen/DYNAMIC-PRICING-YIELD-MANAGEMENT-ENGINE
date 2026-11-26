@@ -2,6 +2,7 @@ package com.yieldengine.service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.yieldengine.config.MoMoGatewayProperties;
+import com.yieldengine.exception.MoMoSessionRejectedException;
 import com.yieldengine.record.momo.MoMoGatewayApiResponse;
 import com.yieldengine.record.momo.MoMoGatewayCreatePayload;
 import com.yieldengine.record.momo.MoMoPaymentInitResult;
@@ -21,7 +22,7 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
-import java.util.Optional;
+import java.util.Objects;
 import java.util.UUID;
 
 /**
@@ -71,13 +72,13 @@ public class MoMoPaymentGatewayService {
     public MoMoPaymentInitResult createPaymentSession(
             UUID reservationId,
             long amount,
+            String orderId,
             String orderInfo,
             String extraDataBase64
     ) {
-        validator.validateCreateRequest(reservationId, amount, properties);
+        validateInitiation(reservationId, amount);
 
         String shortRes = reservationId.toString().replace("-", "").substring(0, 8).toUpperCase();
-        String orderId = properties.getPartnerCode() + "_" + shortRes + "_" + System.currentTimeMillis();
         String requestId = orderId;
         String cleanOrderInfo = hasText(orderInfo)
                 ? orderInfo.trim()
@@ -87,20 +88,12 @@ public class MoMoPaymentGatewayService {
         String rawSignature = buildCreateRawSignature(orderId, requestId, amount, cleanOrderInfo, extra);
         String signature = CryptoHashUtils.hmacSha256Hex(rawSignature, properties.getSecretKey());
 
-        if (shouldCallLiveGateway()) {
-            Optional<MoMoPaymentInitResult> liveResult = dispatchCreateToGateway(
-                    orderId, requestId, amount, cleanOrderInfo, extra, signature, rawSignature
-            );
-            if (liveResult.isPresent()) {
-                return liveResult.get();
-            }
-        }
-
-        return buildLocalFallbackSession(orderId, requestId, amount, signature, rawSignature);
+        return dispatchCreateToGateway(orderId, requestId, amount, cleanOrderInfo, extra, signature, rawSignature);
     }
 
     public boolean verifyIpnSignature(MoMoIpnCallbackRequest req) {
-        if (req == null || !hasText(req.signature())) {
+        if (req == null || !hasValidMerchantCredentials() || !hasText(req.signature())
+                || !Objects.equals(properties.getPartnerCode(), req.partnerCode())) {
             return false;
         }
         String raw = buildIpnRawSignature(req);
@@ -108,7 +101,7 @@ public class MoMoPaymentGatewayService {
         return CryptoHashUtils.constantTimeEqualsIgnoreCase(expected, req.signature());
     }
 
-    private Optional<MoMoPaymentInitResult> dispatchCreateToGateway(
+    private MoMoPaymentInitResult dispatchCreateToGateway(
             String orderId,
             String requestId,
             long amount,
@@ -136,43 +129,30 @@ public class MoMoPaymentGatewayService {
             int resultCode = apiResp.resultCode() != null ? apiResp.resultCode() : -1;
             String message = hasText(apiResp.message()) ? apiResp.message() : "Không rõ phản hồi từ MoMo Sandbox";
 
-            if (response.statusCode() >= 200 && response.statusCode() < 300 && resultCode == 0) {
-                log.info("Live MoMo Sandbox created transaction orderId={} amount={}VND resultCode=0", orderId, amount);
-                return Optional.of(mapper.toLiveInitResult(
-                        properties, orderId, requestId, amount, apiResp, signature, rawSignature
-                ));
+            if (response.statusCode() >= 200 && response.statusCode() < 300 && resultCode == 0
+                    && Objects.equals(apiResp.orderId(), orderId) && Objects.equals(apiResp.requestId(), requestId)
+                    && Objects.equals(apiResp.partnerCode(), properties.getPartnerCode()) && Objects.equals(apiResp.amount(), amount)) {
+                String qrPayload = apiResp.qrCodeUrl();
+                if (!hasText(qrPayload) || qrPayload.getBytes(StandardCharsets.UTF_8).length > 1024
+                        || qrPayload.codePoints().anyMatch(Character::isISOControl)) {
+                    throw new IllegalStateException("MoMo chưa cấp mã QR cho giao dịch. Vui lòng kiểm tra cấu hình QR của merchant.");
+                }
+                log.info("MoMo created QR for orderId={} amount={}VND", orderId, amount);
+                return mapper.toLiveInitResult(properties, orderId, requestId, amount, apiResp, signature, rawSignature);
             }
 
             log.warn("MoMo Sandbox rejected orderId={} httpStatus={} resultCode={} message={}",
                     orderId, response.statusCode(), resultCode, message);
-            throw new IllegalStateException("MoMo Sandbox trả lỗi (" + resultCode + "): " + message);
+            if (resultCode > 0 && response.statusCode() < 500) {
+                throw new MoMoSessionRejectedException();
+            }
+            throw new IllegalStateException("Chưa xác nhận được việc khởi tạo phiên MoMo.");
         } catch (IOException ex) {
-            log.warn("Network unreachable to MoMo Sandbox ({}), using local fallback: {}",
-                    properties.getEndpoint(), ex.getMessage());
-            return Optional.empty();
+            throw new IllegalStateException("Chưa kết nối được với MoMo. Hệ thống sẽ kiểm tra trạng thái giao dịch.", ex);
         } catch (InterruptedException ex) {
             Thread.currentThread().interrupt();
-            log.warn("Interrupted calling MoMo Sandbox, using local fallback");
-            return Optional.empty();
+            throw new IllegalStateException("Chưa nhận được phản hồi từ MoMo.", ex);
         }
-    }
-
-    private MoMoPaymentInitResult buildLocalFallbackSession(
-            String orderId,
-            String requestId,
-            long amount,
-            String signature,
-            String rawSignature
-    ) {
-        String qrContent = "2|99|" + properties.getPartnerCode() + "|" + orderId + "|"
-                + amount + "|" + signature.substring(0, 16);
-        String sandboxPayUrl = properties.getRedirectUrl() + "?partnerCode=" + properties.getPartnerCode()
-                + "&orderId=" + orderId + "&amount=" + amount;
-
-        log.info("Signed local MoMo v2 payment session orderId={} amount={}VND", orderId, amount);
-        return mapper.toLocalFallbackResult(
-                properties, orderId, requestId, amount, sandboxPayUrl, qrContent, signature, rawSignature
-        );
     }
 
     private String buildCreateRawSignature(
@@ -217,10 +197,37 @@ public class MoMoPaymentGatewayService {
                 + "&transId=" + req.transId();
     }
 
-    private boolean shouldCallLiveGateway() {
-        return properties.isLiveHttpEnabled()
-                && hasText(properties.getEndpoint())
-                && properties.getEndpoint().startsWith("http");
+    public void validateInitiation(UUID reservationId, long amount) {
+        if (!isConfigured()) {
+            throw new IllegalStateException("Cổng MoMo chưa được cấu hình.");
+        }
+        validator.validateCreateRequest(reservationId, amount, properties);
+    }
+
+    public boolean isConfigured() {
+        return properties.isLiveHttpEnabled() && hasText(properties.getEndpoint())
+                && hasValidMerchantCredentials() && hasHttpsIpnUrl();
+    }
+
+    public boolean isSandbox() {
+        return "test-payment.momo.vn".equalsIgnoreCase(URI.create(properties.getEndpoint()).getHost());
+    }
+
+    private boolean hasValidMerchantCredentials() {
+        return hasText(properties.getPartnerCode()) && !"MOMOBKUN20180529".equals(properties.getPartnerCode())
+                && hasText(properties.getAccessKey()) && hasText(properties.getSecretKey());
+    }
+
+    private boolean hasHttpsIpnUrl() {
+        if (!hasText(properties.getIpnUrl())) return false;
+        try {
+            URI ipn = URI.create(properties.getIpnUrl());
+            String host = ipn.getHost();
+            return "https".equalsIgnoreCase(ipn.getScheme()) && host != null
+                    && !"localhost".equalsIgnoreCase(host) && !host.startsWith("127.");
+        } catch (IllegalArgumentException ignored) {
+            return false;
+        }
     }
 
     private boolean hasText(String value) {

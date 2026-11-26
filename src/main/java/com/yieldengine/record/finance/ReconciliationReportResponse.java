@@ -11,6 +11,7 @@ public record ReconciliationReportResponse(
         long totalPlatformCommission,
         long totalVenuePayable,
         long totalCustomerRefunds,
+        long totalCustomerRefundsPending,
         long totalForfeitedDeposits,
         boolean doubleEntryBalanced
 ) {

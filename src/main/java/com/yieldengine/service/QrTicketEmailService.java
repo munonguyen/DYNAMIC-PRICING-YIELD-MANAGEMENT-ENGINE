@@ -67,6 +67,7 @@ public class QrTicketEmailService {
             throw new IllegalStateException("Chỉ gửi phiếu nhận sân cho đơn đã thanh toán CONFIRMED.");
         }
 
+        ticketPassService.requirePaymentForPass(reservation);
         TicketPassSnapshot pass = ticketPassService.buildPassSnapshot(reservation);
         String recipientEmail = StringUtils.hasText(explicitRecipientEmail)
                 ? explicitRecipientEmail.trim()

@@ -14,19 +14,24 @@ import java.util.UUID;
 public interface PaymentRepository extends JpaRepository<Payment, UUID> {
     Optional<Payment> findByProviderAndProviderRef(String provider, String providerRef);
 
-    Optional<Payment> findFirstByBookingIdAndPaymentTypeAndStatusOrderByCreatedAtDesc(
-            UUID bookingId, String paymentType, String status);
+    Optional<Payment> findFirstByBookingIdAndGatewayVerifiedAtIsNotNullAndPaymentTypeNotAndStatusOrderByGatewayVerifiedAtDesc(
+            UUID bookingId, String excludedPaymentType, String status);
+
+    Optional<Payment> findFirstByBookingIdOrderByCreatedAtDesc(UUID bookingId);
+
+    boolean existsByBookingIdAndProviderInAndStatus(UUID bookingId, List<String> providers, String status);
 
     List<Payment> findByBookingIdOrderByCreatedAtAsc(UUID bookingId);
 
-    @Query("SELECT COALESCE(SUM(p.amount), 0) FROM Payment p WHERE p.bookingId = :bookingId AND p.status = 'SUCCESS'")
+    @Query("SELECT COALESCE(SUM(p.amount), 0) FROM Payment p WHERE p.booking.id = :bookingId AND p.status = 'SUCCESS' AND p.paymentType <> 'REFUND' AND (p.gatewayVerifiedAt IS NOT NULL OR p.paymentType = 'BALANCE')")
     long sumSuccessfulPaidByBookingId(@Param("bookingId") UUID bookingId);
 
     @Query("""
             SELECT COALESCE(SUM(p.amount), 0) FROM Payment p
-            WHERE p.bookingId = :bookingId
+            WHERE p.booking.id = :bookingId
               AND p.status = 'SUCCESS'
               AND p.paymentType IN ('DEPOSIT', 'FULL_SETTLEMENT')
+              AND p.gatewayVerifiedAt IS NOT NULL
             """)
     long sumSuccessfulEscrowByBookingId(@Param("bookingId") UUID bookingId);
 }

@@ -1,69 +1,87 @@
 package com.yieldengine.controller.publicapi;
 
-import com.yieldengine.entity.Reservation;
-import com.yieldengine.mapper.MoMoGatewayMapper;
 import com.yieldengine.record.ops.MoMoIpnCallbackRequest;
 import com.yieldengine.record.ops.PaymentWebhookRequest;
+import com.yieldengine.record.ops.VietQrBankNotice;
 import com.yieldengine.record.vnpay.VnPayIpnResponse;
 import com.yieldengine.record.vnpay.VnPayReturnVerificationResponse;
 import com.yieldengine.service.BookingOrchestratorService;
 import com.yieldengine.service.MoMoPaymentGatewayService;
+import com.yieldengine.service.VietQrCallbackAuth;
+import com.yieldengine.service.VietQrTransferService;
 import com.yieldengine.service.VnPayPaymentService;
 import com.yieldengine.validate.MoMoPaymentValidator;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.http.CacheControl;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.Map;
 import java.util.UUID;
 
-@Tag(name = "[WEBHOOK] Payment Gateway Callbacks (MoMo & VNPAY)", description = "Server-to-server IPN callbacks and VNPAY browser return verification")
+@Tag(name = "[WEBHOOK] Payment Gateway Callbacks (MoMo, VNPAY & VietQR)", description = "Server-to-server IPN callbacks, VietQR bank transfer sync, and VNPAY browser return verification")
 @RestController
+@Slf4j
 @RequestMapping("/api/v1/payments")
 @RequiredArgsConstructor
 public class PaymentWebhookController {
 
     private final BookingOrchestratorService bookingOrchestratorService;
     private final MoMoPaymentGatewayService moMoPaymentGatewayService;
-    private final MoMoGatewayMapper moMoGatewayMapper;
     private final MoMoPaymentValidator moMoPaymentValidator;
+    private final VietQrCallbackAuth vietQrCallbackAuth;
+    private final VietQrTransferService vietQrTransferService;
     private final VnPayPaymentService vnPayPaymentService;
 
-    @Operation(summary = "[WEBHOOK] Generic Payment Provider Webhook (UC-13)")
-    @PostMapping("/webhook")
-    public ResponseEntity<Map<String, Object>> handlePaymentWebhook(
-            @Valid @RequestBody PaymentWebhookRequest request
-    ) {
-        Reservation updated = bookingOrchestratorService.processPaymentWebhook(request);
-        return ResponseEntity.ok(Map.of(
-                "reservationId", updated.getReservationId(),
-                "status", updated.getStatus()
-        ));
-    }
-
-    @Operation(summary = "[WEBHOOK] MoMo PayGate v2 IPN Callback with HMAC-SHA256 verification")
+    @Operation(summary = "[WEBHOOK] MoMo PayGate v2 IPN Callback with strict HMAC-SHA256 & transaction checks")
     @PostMapping("/momo/ipn")
-    public ResponseEntity<Map<String, Object>> handleMoMoIpnCallback(
+    public ResponseEntity<Void> handleMoMoIpnCallback(
             @Valid @RequestBody MoMoIpnCallbackRequest req
     ) {
-        if (!moMoPaymentGatewayService.verifyIpnSignature(req)) {
-            throw new IllegalArgumentException("Chữ ký HMAC-SHA256 MoMo IPN không hợp lệ.");
+        if (!moMoPaymentGatewayService.verifyIpnSignature(req)
+                || !req.orderId().equals(req.requestId())
+                || (req.resultCode() == 0 && req.transId() <= 0)) {
+            throw new IllegalArgumentException("Thông báo thanh toán MoMo không hợp lệ.");
         }
-        UUID resolvedReservationId = moMoPaymentValidator.resolveReservationIdFromIpn(
+        UUID reservationId = moMoPaymentValidator.resolveReservationIdFromIpn(
                 req.reservationId(), req.extraData()
         );
-        String status = req.resultCode() == 0 ? "SUCCESS" : "FAILED";
-        Reservation updated = bookingOrchestratorService.processPaymentWebhook(
-                moMoGatewayMapper.toPaymentWebhook(req, resolvedReservationId, status)
-        );
-        return ResponseEntity.ok(Map.of(
-                "resultCode", 0,
-                "reservationId", updated.getReservationId(),
-                "status", updated.getStatus()
-        ));
+        if (req.resultCode() != 1000 && req.resultCode() != 7000 && req.resultCode() != 7002 && req.resultCode() != 9000) {
+            bookingOrchestratorService.processPaymentWebhook(new PaymentWebhookRequest(
+                    "MOMO_WALLET",
+                    req.orderId(),
+                    reservationId,
+                    null,
+                    req.amount(),
+                    req.resultCode() == 0 ? "SUCCESS" : "FAILED"
+            ));
+        }
+        return ResponseEntity.noContent().build();
+    }
+
+    @Operation(summary = "[WEBHOOK] Issue VietQR bank callback bearer token")
+    @PostMapping("/vietqr/api/token_generate")
+    public ResponseEntity<Map<String, Object>> vietQrToken(
+            @RequestHeader(value = HttpHeaders.AUTHORIZATION, required = false) String authorization
+    ) {
+        return ResponseEntity.ok()
+                .cacheControl(CacheControl.noStore())
+                .body(vietQrCallbackAuth.issue(authorization));
+    }
+
+    @Operation(summary = "[WEBHOOK] VietQR bank transaction-sync callback")
+    @PostMapping("/vietqr/bank/api/transaction-sync")
+    public Map<String, Object> vietQrTransactionSync(
+            @RequestHeader(value = HttpHeaders.AUTHORIZATION, required = false) String authorization,
+            @Valid @RequestBody VietQrBankNotice notice
+    ) {
+        vietQrCallbackAuth.requireValid(authorization);
+        return Map.of("error", false, "object", Map.of("reftransactionid", vietQrTransferService.receive(notice).toString()));
     }
 
     @Operation(summary = "[CALLBACK] VNPAY browser return URL verification")
@@ -79,7 +97,11 @@ public class PaymentWebhookController {
     public ResponseEntity<VnPayIpnResponse> handleVnPayIpn(
             @RequestParam Map<String, String> vnpParams
     ) {
-        return ResponseEntity.ok(vnPayPaymentService.handleIpnCallback(vnpParams));
+        try {
+            return ResponseEntity.ok(vnPayPaymentService.handleIpnCallback(vnpParams));
+        } catch (RuntimeException ex) {
+            log.warn("VNPAY IPN could not be processed", ex);
+            return ResponseEntity.ok(new VnPayIpnResponse("99", "Unknown error"));
+        }
     }
 }
-
