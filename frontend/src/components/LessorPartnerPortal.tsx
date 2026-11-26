@@ -38,6 +38,7 @@ import { QrCheckInScannerModal } from './QrCheckInScannerModal';
 
 export type LessorPortalTabId =
   | 'OVERVIEW'
+  | 'ORDERS_CHECKIN'
   | 'COURTS_INVENTORY'
   | 'ADDON_PRODUCTS'
   | 'YIELD_PRICING'
@@ -210,8 +211,12 @@ export const LessorPartnerPortal: React.FC<LessorPartnerPortalProps> = ({
     [listings, activeProvider.providerId]
   );
 
-  const [internalActiveTab, setInternalActiveTab] = useState<LessorPortalTabId>('OVERVIEW');
-  const activeTab = controlledTab ?? internalActiveTab;
+  const [internalActiveTab, setInternalActiveTab] = useState<LessorPortalTabId>(
+    isStaffOnly ? 'ORDERS_CHECKIN' : 'OVERVIEW'
+  );
+  const rawActiveTab = controlledTab ?? internalActiveTab;
+  const activeTab: LessorPortalTabId =
+    isStaffOnly && rawActiveTab === 'OVERVIEW' ? 'ORDERS_CHECKIN' : rawActiveTab;
   const setActiveTab = (next: LessorPortalTabId) => {
     setInternalActiveTab(next);
     onSelectTab?.(next);
@@ -231,6 +236,11 @@ export const LessorPartnerPortal: React.FC<LessorPartnerPortalProps> = ({
   const [orderFilter, setOrderFilter] = useState<
     'ALL' | 'CONFIRMED' | 'COMPLETED' | 'NO_SHOW'
   >('ALL');
+  const [orderSearchQuery, setOrderSearchQuery] = useState<string>('');
+  const [orderCourtFilter, setOrderCourtFilter] = useState<string>('ALL');
+  const [orderDateScope, setOrderDateScope] = useState<'ALL' | 'TODAY' | 'WEEK'>('ALL');
+  const [orderPage, setOrderPage] = useState<number>(1);
+  const ORDERS_PAGE_SIZE = 10;
   const [qrScanInput, setQrScanInput] = useState<string>('');
   const [analyticsDays, setAnalyticsDays] = useState<number>(7);
   const [analyticsData, setAnalyticsData] = useState<AnalyticsDashboardData | null>(null);
@@ -604,8 +614,14 @@ export const LessorPartnerPortal: React.FC<LessorPartnerPortalProps> = ({
   }[] = [
     {
       id: 'OVERVIEW',
-      label: isStaffOnly ? 'Quầy Soát Vé QR & Lịch Ca' : 'Tổng quan & Điều phối Ca',
-      sub: 'Lịch đặt sân & Quét mã QR 1 lần',
+      label: 'Tổng quan & Biểu đồ',
+      sub: 'Doanh thu, lấp đầy & kênh thanh toán',
+      staffAllowed: false,
+    },
+    {
+      id: 'ORDERS_CHECKIN',
+      label: 'Đơn Đặt Sân & Soát QR',
+      sub: 'Quét vé chống giả, lọc ca & xử lý đơn',
       badge: `${metrics.pendingCheckins} chờ`,
       staffAllowed: true,
     },
@@ -644,9 +660,74 @@ export const LessorPartnerPortal: React.FC<LessorPartnerPortalProps> = ({
   ];
 
   const visibleNavItems = navItems.filter((item) => !isStaffOnly || item.staffAllowed);
-  const filteredOrders = providerOrders.filter(
-    (o) => orderFilter === 'ALL' || o.status === orderFilter
+
+  const todayIsoLocal = useMemo(() => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  }, []);
+
+  const sevenDaysAgoIsoLocal = useMemo(() => {
+    const d = new Date();
+    d.setDate(d.getDate() - 6);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  }, []);
+
+  const orderStatusCounts = useMemo(() => {
+    return {
+      ALL: providerOrders.length,
+      CONFIRMED: providerOrders.filter((o) => o.status === 'CONFIRMED').length,
+      COMPLETED: providerOrders.filter((o) => o.status === 'COMPLETED').length,
+      NO_SHOW: providerOrders.filter((o) => o.status === 'NO_SHOW').length,
+    };
+  }, [providerOrders]);
+
+  const filteredOrders = useMemo(() => {
+    const q = orderSearchQuery.trim().toLowerCase();
+    return providerOrders.filter((o) => {
+      if (orderFilter !== 'ALL' && o.status !== orderFilter) return false;
+      if (orderCourtFilter !== 'ALL' && o.groupId !== orderCourtFilter) return false;
+      if (orderDateScope === 'TODAY') {
+        const isToday = o.dateIso ? o.dateIso === todayIsoLocal : o.slotLabel.includes('Hôm nay');
+        if (!isToday) return false;
+      } else if (orderDateScope === 'WEEK') {
+        if (o.dateIso && o.dateIso < sevenDaysAgoIsoLocal) return false;
+      }
+      if (q) {
+        const matchText =
+          o.orderId.toLowerCase().includes(q) ||
+          o.qrCode.toLowerCase().includes(q) ||
+          o.customerName.toLowerCase().includes(q) ||
+          o.customerPhone.toLowerCase().includes(q) ||
+          (o.customerEmail ?? '').toLowerCase().includes(q) ||
+          o.unitNumber.toLowerCase().includes(q);
+        if (!matchText) return false;
+      }
+      return true;
+    });
+  }, [
+    providerOrders,
+    orderFilter,
+    orderCourtFilter,
+    orderDateScope,
+    orderSearchQuery,
+    todayIsoLocal,
+    sevenDaysAgoIsoLocal,
+  ]);
+
+  const totalOrderPages = Math.max(1, Math.ceil(filteredOrders.length / ORDERS_PAGE_SIZE));
+  const safeOrderPage = Math.min(orderPage, totalOrderPages);
+  const paginatedOrders = useMemo(
+    () =>
+      filteredOrders.slice(
+        (safeOrderPage - 1) * ORDERS_PAGE_SIZE,
+        safeOrderPage * ORDERS_PAGE_SIZE
+      ),
+    [filteredOrders, safeOrderPage, ORDERS_PAGE_SIZE]
   );
+
+  useEffect(() => {
+    setOrderPage(1);
+  }, [orderFilter, orderSearchQuery, orderCourtFilter, orderDateScope, activeProvider.providerId]);
 
   return (
     <section id="command-center" className={embeddedForAdmin ? 'py-2' : 'py-10 sm:py-14'}>
@@ -942,6 +1023,100 @@ export const LessorPartnerPortal: React.FC<LessorPartnerPortalProps> = ({
                     />
                   )}
 
+                  {/* Compact Quick Link to Dedicated Order & QR Check-in Workspace */}
+                  <div className="flex flex-col gap-3 rounded-[24px] border border-[#16422C]/20 bg-[#F4F8F4] px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
+                    <div className="space-y-0.5">
+                      <span className="text-[11px] font-bold uppercase tracking-wider text-[#16422C]">
+                        Điều phối Đơn &amp; Quầy Soát Vé QR (Đã tách khu riêng)
+                      </span>
+                      <p className="text-xs text-neutral-600">
+                        Hiện có <strong className="text-[#0F172A]">{metrics.pendingCheckins} đơn chờ quét QR</strong> trong tổng số{' '}
+                        <strong className="text-[#0F172A]">{providerOrders.length} đơn</strong>. Mở tab riêng để lọc tìm theo khách, ngày, cụm sân và quét QR 4 lớp.
+                      </p>
+                    </div>
+                    <div className="flex flex-wrap gap-2 shrink-0">
+                      <ActionButton
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          setQrModalOrder(null);
+                          setQrModalQuery('');
+                          setQrModalTab('SCANNER');
+                          setQrModalOpen(true);
+                        }}
+                      >
+                        📷 Quét QR nhanh
+                      </ActionButton>
+                      <ActionButton
+                        type="button"
+                        variant="forest"
+                        size="sm"
+                        onClick={() => setActiveTab('ORDERS_CHECKIN')}
+                      >
+                        Mở Danh sách Đơn ({providerOrders.length}) →
+                      </ActionButton>
+                    </div>
+                  </div>
+                </motion.div>
+              )}
+
+              {/* ===================================================================== */}
+              {/* TAB 1B: DEDICATED BOOKING DISPATCH & ANTI-COUNTERFEIT QR WORKSPACE   */}
+              {/* ===================================================================== */}
+              {activeTab === 'ORDERS_CHECKIN' && (
+                <motion.div
+                  key="lessor-orders-checkin"
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -6 }}
+                  transition={{ duration: 0.24, ease: EXPO_EASE }}
+                  className="space-y-5"
+                >
+                  {/* Summary Strip for Fast Control */}
+                  <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                    {[
+                      {
+                        label: 'Tổng đơn cụm sân',
+                        value: orderStatusCounts.ALL,
+                        tone: 'bg-white border-neutral-200 text-[#0F172A]',
+                        target: 'ALL' as const,
+                      },
+                      {
+                        label: 'Chờ quét QR nhận sân',
+                        value: orderStatusCounts.CONFIRMED,
+                        tone: 'bg-[#F4F8F4] border-[#16422C]/30 text-[#16422C]',
+                        target: 'CONFIRMED' as const,
+                      },
+                      {
+                        label: 'Đã nhận sân (Hoàn tất)',
+                        value: orderStatusCounts.COMPLETED,
+                        tone: 'bg-white border-emerald-200 text-emerald-800',
+                        target: 'COMPLETED' as const,
+                      },
+                      {
+                        label: 'Khách bỏ lịch (>15p)',
+                        value: orderStatusCounts.NO_SHOW,
+                        tone: 'bg-white border-rose-200 text-rose-700',
+                        target: 'NO_SHOW' as const,
+                      },
+                    ].map((stat) => (
+                      <button
+                        key={stat.label}
+                        type="button"
+                        onClick={() => setOrderFilter(stat.target)}
+                        className={`rounded-[20px] border p-4 text-left transition hover:shadow-xs cursor-pointer ${stat.tone} ${
+                          orderFilter === stat.target ? 'ring-2 ring-[#16422C]/35' : ''
+                        }`}
+                      >
+                        <div className="text-[11px] font-semibold text-neutral-500">
+                          {stat.label}
+                        </div>
+                        <div className="mt-1 text-2xl font-bold tabular-nums">{stat.value}</div>
+                      </button>
+                    ))}
+                  </div>
+
                   {/* Instant One-Time QR Ticket Check-In Bar */}
                   <div className="rounded-[26px] border border-[#16422C]/25 bg-[#F4F8F4] p-5 sm:p-6">
                     <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
@@ -991,43 +1166,94 @@ export const LessorPartnerPortal: React.FC<LessorPartnerPortalProps> = ({
                     </div>
                   </div>
 
-                  {/* Live Booking Dispatch Table */}
+                  {/* Live Booking Dispatch Table with Search + Court + Date + Pagination */}
                   <div className="overflow-hidden rounded-[26px] border border-neutral-200/90 bg-white shadow-xs">
-                    <div className="flex flex-col gap-3 border-b border-neutral-100 p-5 sm:flex-row sm:items-center sm:justify-between">
-                      <div>
-                        <h3 className="text-base sm:text-lg font-bold text-[#0F172A]">
-                          Danh sách Đơn Đặt Sân &amp; Điều phối Ca ({filteredOrders.length})
-                        </h3>
-                        <p className="text-xs text-neutral-500">
-                          Tự động đồng bộ các vé khách vừa thanh toán trên sàn cùng lịch vận hành tại cơ sở.
-                        </p>
+                    <div className="space-y-4 border-b border-neutral-100 p-5">
+                      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                        <div>
+                          <h3 className="text-base sm:text-lg font-bold text-[#0F172A]">
+                            Danh sách Đơn Đặt Sân &amp; Điều phối Ca ({filteredOrders.length}/{providerOrders.length})
+                          </h3>
+                          <p className="text-xs text-neutral-500">
+                            Tìm nhanh theo tên khách, SĐT, email, mã đơn hoặc lọc theo cụm sân và ngày chơi.
+                          </p>
+                        </div>
+
+                        <div className="flex flex-wrap gap-1.5">
+                          {[
+                            { id: 'ALL', label: `Tất cả (${orderStatusCounts.ALL})` },
+                            { id: 'CONFIRMED', label: `Chờ nhận sân (${orderStatusCounts.CONFIRMED})` },
+                            { id: 'COMPLETED', label: `Đã nhận sân (${orderStatusCounts.COMPLETED})` },
+                            { id: 'NO_SHOW', label: `Bỏ lịch (${orderStatusCounts.NO_SHOW})` },
+                          ].map((f) => (
+                            <button
+                              key={f.id}
+                              type="button"
+                              onClick={() => setOrderFilter(f.id as typeof orderFilter)}
+                              className={`rounded-full px-3 py-1.5 text-xs font-semibold transition cursor-pointer ${
+                                orderFilter === f.id
+                                  ? 'bg-[#0F172A] text-white'
+                                  : 'bg-[#F1F5F9] text-neutral-600 hover:text-[#0F172A]'
+                              }`}
+                            >
+                              {f.label}
+                            </button>
+                          ))}
+                        </div>
                       </div>
 
-                      <div className="flex flex-wrap gap-1.5">
-                        {[
-                          { id: 'ALL', label: 'Tất cả' },
-                          { id: 'CONFIRMED', label: 'Chờ nhận sân' },
-                          { id: 'COMPLETED', label: 'Đã nhận sân' },
-                          { id: 'NO_SHOW', label: 'Bỏ lịch' },
-                        ].map((f) => (
-                          <button
-                            key={f.id}
-                            type="button"
-                            onClick={() => setOrderFilter(f.id as typeof orderFilter)}
-                            className={`rounded-full px-3 py-1.5 text-xs font-semibold transition ${
-                              orderFilter === f.id
-                                ? 'bg-[#0F172A] text-white'
-                                : 'bg-[#F1F5F9] text-neutral-600 hover:text-[#0F172A]'
-                            }`}
+                      {/* Filter Toolbar: Search + Court Group + Date Scope */}
+                      <div className="grid grid-cols-1 gap-2.5 md:grid-cols-12">
+                        <div className="md:col-span-5">
+                          <input
+                            type="search"
+                            value={orderSearchQuery}
+                            onChange={(e) => setOrderSearchQuery(e.target.value)}
+                            placeholder="Tìm tên khách, 4 số SĐT, mã đơn (#AP-...) hoặc mã vé..."
+                            className="w-full rounded-xl border border-neutral-200 bg-[#F8FAFC] px-3.5 py-2 text-xs text-[#0F172A] focus:border-[#16422C] focus:bg-white focus:outline-none"
+                          />
+                        </div>
+
+                        <div className="md:col-span-4">
+                          <select
+                            value={orderCourtFilter}
+                            onChange={(e) => setOrderCourtFilter(e.target.value)}
+                            className="w-full rounded-xl border border-neutral-200 bg-[#F8FAFC] px-3 py-2 text-xs font-medium text-[#0F172A] focus:border-[#16422C] focus:bg-white focus:outline-none"
                           >
-                            {f.label}
-                          </button>
-                        ))}
+                            <option value="ALL">Tất cả cụm sân ({myListings.length})</option>
+                            {myListings.map((l) => (
+                              <option key={l.groupId} value={l.groupId}>
+                                {l.groupName}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+
+                        <div className="md:col-span-3 flex items-center gap-1 rounded-xl border border-neutral-200 bg-[#F8FAFC] p-1">
+                          {[
+                            { id: 'ALL', label: 'Tất cả' },
+                            { id: 'TODAY', label: 'Hôm nay' },
+                            { id: 'WEEK', label: '7 ngày' },
+                          ].map((dScope) => (
+                            <button
+                              key={dScope.id}
+                              type="button"
+                              onClick={() => setOrderDateScope(dScope.id as typeof orderDateScope)}
+                              className={`flex-1 rounded-lg py-1.5 text-[11px] font-bold transition cursor-pointer ${
+                                orderDateScope === dScope.id
+                                  ? 'bg-[#16422C] text-white'
+                                  : 'text-neutral-600 hover:text-[#0F172A]'
+                              }`}
+                            >
+                              {dScope.label}
+                            </button>
+                          ))}
+                        </div>
                       </div>
                     </div>
 
                     <div className="divide-y divide-neutral-100">
-                      {filteredOrders.map((order) => (
+                      {paginatedOrders.map((order) => (
                         <div
                           key={order.orderId}
                           className="flex flex-col gap-4 p-5 transition hover:bg-[#F8FAFC] xl:flex-row xl:items-center xl:justify-between"
@@ -1138,12 +1364,44 @@ export const LessorPartnerPortal: React.FC<LessorPartnerPortalProps> = ({
 
                       {filteredOrders.length === 0 && (
                         <div className="p-8 text-center text-xs text-neutral-500">
-                          Chưa có đơn đặt sân nào trong bộ lọc này. Khi khách hàng đăng nhập và hoàn
-                          tất thanh toán đặt sân cho cơ sở của bạn (hoặc khi kết nối PostgreSQL +
-                          Elasticsearch), đơn đặt sẽ tự động hiển thị tại đây.
+                          Không tìm thấy đơn đặt sân nào khớp với từ khóa hoặc bộ lọc hiện tại. Hãy xóa bộ lọc để xem lại toàn bộ danh sách.
                         </div>
                       )}
                     </div>
+
+                    {totalOrderPages > 1 && (
+                      <div className="flex flex-wrap items-center justify-between gap-3 border-t border-neutral-100 bg-[#F8FAFC] px-5 py-3.5 text-xs">
+                        <span className="text-neutral-500 tabular-nums">
+                          Hiển thị{' '}
+                          <strong className="text-[#0F172A]">
+                            {(safeOrderPage - 1) * ORDERS_PAGE_SIZE + 1}–
+                            {Math.min(safeOrderPage * ORDERS_PAGE_SIZE, filteredOrders.length)}
+                          </strong>{' '}
+                          trong <strong className="text-[#0F172A]">{filteredOrders.length}</strong> đơn
+                        </span>
+                        <div className="flex items-center gap-1.5">
+                          <button
+                            type="button"
+                            disabled={safeOrderPage <= 1}
+                            onClick={() => setOrderPage((p) => Math.max(1, p - 1))}
+                            className="rounded-full border border-neutral-200 bg-white px-3 py-1 font-semibold text-[#0F172A] disabled:opacity-40 hover:bg-neutral-50 cursor-pointer"
+                          >
+                            ← Trước
+                          </button>
+                          <span className="px-2 font-bold text-[#16422C] tabular-nums">
+                            Trang {safeOrderPage} / {totalOrderPages}
+                          </span>
+                          <button
+                            type="button"
+                            disabled={safeOrderPage >= totalOrderPages}
+                            onClick={() => setOrderPage((p) => Math.min(totalOrderPages, p + 1))}
+                            className="rounded-full border border-neutral-200 bg-white px-3 py-1 font-semibold text-[#0F172A] disabled:opacity-40 hover:bg-neutral-50 cursor-pointer"
+                          >
+                            Sau →
+                          </button>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 </motion.div>
               )}

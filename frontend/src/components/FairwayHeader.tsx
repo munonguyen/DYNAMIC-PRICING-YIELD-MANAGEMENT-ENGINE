@@ -166,6 +166,12 @@ export const FairwayHeader: React.FC<FairwayHeaderProps> = ({
             lessorTab: 'OVERVIEW',
           },
           {
+            key: 'lessor-orders',
+            label: 'Đơn Đặt & Soát QR',
+            targetPage: 'governance',
+            lessorTab: 'ORDERS_CHECKIN',
+          },
+          {
             key: 'lessor-courts',
             label: 'Quản lý Cụm Sân',
             targetPage: 'governance',
@@ -199,9 +205,9 @@ export const FairwayHeader: React.FC<FairwayHeaderProps> = ({
         ? [
             {
               key: 'staff-qr',
-              label: 'Quầy Soát Vé QR',
+              label: 'Đơn Đặt & Soát QR',
               targetPage: 'governance',
-              lessorTab: 'OVERVIEW',
+              lessorTab: 'ORDERS_CHECKIN',
             },
             {
               key: 'staff-courts',
