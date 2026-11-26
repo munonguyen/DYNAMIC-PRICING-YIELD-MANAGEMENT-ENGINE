@@ -1,0 +1,26 @@
+{
+  "branch": "service/lessor/venue-settings",
+  "title": "Cài đặt cơ sở",
+  "scope": "Cấu hình thông tin cơ sở, kiểu nhận sân và quyền chat tại quầy.",
+  "operations": [
+    {
+      "method": "PATCH",
+      "path": "/api/v1/tenants/{id}/settings",
+      "operationId": "updateVenueSettings"
+    }
+  ],
+  "source": [
+    {
+      "file": "src/main/java/com/yieldengine/controller/lessor/LessorVenueSettingsController.java",
+      "anchors": [
+        "updateVenueSettings("
+      ]
+    },
+    {
+      "file": "frontend/src/api/marketplaceApi.ts",
+      "anchors": [
+        "updateVenue("
+      ]
+    }
+  ]
+}
