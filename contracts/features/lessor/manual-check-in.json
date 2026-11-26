@@ -1,0 +1,26 @@
+{
+  "branch": "service/lessor/manual-check-in",
+  "title": "Nhận sân thủ công",
+  "scope": "Chủ sân xác nhận nhận sân theo chế độ thủ công của cơ sở.",
+  "operations": [
+    {
+      "method": "POST",
+      "path": "/api/v1/checkins/{reservationId}/manual",
+      "operationId": "manualCheckIn"
+    }
+  ],
+  "source": [
+    {
+      "file": "src/main/java/com/yieldengine/controller/staff/StaffCheckInController.java",
+      "anchors": [
+        "manualCheckIn("
+      ]
+    },
+    {
+      "file": "src/main/java/com/yieldengine/service/CheckInService.java",
+      "anchors": [
+        "manualCheckIn("
+      ]
+    }
+  ]
+}
