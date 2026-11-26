@@ -16,16 +16,11 @@ import type {
   AppPageId,
   AuthSession,
   CancelBookingResult,
-  CheckInResult,
   CourtServiceOption,
   HoldSlotResult,
   NewsArticleItem,
-  PaymentGatewayCode,
-  PaymentPlanMode,
-  PaymentReceiptInfo,
   PriceQuote,
   PublishedListing,
-  QrCodeTicket,
   RoleCode,
   SlotListingQuote,
   SportTypeItem,
@@ -192,9 +187,6 @@ export function App() {
   const [quoteLoading, setQuoteLoading] = useState<boolean>(false);
 
   const [holdResult, setHoldResult] = useState<HoldSlotResult | null>(null);
-  const [qrTicket, setQrTicket] = useState<QrCodeTicket | null>(null);
-  const [paymentReceipt, setPaymentReceipt] = useState<PaymentReceiptInfo | null>(null);
-  const [checkInResult, setCheckInResult] = useState<CheckInResult | null>(null);
   const [cancelResult, setCancelResult] = useState<CancelBookingResult | null>(null);
   const [busyStep, setBusyStep] = useState<string | null>(null);
   const [remainingSeconds, setRemainingSeconds] = useState<number>(600);
@@ -271,9 +263,6 @@ export function App() {
     setActiveSlotStart(slotStart);
     setQuoteLoading(true);
     setHoldResult(null);
-    setQrTicket(null);
-    setPaymentReceipt(null);
-    setCheckInResult(null);
     setCancelResult(null);
 
     const { quote } = await marketplaceApi.getPriceQuote(listing, slotStart);
@@ -301,7 +290,6 @@ export function App() {
 
   const shouldTickCountdown =
     (currentPage === 'checkout' || Boolean(holdResult)) &&
-    !qrTicket &&
     !cancelResult &&
     remainingSeconds > 0;
 
@@ -316,7 +304,7 @@ export function App() {
   const mm = String(Math.floor(remainingSeconds / 60)).padStart(2, '0');
   const ss = String(remainingSeconds % 60).padStart(2, '0');
   const countdownLabel = remainingSeconds === 0 ? 'HẾT HẠN' : `${mm}:${ss}`;
-  const isHoldExpired = remainingSeconds === 0 && !qrTicket && !cancelResult;
+  const isHoldExpired = remainingSeconds === 0 && !cancelResult;
 
   const handleProceedToBooking = () => {
     if (!session) {
@@ -337,110 +325,20 @@ export function App() {
     }
     if (!activeListing || !activeQuote || remainingSeconds === 0) return;
     setBusyStep('HOLD');
-    const { hold } = await marketplaceApi.holdCourtSlot(
-      activeListing,
-      activeQuote,
-      session.username
-    );
-    setHoldResult(hold);
-    setRemainingSeconds(600);
-    setBusyStep(null);
-  };
-
-  const handleConfirmPayment = async (payload: {
-    provider: PaymentGatewayCode;
-    providerLabel: string;
-    planMode: PaymentPlanMode;
-    paidAmount: number;
-    remainingAtVenue: number;
-    customerName: string;
-    customerPhone: string;
-    customerEmail: string;
-    needVatInvoice: boolean;
-    vatCompanyName: string;
-    vatTaxCode: string;
-    note: string;
-  }) => {
-    if (!session) {
-      handleProceedToBooking();
-      return;
-    }
-    if (!holdResult || remainingSeconds === 0) return;
-    setBusyStep('PAY');
     try {
-      const { qr, providerRef } = await marketplaceApi.confirmDepositAndIssueQr(holdResult, {
-        provider: payload.provider,
-        paidAmount: payload.paidAmount,
-        customerName: payload.customerName,
-        customerPhone: payload.customerPhone,
-        customerEmail: payload.customerEmail,
-        needVatInvoice: payload.needVatInvoice,
-        vatCompanyName: payload.vatCompanyName,
-        vatTaxCode: payload.vatTaxCode,
-        bookingNote: payload.note,
-      });
-      setQrTicket(qr);
-      setPaymentReceipt({
-        provider: payload.provider,
-        providerLabel: payload.providerLabel,
-        providerRef,
-        paymentType: payload.planMode === 'FULL_ONLINE' ? 'FULL_SETTLEMENT' : 'DEPOSIT',
-        paidAmount: payload.paidAmount,
-        remainingAtVenue: payload.remainingAtVenue,
-        customerName: payload.customerName,
-        customerPhone: payload.customerPhone,
-        customerEmail: payload.customerEmail,
-        needVatInvoice: payload.needVatInvoice,
-        vatCompanyName: payload.vatCompanyName,
-        vatTaxCode: payload.vatTaxCode,
-        note: payload.note,
-        paidAt: new Date().toLocaleTimeString('vi-VN', {
-          hour: '2-digit',
-          minute: '2-digit',
-          second: '2-digit',
-        }),
-      });
-      setHoldResult({ ...holdResult, status: 'CONFIRMED', qrToken: qr.qrToken });
-      if (activeListing && activeQuote) {
-        marketplaceApi.saveOfflineTicket({
-          reservationId: holdResult.reservationId,
-          venueName: activeListing.venueName,
-          venueAddress: activeListing.venueAddress,
-          groupName: activeListing.groupName,
-          unitNumber: holdResult.unitNumber,
-          slotStart: holdResult.slotStart,
-          slotEnd: activeQuote.slotEnd,
-          status: 'CONFIRMED',
-          lockedPrice: holdResult.lockedPrice,
-          depositAmount: holdResult.depositAmount,
-          paidOnlineAmount: payload.paidAmount,
-          remainingAtVenue: payload.remainingAtVenue,
-          contactEmail: payload.customerEmail,
-          qrJti: qr.qrJti,
-          qrToken: qr.qrToken,
-          qrExpiresAt: qr.expiresAt,
-        });
+      const { hold } = await marketplaceApi.holdCourtSlot(activeListing, activeQuote, session.userId);
+      setHoldResult(hold);
+      if (hold.holdExpiresAt) {
+        setRemainingSeconds(Math.max(0, Math.ceil((Date.parse(hold.holdExpiresAt) - Date.now()) / 1000)));
       }
     } finally {
       setBusyStep(null);
     }
   };
 
-  const handleScanQr = async () => {
-    if (!qrTicket || !holdResult || !activeListing) return;
-    setBusyStep('SCAN');
-    const scanned = await marketplaceApi.scanQrAtVenue(
-      qrTicket.qrToken,
-      holdResult.reservationId,
-      activeListing.tenantId
-    );
-    setCheckInResult(scanned);
-    setBusyStep(null);
-  };
-
-  const handleCancelBooking = async (hoursBefore: number, venueInitiated: boolean) => {
+  const handleCancelBooking = async (venueInitiated: boolean) => {
     if (!holdResult) return;
-    const res = await marketplaceApi.cancelReservation(holdResult, hoursBefore, venueInitiated);
+    const res = await marketplaceApi.cancelReservation(holdResult, venueInitiated);
     setCancelResult(res);
   };
 
@@ -999,15 +897,10 @@ export function App() {
                   onRequireLogin={handleProceedToBooking}
                   onOpenAnnouncementsPage={() => navigateTo('announcements')}
                   holdResult={holdResult}
-                  qrTicket={qrTicket}
-                  paymentReceipt={paymentReceipt}
-                  checkInResult={checkInResult}
                   cancelResult={cancelResult}
                   busyStep={busyStep}
                   countdownLabel={countdownLabel}
                   onHoldSlot={handleHoldSlot}
-                  onConfirmPayment={handleConfirmPayment}
-                  onScanQr={handleScanQr}
                   onCancelBooking={handleCancelBooking}
                   onResetFlow={handleResetFlow}
                   selectedServiceQuantities={selectedServiceQuantities}

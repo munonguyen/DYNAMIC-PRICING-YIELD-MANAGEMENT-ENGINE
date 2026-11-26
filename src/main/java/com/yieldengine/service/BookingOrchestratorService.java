@@ -5,11 +5,14 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.yieldengine.dto.SlotOccupancyChangedEvent;
 import com.yieldengine.record.ops.CancelBookingResponse;
 import com.yieldengine.record.ops.PaymentWebhookRequest;
+import com.yieldengine.record.ops.CreateMoMoPaymentRequest;
 import com.yieldengine.record.ops.TicketPassSnapshot;
 import com.yieldengine.dto.request.HoldSlotRequest;
 import com.yieldengine.dto.response.HoldSlotResponse;
 import com.yieldengine.entity.*;
 import com.yieldengine.enums.ReservationStatus;
+import com.yieldengine.enums.VnPayTransactionStatus;
+import com.yieldengine.exception.ForbiddenAccessException;
 import com.yieldengine.exception.BusinessConflictException;
 import com.yieldengine.exception.ResourceNotFoundException;
 import com.yieldengine.exception.SlotUnavailableException;
@@ -50,6 +53,7 @@ public class BookingOrchestratorService {
     private final BookingRepository bookingRepository;
     private final ReservationRepository reservationRepository;
     private final PaymentRepository paymentRepository;
+    private final VnPayTransactionRepository vnPayTransactionRepository;
     private final ConsumedTokenRepository consumedTokenRepository;
     private final IdempotencyKeyRepository idempotencyKeyRepository;
     private final OutboxEventRepository outboxEventRepository;
@@ -194,114 +198,153 @@ public class BookingOrchestratorService {
         return response;
     }
 
+    @Transactional
     public HoldSlotResponse holdSlot(HoldSlotRequest request) {
         return holdSlot(request, request.getIdempotencyKey());
     }
 
     @Transactional
+    public Reservation prepareGatewayPayment(UUID reservationId, UUID userId) {
+        Reservation reservation = lockReservation(reservationId);
+        requireOwner(reservation, userId);
+        Instant now = DbClockUtils.now(jdbcTemplate);
+        if (!ReservationStatus.HELD.name().equals(reservation.getStatus())
+                || reservation.getHoldExpiresAt() == null || !reservation.getHoldExpiresAt().isAfter(now)
+                || !reservation.getSlotStart().isAfter(now)) {
+            throw new BusinessConflictException("Chỉ khởi tạo thanh toán cho lượt giữ sân còn hiệu lực.");
+        }
+        if (vnPayTransactionRepository.existsByReservationIdAndStatus(reservationId, VnPayTransactionStatus.PENDING)
+                || paymentRepository.existsByBookingIdAndProviderAndStatus(reservation.getBookingId(), "MOMO_WALLET", "PENDING")) {
+            throw new BusinessConflictException("Đơn đang có giao dịch chờ xử lý. Vui lòng kiểm tra giao dịch đã tạo.");
+        }
+        return reservation;
+    }
+
+    @Transactional
+    public void beginMoMoPayment(CreateMoMoPaymentRequest request, UUID userId, String orderId) {
+        Reservation reservation = prepareGatewayPayment(request.reservationId(), userId);
+        validateGatewayAmount(reservation, request.amount());
+        updateBookingContactDetails(request.reservationId(), request.customerName(), request.customerPhone(),
+                request.customerEmail(), request.needVatInvoice(), request.vatCompanyName(), request.vatTaxCode(),
+                request.bookingNote());
+        Booking booking = bookingRepository.findById(reservation.getBookingId()).orElseThrow();
+        paymentRepository.save(Payment.builder().tenant(booking.getTenant()).booking(booking)
+                .provider("MOMO_WALLET").providerRef(orderId).amount(request.amount()).currency(booking.getCurrency())
+                .paymentType(resolvePaymentTypeForAmount(reservation, request.amount())).status("PENDING").build());
+    }
+
+    @Transactional
+    public void markMoMoCreateRejected(UUID reservationId, String orderId) {
+        lockReservation(reservationId);
+        paymentRepository.findByProviderAndProviderRef("MOMO_WALLET", orderId)
+                .filter(payment -> "PENDING".equals(payment.getStatus()))
+                .ifPresent(payment -> payment.setStatus("FAILED"));
+    }
+
+    @Transactional
     public Reservation processPaymentWebhook(PaymentWebhookRequest webhook) {
-        Optional<Payment> duplicatePayment = paymentRepository.findByProviderAndProviderRef(webhook.provider(), webhook.providerRef());
-        Reservation reservation = loadReservation(webhook.reservationId(), webhook.slotStart());
-        if (duplicatePayment.isPresent()) {
-            log.info("Ignoring duplicate payment webhook provider={} ref={}", webhook.provider(), webhook.providerRef());
-            return reservation;
+        if (!"VNPAY_ESCROW".equals(webhook.provider()) && !"MOMO_WALLET".equals(webhook.provider())) {
+            throw new IllegalArgumentException("Cổng thanh toán chưa được tích hợp.");
+        }
+        Reservation reservation = lockReservation(webhook.reservationId());
+        if (webhook.slotStart() != null && !webhook.slotStart().equals(reservation.getSlotStart())) {
+            throw new IllegalArgumentException("Khung giờ giao dịch không khớp đơn đặt.");
+        }
+        var existing = paymentRepository.findByProviderAndProviderRef(webhook.provider(), webhook.providerRef());
+        if ("MOMO_WALLET".equals(webhook.provider()) && existing.isEmpty()) {
+            throw new BusinessConflictException("Không tìm thấy phiên thanh toán MoMo của đơn.");
+        }
+        if (existing.isPresent()) {
+            Payment payment = existing.get();
+            if (reservation.getBookingId() == null || !reservation.getBookingId().equals(payment.getBooking().getId())
+                    || !java.util.Objects.equals(payment.getAmount(), webhook.amount())) {
+                throw new BusinessConflictException("Giao dịch không khớp đơn đặt hoặc số tiền đã đăng ký.");
+            }
+            if (!"PENDING".equals(payment.getStatus())) {
+                return reservation;
+            }
         }
 
         ResourceGroup group = resourceGroupRepository.findById(reservation.getGroupId())
                 .orElseThrow(() -> new ResourceNotFoundException("ResourceGroup not found"));
         Booking booking = ensureBookingLinked(reservation, group);
-
         Instant now = DbClockUtils.now(jdbcTemplate);
-        ReservationStatus currentStatus = ReservationStatus.valueOf(reservation.getStatus());
+        validateGatewayAmount(reservation, webhook.amount());
+        String paymentType = resolvePaymentTypeForAmount(reservation, webhook.amount());
+        Payment payment = existing.orElseGet(() -> Payment.builder().tenant(group.getTenant()).booking(booking)
+                .provider(webhook.provider()).providerRef(webhook.providerRef()).amount(webhook.amount())
+                .currency(booking.getCurrency()).paymentType(paymentType).build());
+        payment.setGatewayVerifiedAt(now);
 
-        String normalizedWebhookStatus = webhook.status() != null
-                ? webhook.status().trim().toUpperCase(java.util.Locale.ROOT)
-                : "SUCCESS";
-        boolean paymentSucceeded = "SUCCESS".equals(normalizedWebhookStatus)
-                || "SUCCEEDED".equals(normalizedWebhookStatus);
-
-        if (!paymentSucceeded) {
-            String failedType = resolvePaymentTypeForAmount(reservation, webhook.amount());
-            savePaymentRecord(group.getTenant(), booking, webhook, failedType, "FAILED");
-            log.warn("Payment webhook reported status {} for reservation {}; keeping status {}",
-                    normalizedWebhookStatus, reservation.getReservationId(), currentStatus);
+        if (!"SUCCESS".equalsIgnoreCase(webhook.status())) {
+            payment.setStatus("FAILED");
+            paymentRepository.save(payment);
             return reservation;
         }
 
-        long paidAmount = webhook.amount() != null ? webhook.amount() : 0L;
-        long expectedDeposit = reservation.getDepositAmount();
-        long expectedFull = reservation.getLockedPrice();
-        boolean matchesDeposit = expectedDeposit > 0 && paidAmount == expectedDeposit;
-        boolean matchesFull = expectedFull > 0 && paidAmount == expectedFull;
-        if (!matchesDeposit && !matchesFull) {
-            throw new IllegalArgumentException(
-                    "Số tiền thanh toán (" + paidAmount + ") không khớp tiền cọc ("
-                            + expectedDeposit + ") hoặc tổng giá đơn (" + expectedFull + ")."
-            );
-        }
-        String paymentType = resolvePaymentTypeForAmount(reservation, paidAmount);
-
-        if (currentStatus == ReservationStatus.CONFIRMED || currentStatus == ReservationStatus.COMPLETED) {
-            return reservation;
+        ReservationStatus state = ReservationStatus.valueOf(reservation.getStatus());
+        if (state == ReservationStatus.HELD && !reservation.getHoldExpiresAt().isAfter(now)) {
+            reservation.setStatus(ReservationStatus.EXPIRED.name());
+            reservationRepository.save(reservation);
+            unitTimeLockRepository.findByReservationId(reservation.getReservationId())
+                    .filter(lock -> "HOLD".equals(lock.getKind())).ifPresent(unitTimeLockRepository::delete);
+            unitTimeLockRepository.flush();
+            slotInventoryRepository.releaseHold(reservation.getGroupId(), reservation.getSlotStart());
+            emitOccupancyOutboxAndEvent(reservation.getTenantId(), reservation.getGroupId(),
+                    reservation.getSlotStart(), reservation.getReservationId(), now);
+            state = ReservationStatus.EXPIRED;
         }
 
-        applyBookingContactFromWebhook(booking, webhook);
-
-        if (currentStatus == ReservationStatus.HELD) {
+        boolean confirmed = false;
+        if (state == ReservationStatus.HELD && reservation.getSlotStart().isAfter(now)) {
             confirmActiveHold(reservation, booking, now);
-            Payment savedPayment = savePaymentRecord(group.getTenant(), booking, webhook, paymentType, "SUCCESS");
-            financeLedgerService.recordDepositCollected(reservation, savedPayment);
-            queueQrTicketEmailIfAddressPresent(reservation, booking);
-            return reservation;
-        }
-
-        if (currentStatus == ReservationStatus.EXPIRED) {
-            TimeSlot slot = timeSlotRepository.findById(new SlotId(reservation.getGroupId(), reservation.getSlotStart()))
-                    .orElseThrow(() -> new ResourceNotFoundException("TimeSlot not found"));
-
-            if (tryRegrantExpiredHold(reservation, slot, now)) {
+            confirmed = true;
+        } else if (state == ReservationStatus.EXPIRED && reservation.getSlotStart().isAfter(now)) {
+            var slot = timeSlotRepository.findById(new SlotId(reservation.getGroupId(), reservation.getSlotStart()));
+            if (slot.isPresent() && tryRegrantExpiredHold(reservation, slot.get(), now)) {
                 booking.setStatus("CONFIRMED");
                 bookingRepository.save(booking);
-                Payment savedPayment = savePaymentRecord(group.getTenant(), booking, webhook, paymentType, "SUCCESS");
-                financeLedgerService.recordDepositCollected(reservation, savedPayment);
-                queueQrTicketEmailIfAddressPresent(reservation, booking);
-                log.info("Late payment re-granted court for reservation {}", reservation.getReservationId());
-            } else {
-                reservation.setStatus(ReservationStatus.CANCELLED.name());
-                reservation.setCancelledAt(now);
-                reservation.setCancelledByRole("SYSTEM");
-                reservation.setCancelReason("SOLD_OUT_ON_LATE_PAYMENT_AUTO_REFUND");
-                reservationRepository.save(reservation);
-
-                booking.setStatus("CANCELLED");
-                bookingRepository.save(booking);
-                savePaymentRecord(group.getTenant(), booking, webhook, paymentType, "REFUNDED");
-                log.warn("Late payment arrived after court was taken; marked payment REFUNDED for reservation {}",
-                        reservation.getReservationId());
+                emitOccupancyOutboxAndEvent(reservation.getTenantId(), reservation.getGroupId(),
+                        reservation.getSlotStart(), reservation.getReservationId(), now);
+                confirmed = true;
             }
-            return reservation;
         }
-
-        throw new BusinessConflictException("Cannot process payment for reservation in status: " + currentStatus);
+        payment.setStatus(confirmed ? "SUCCESS" : "REVIEW_REQUIRED");
+        Payment saved = paymentRepository.save(payment);
+        if (confirmed) {
+            financeLedgerService.recordDepositCollected(reservation, saved);
+            queueQrTicketEmailIfAddressPresent(reservation, booking);
+        } else {
+            log.warn("Provider confirmed a payment requiring reconciliation provider={} ref={} reservation={}",
+                    payment.getProvider(), payment.getProviderRef(), reservation.getReservationId());
+        }
+        return reservation;
     }
 
-    @Transactional
-    public void confirmReservation(UUID reservationId) {
-        Reservation reservation = loadReservation(reservationId, null);
-        long amount = reservation.getDepositAmount() > 0 ? reservation.getDepositAmount() : reservation.getLockedPrice();
-        processPaymentWebhook(new PaymentWebhookRequest(
-                "INTERNAL_DIRECT",
-                "DIRECT_CONFIRM_" + reservationId,
-                reservationId,
-                reservation.getSlotStart(),
-                amount,
-                "SUCCESS"
-        ));
+    private void validateGatewayAmount(Reservation reservation, Long amount) {
+        if (amount == null || amount <= 0 || (!amount.equals(reservation.getDepositAmount())
+                && !amount.equals(reservation.getLockedPrice()))) {
+            throw new IllegalArgumentException("Số tiền thanh toán phải khớp tiền cọc hoặc tổng giá đơn.");
+        }
+    }
+
+    private Reservation lockReservation(UUID reservationId) {
+        return reservationRepository.lockByReservationId(reservationId)
+                .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy đơn đặt sân."));
+    }
+
+    static void requireOwner(Reservation reservation, UUID userId) {
+        if (!userId.equals(reservation.getUserId())) {
+            throw new ForbiddenAccessException("Chỉ người đặt sân được truy cập thanh toán của đơn.");
+        }
     }
 
     @Transactional
     public CancelBookingResponse cancelReservationWithPolicy(UUID reservationId, Instant slotStartHint, String reason) {
-        Reservation reservation = loadReservation(reservationId, slotStartHint);
+        Reservation reservation = lockReservation(reservationId);
+        if (slotStartHint != null && !slotStartHint.equals(reservation.getSlotStart())) {
+            throw new IllegalArgumentException("Khung giờ không khớp đơn đặt.");
+        }
         ReservationStatus currentStatus = ReservationStatus.valueOf(reservation.getStatus());
 
         if (currentStatus == ReservationStatus.CANCELLED) {
@@ -488,37 +531,24 @@ public class BookingOrchestratorService {
     }
 
     private boolean tryRegrantExpiredHold(Reservation reservation, TimeSlot slot, Instant now) {
-        unitTimeLockRepository.deleteExpiredHoldLocksForUnit(reservation.getUnit().getId());
-        String periodRange = TimeAndRangeUtils.toHalfOpenTstzRange(reservation.getSlotStart(), slot.getSlotEnd());
-        try {
-            UnitTimeLock newLock = UnitTimeLock.builder()
-                    .tenantId(reservation.getTenantId())
-                    .unit(reservation.getUnit())
-                    .slotStart(reservation.getSlotStart())
-                    .period(periodRange)
-                    .kind("BOOKING")
-                    .reservationId(reservation.getReservationId())
-                    .expiresAt(null)
-                    .build();
-            unitTimeLockRepository.saveAndFlush(newLock);
-
-            int updated = slotInventoryRepository.incrementConfirmedCountIfAvailable(
-                    reservation.getGroupId(), reservation.getSlotStart()
-            );
-            if (updated == 0) {
-                unitTimeLockRepository.delete(newLock);
-                return false;
-            }
-
-            reservation.setStatus(ReservationStatus.CONFIRMED.name());
-            reservation.setConfirmedAt(now);
-            reservation.setHoldExpiresAt(null);
-            ticketPassService.attachSecurityCredentials(reservation);
-            reservationRepository.save(reservation);
-            return true;
-        } catch (DataIntegrityViolationException ex) {
+        UUID unitId = reservation.getUnit().getId();
+        unitTimeLockRepository.deleteExpiredHoldLocksForUnit(unitId);
+        String period = TimeAndRangeUtils.toHalfOpenTstzRange(reservation.getSlotStart(), slot.getSlotEnd());
+        UUID lockId = UUID.randomUUID();
+        if (unitTimeLockRepository.insertBookingIfAvailable(lockId, reservation.getTenantId(), unitId,
+                reservation.getSlotStart(), period, reservation.getReservationId()) == 0) {
             return false;
         }
+        if (slotInventoryRepository.incrementConfirmedCountIfAvailable(reservation.getGroupId(), reservation.getSlotStart()) == 0) {
+            unitTimeLockRepository.deleteById(lockId);
+            return false;
+        }
+        reservation.setStatus(ReservationStatus.CONFIRMED.name());
+        reservation.setConfirmedAt(now);
+        reservation.setHoldExpiresAt(null);
+        ticketPassService.attachSecurityCredentials(reservation);
+        reservationRepository.save(reservation);
+        return true;
     }
 
     private void applyBookingContactFromWebhook(Booking booking, PaymentWebhookRequest webhook) {
@@ -604,7 +634,7 @@ public class BookingOrchestratorService {
         return reservationRepository.findByUserIdOrderBySlotStartDesc(userId).stream()
                 .map(res -> {
                     TicketPassSnapshot pass = ticketPassService.buildPassSnapshot(res);
-                    boolean activePass = "CONFIRMED".equals(res.getStatus());
+                    boolean activePass = "CONFIRMED".equals(res.getStatus()) && ticketPassService.hasPaymentForPass(res);
                     String qrToken = activePass && res.getQrJti() != null ? pass.qrToken() : null;
                     String pinCode = activePass && res.getQrJti() != null && res.getPinConsumedAt() == null
                             ? pass.checkinPinCode()
@@ -645,25 +675,6 @@ public class BookingOrchestratorService {
 
     private long resolveCollectedOnlineAmount(Reservation reservation) {
         return ticketPassService.resolveEscrowSettlementAmount(reservation);
-    }
-
-    private Payment savePaymentRecord(
-            Tenant tenant,
-            Booking booking,
-            PaymentWebhookRequest webhook,
-            String paymentType,
-            String status
-    ) {
-        return paymentRepository.save(Payment.builder()
-                .tenant(tenant)
-                .booking(booking)
-                .provider(webhook.provider())
-                .providerRef(webhook.providerRef())
-                .paymentType(paymentType)
-                .amount(webhook.amount())
-                .currency(booking.getCurrency())
-                .status(status)
-                .build());
     }
 
     private void emitOccupancyOutboxAndEvent(

@@ -17,16 +17,24 @@ public interface PaymentRepository extends JpaRepository<Payment, UUID> {
     Optional<Payment> findFirstByBookingIdAndPaymentTypeAndStatusOrderByCreatedAtDesc(
             UUID bookingId, String paymentType, String status);
 
+    Optional<Payment> findFirstByBookingIdAndGatewayVerifiedAtIsNotNullAndStatusOrderByGatewayVerifiedAtDesc(
+            UUID bookingId, String status);
+
+    Optional<Payment> findFirstByBookingIdOrderByCreatedAtDesc(UUID bookingId);
+
+    boolean existsByBookingIdAndProviderAndStatus(UUID bookingId, String provider, String status);
+
     List<Payment> findByBookingIdOrderByCreatedAtAsc(UUID bookingId);
 
-    @Query("SELECT COALESCE(SUM(p.amount), 0) FROM Payment p WHERE p.bookingId = :bookingId AND p.status = 'SUCCESS'")
+    @Query("SELECT COALESCE(SUM(p.amount), 0) FROM Payment p WHERE p.booking.id = :bookingId AND p.status = 'SUCCESS' AND p.paymentType <> 'REFUND' AND (p.gatewayVerifiedAt IS NOT NULL OR p.paymentType = 'BALANCE')")
     long sumSuccessfulPaidByBookingId(@Param("bookingId") UUID bookingId);
 
     @Query("""
             SELECT COALESCE(SUM(p.amount), 0) FROM Payment p
-            WHERE p.bookingId = :bookingId
+            WHERE p.booking.id = :bookingId
               AND p.status = 'SUCCESS'
               AND p.paymentType IN ('DEPOSIT', 'FULL_SETTLEMENT')
+              AND p.gatewayVerifiedAt IS NOT NULL
             """)
     long sumSuccessfulEscrowByBookingId(@Param("bookingId") UUID bookingId);
 }

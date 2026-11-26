@@ -90,6 +90,7 @@ class VnPayPaymentServiceTest {
                 .groupId(UUID.randomUUID())
                 .bookingId(bookingId)
                 .status("HELD")
+                .holdExpiresAt(Instant.now().plusSeconds(600))
                 .lockedPrice(200_000L)
                 .depositAmount(70_000L)
                 .build();
@@ -98,7 +99,8 @@ class VnPayPaymentServiceTest {
     @Test
     @DisplayName("Create Payment URL signs HMAC-SHA512 cleanly, strips Vietnamese accents, and stores PENDING transaction")
     void createsSignedVnPayUrlAndPersistsPendingTransaction() {
-        when(reservationRepository.findByReservationId(reservationId)).thenReturn(Optional.of(heldReservation));
+        UUID userId = UUID.randomUUID();
+        when(bookingOrchestratorService.prepareGatewayPayment(reservationId, userId)).thenReturn(heldReservation);
         when(txnRepository.save(any(VnPayTransaction.class))).thenAnswer(inv -> inv.getArgument(0));
 
         CreateVnPayPaymentRequest req = new CreateVnPayPaymentRequest(
@@ -107,7 +109,7 @@ class VnPayPaymentServiceTest {
                 "munonguyen2005@gmail.com", false, null, null, "San bong ro"
         );
 
-        VnPayPaymentUrlResponse resp = service.createPaymentUrl(req, "10.20.30.40");
+        VnPayPaymentUrlResponse resp = service.createPaymentUrl(req, "10.20.30.40", userId);
 
         assertEquals("ok", resp.code());
         assertEquals("success", resp.message());
@@ -165,11 +167,11 @@ class VnPayPaymentServiceTest {
 
         // 2. Order Not Found -> 01
         Map<String, String> signedValid = signCallback(baseParams);
-        when(txnRepository.findByTxnRef("VNP_TXN_2026_01")).thenReturn(Optional.empty());
+        when(txnRepository.lockByTxnRef("VNP_TXN_2026_01")).thenReturn(Optional.empty());
         assertEquals("01", service.handleIpnCallback(signedValid).rspCode());
 
         // 3. Invalid Amount -> 04
-        when(txnRepository.findByTxnRef("VNP_TXN_2026_01")).thenReturn(Optional.of(pendingTxn));
+        when(txnRepository.lockByTxnRef("VNP_TXN_2026_01")).thenReturn(Optional.of(pendingTxn));
         Map<String, String> wrongAmount = new LinkedHashMap<>(baseParams);
         wrongAmount.put("vnp_Amount", "500000");
         assertEquals("04", service.handleIpnCallback(signCallback(wrongAmount)).rspCode());
@@ -213,9 +215,10 @@ class VnPayPaymentServiceTest {
                 .createDate("20261126093000").expireDate("20261126094500").clientIp("127.0.0.1")
                 .status(VnPayTransactionStatus.PENDING).build();
         when(txnRepository.findByTxnRef("VNP_CANCEL_01")).thenReturn(Optional.of(txn));
-        when(bookingOrchestratorService.processPaymentWebhook(any())).thenReturn(heldReservation);
+        when(reservationRepository.findByReservationId(reservationId)).thenReturn(Optional.of(heldReservation));
 
         Map<String, String> cancelParams = new LinkedHashMap<>();
+        cancelParams.put("vnp_TmnCode", "ARENAPULSE");
         cancelParams.put("vnp_TxnRef", "VNP_CANCEL_01");
         cancelParams.put("vnp_Amount", "7000000");
         cancelParams.put("vnp_ResponseCode", "24");
@@ -224,8 +227,9 @@ class VnPayPaymentServiceTest {
         VnPayReturnVerificationResponse res = service.handleReturnCallback(signCallback(cancelParams));
         assertTrue(res.signatureValid());
         assertFalse(res.paymentSucceeded());
-        assertEquals("24", res.responseCode());
-        assertEquals(VnPayTransactionStatus.CANCELLED, txn.getStatus());
+        assertEquals("PENDING", res.code());
+        assertEquals(VnPayTransactionStatus.PENDING, txn.getStatus());
+        verifyNoInteractions(bookingOrchestratorService);
 
         // Verify tampered signature returns code 97
         Map<String, String> tampered = new LinkedHashMap<>(cancelParams);

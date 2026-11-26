@@ -6,12 +6,14 @@ import com.yieldengine.record.ops.*;
 import com.yieldengine.record.ops.EmailDispatchResult;
 import com.yieldengine.dto.request.HoldSlotRequest;
 import com.yieldengine.dto.response.HoldSlotResponse;
-import com.yieldengine.entity.Reservation;
 import com.yieldengine.mapper.MoMoGatewayMapper;
 import com.yieldengine.security.RbacGuard;
 import com.yieldengine.record.security.SessionPrincipal;
 import com.yieldengine.service.BookingOrchestratorService;
 import com.yieldengine.service.CheckInService;
+import com.yieldengine.service.CheckoutPaymentService;
+import com.yieldengine.exception.BusinessConflictException;
+import com.yieldengine.exception.MoMoSessionRejectedException;
 import com.yieldengine.service.MoMoPaymentGatewayService;
 import com.yieldengine.service.QrTicketEmailService;
 import com.yieldengine.validate.MoMoPaymentValidator;
@@ -23,7 +25,6 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
-import java.util.Map;
 import java.util.UUID;
 
 @Tag(name = "3. Booking, Deposit Webhook, Cancellation & QR", description = "ACID Hold with Idempotency-Key, Deposit Webhook, Tiered Cancellation & QR Code Issuance")
@@ -34,6 +35,7 @@ public class BookingController {
 
     private final BookingOrchestratorService bookingOrchestratorService;
     private final CheckInService checkInService;
+    private final CheckoutPaymentService checkoutPaymentService;
     private final MoMoPaymentGatewayService moMoPaymentGatewayService;
     private final MoMoGatewayMapper moMoGatewayMapper;
     private final MoMoPaymentValidator moMoPaymentValidator;
@@ -50,21 +52,14 @@ public class BookingController {
         return ResponseEntity.status(HttpStatus.CREATED).body(response);
     }
 
-    @Operation(summary = "Direct confirm reservation deposit")
-    @PostMapping("/bookings/{reservationId}/confirm")
-    public ResponseEntity<Void> confirmReservation(@PathVariable UUID reservationId) {
-        rbacGuard.requireAuthenticated();
-        bookingOrchestratorService.confirmReservation(reservationId);
-        return ResponseEntity.ok().build();
+    @GetMapping("/payments/providers")
+    public java.util.List<String> paymentProviders() {
+        return checkoutPaymentService.configuredProviders();
     }
 
-    @Operation(summary = "Idempotent Payment Provider Webhook confirming deposit or handling late payment (UC-13)")
-    @PostMapping("/payments/webhook")
-    public ResponseEntity<Map<String, Object>> handlePaymentWebhook(@Valid @RequestBody PaymentWebhookRequest request) {
-        Reservation updated = bookingOrchestratorService.processPaymentWebhook(request);
-        return ResponseEntity.ok(Map.of(
-                "reservationId", updated.getReservationId(),
-                "status", updated.getStatus()));
+    @GetMapping("/bookings/{reservationId}/payment-status")
+    public BookingPaymentStatus paymentStatus(@PathVariable UUID reservationId) {
+        return checkoutPaymentService.getStatus(reservationId, rbacGuard.requireAuthenticated().userId());
     }
 
     @Operation(summary = "Create MoMo v2 HMAC-SHA256 payment session matching PayGate spec")
@@ -72,49 +67,37 @@ public class BookingController {
     public ResponseEntity<MoMoPaymentSessionResponse> createMoMoPaymentSession(
             @Valid @RequestBody CreateMoMoPaymentRequest request
     ) {
-        rbacGuard.requireAuthenticated();
-        bookingOrchestratorService.updateBookingContactDetails(
-                request.reservationId(),
-                request.customerName(),
-                request.customerPhone(),
-                request.customerEmail(),
-                request.needVatInvoice(),
-                request.vatCompanyName(),
-                request.vatTaxCode(),
-                request.bookingNote()
-        );
+        SessionPrincipal user = rbacGuard.requireAuthenticated();
+        moMoPaymentGatewayService.validateInitiation(request.reservationId(), request.amount());
+        String orderId = "AP_" + UUID.randomUUID().toString().replace("-", "");
+        bookingOrchestratorService.beginMoMoPayment(request, user.userId(), orderId);
         String extraData = java.util.Base64.getEncoder().encodeToString(
-                request.reservationId().toString().getBytes(java.nio.charset.StandardCharsets.UTF_8)
-        );
-        MoMoPaymentInitResult init = moMoPaymentGatewayService.createPaymentSession(
-                request.reservationId(),
-                request.amount(),
-                "Dat san ArenaPulse " + request.reservationId().toString().substring(0, 8),
-                extraData
-        );
-        return ResponseEntity.status(HttpStatus.CREATED).body(moMoGatewayMapper.toSessionResponse(init));
+                request.reservationId().toString().getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        try {
+            MoMoPaymentInitResult init = moMoPaymentGatewayService.createPaymentSession(
+                    request.reservationId(), request.amount(), orderId,
+                    "Dat san ArenaPulse " + request.reservationId().toString().substring(0, 8), extraData);
+            return ResponseEntity.status(HttpStatus.CREATED).body(moMoGatewayMapper.toSessionResponse(init));
+        } catch (MoMoSessionRejectedException ex) {
+            bookingOrchestratorService.markMoMoCreateRejected(request.reservationId(), orderId);
+            throw ex;
+        }
     }
 
     @Operation(summary = "MoMo PayGate v2 IPN Callback with strict HMAC-SHA256 signature verification")
     @PostMapping("/payments/momo/ipn")
-    public ResponseEntity<Map<String, Object>> handleMoMoIpnCallback(
-            @Valid @RequestBody MoMoIpnCallbackRequest req
-    ) {
-        if (!moMoPaymentGatewayService.verifyIpnSignature(req)) {
-            throw new IllegalArgumentException("Chữ ký HMAC-SHA256 MoMo IPN không hợp lệ.");
+    public ResponseEntity<Void> handleMoMoIpnCallback(@Valid @RequestBody MoMoIpnCallbackRequest req) {
+        if (!moMoPaymentGatewayService.verifyIpnSignature(req)
+                || !req.orderId().equals(req.requestId()) || (req.resultCode() == 0 && req.transId() <= 0)) {
+            throw new IllegalArgumentException("Thông báo thanh toán MoMo không hợp lệ.");
         }
-        UUID resolvedReservationId = moMoPaymentValidator.resolveReservationIdFromIpn(
-                req.reservationId(), req.extraData()
-        );
-        String status = req.resultCode() == 0 ? "SUCCESS" : "FAILED";
-        Reservation updated = bookingOrchestratorService.processPaymentWebhook(
-                moMoGatewayMapper.toPaymentWebhook(req, resolvedReservationId, status)
-        );
-        return ResponseEntity.ok(Map.of(
-                "resultCode", 0,
-                "reservationId", updated.getReservationId(),
-                "status", updated.getStatus()
-        ));
+        UUID reservationId = moMoPaymentValidator.resolveReservationIdFromIpn(req.reservationId(), req.extraData());
+        if (req.resultCode() != 1000 && req.resultCode() != 7000 && req.resultCode() != 7002 && req.resultCode() != 9000) {
+            bookingOrchestratorService.processPaymentWebhook(new PaymentWebhookRequest(
+                    "MOMO_WALLET", req.orderId(), reservationId, null, req.amount(),
+                    req.resultCode() == 0 ? "SUCCESS" : "FAILED"));
+        }
+        return ResponseEntity.noContent().build();
     }
 
     @Operation(summary = "Cancel booking and compute refund/forfeit per frozen policy snapshot & DB clock (UC-14)")
@@ -143,7 +126,11 @@ public class BookingController {
             @PathVariable UUID reservationId,
             @Valid @RequestBody ResendQrEmailRequest request
     ) {
-        rbacGuard.requireAuthenticated();
+        var status = checkoutPaymentService.getStatus(reservationId, rbacGuard.requireAuthenticated().userId());
+        if (status.paymentStatus() != BookingPaymentStatus.State.VERIFIED
+                && status.paymentStatus() != BookingPaymentStatus.State.NO_DEPOSIT) {
+            throw new BusinessConflictException("Đơn chưa đủ điều kiện gửi vé.");
+        }
         return ResponseEntity.ok(qrTicketEmailService.sendQrTicketEmailForReservation(
                 reservationId, request.recipientEmail(), null
         ));

@@ -7,6 +7,7 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
+import java.time.Instant;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -14,6 +15,16 @@ import java.util.UUID;
 public interface UnitTimeLockRepository extends JpaRepository<UnitTimeLock, UUID> {
 
     Optional<UnitTimeLock> findByReservationId(UUID reservationId);
+
+    @Modifying
+    @Query(value = """
+        INSERT INTO unit_time_locks (id, tenant_id, unit_id, slot_start, period, kind, reservation_id)
+        VALUES (:id, :tenantId, :unitId, :slotStart, CAST(:period AS tstzrange), 'BOOKING', :reservationId)
+        ON CONFLICT DO NOTHING
+        """, nativeQuery = true)
+    int insertBookingIfAvailable(@Param("id") UUID id, @Param("tenantId") UUID tenantId,
+            @Param("unitId") UUID unitId, @Param("slotStart") Instant slotStart,
+            @Param("period") String period, @Param("reservationId") UUID reservationId);
 
     @Modifying
     @Query(value = """

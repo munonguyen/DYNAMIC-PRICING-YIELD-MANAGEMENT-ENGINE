@@ -2,6 +2,7 @@ package com.yieldengine.service;
 
 import com.yieldengine.record.ops.TicketPassSnapshot;
 import com.yieldengine.entity.Booking;
+import com.yieldengine.exception.BusinessConflictException;
 import com.yieldengine.entity.Reservation;
 import com.yieldengine.entity.ResourceGroup;
 import com.yieldengine.entity.Tenant;
@@ -124,24 +125,26 @@ public class TicketPassService {
                 .orElse("");
     }
 
+    public boolean hasPaymentForPass(Reservation reservation) {
+        return reservation.getDepositAmount() == 0 || resolveEscrowSettlementAmount(reservation) > 0;
+    }
+
+    public void requirePaymentForPass(Reservation reservation) {
+        if (!hasPaymentForPass(reservation)) {
+            throw new BusinessConflictException("Chưa có xác nhận thanh toán từ cổng cho đơn này.");
+        }
+    }
+
     @Transactional(readOnly = true)
     public long resolveTotalPaidAmount(Reservation reservation) {
-        if (reservation.getBookingId() == null) {
-            return reservation.getDepositAmount();
-        }
-        long sum = paymentRepository.sumSuccessfulPaidByBookingId(reservation.getBookingId());
-        return sum > 0 ? sum : reservation.getDepositAmount();
+        return reservation.getBookingId() == null ? 0L
+                : paymentRepository.sumSuccessfulPaidByBookingId(reservation.getBookingId());
     }
 
     @Transactional(readOnly = true)
     public long resolveEscrowSettlementAmount(Reservation reservation) {
-        if (reservation.getBookingId() == null) {
-            return reservation.getDepositAmount();
-        }
-        return Math.max(
-                reservation.getDepositAmount(),
-                paymentRepository.sumSuccessfulEscrowByBookingId(reservation.getBookingId())
-        );
+        return reservation.getBookingId() == null ? 0L
+                : paymentRepository.sumSuccessfulEscrowByBookingId(reservation.getBookingId());
     }
 
     public static String extractPhoneLast4(String rawPhone) {

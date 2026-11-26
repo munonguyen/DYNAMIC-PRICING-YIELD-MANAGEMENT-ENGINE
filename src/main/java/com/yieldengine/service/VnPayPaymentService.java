@@ -108,21 +108,32 @@ public class VnPayPaymentService {
         this.httpClient = httpClient;
     }
 
+    public boolean isConfigured() {
+        return hasText(properties.getTmnCode()) && hasText(properties.getHashSecret())
+                && !"VNPAY_SANDBOX_HASH_SECRET_KEY_CONFIGURE_IN_ENV".equals(properties.getHashSecret())
+                && hasText(properties.getPayUrl());
+    }
+
     @Transactional
-    public VnPayPaymentUrlResponse createPaymentUrl(CreateVnPayPaymentRequest request, String clientIp) {
-        Reservation reservation = reservationRepository.findByReservationId(request.reservationId())
-                .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy đơn đặt sân: " + request.reservationId()));
-
-        long amountVnd = validator.validateAndResolveAmount(request, reservation);
+    public VnPayPaymentUrlResponse createPaymentUrl(CreateVnPayPaymentRequest request, String clientIp, UUID userId) {
+        if (!isConfigured()) {
+            throw new IllegalStateException("Cổng VNPay chưa được cấu hình.");
+        }
+        Reservation refreshed = bookingOrchestratorService.prepareGatewayPayment(request.reservationId(), userId);
+        long amountVnd = validator.validateAndResolveAmount(request, refreshed);
         syncCustomerContactIfProvided(request);
-
-        Reservation refreshed = reservationRepository.findByReservationId(request.reservationId())
-                .orElse(reservation);
-        UUID bookingId = refreshed.getBookingId() != null ? refreshed.getBookingId() : UUID.randomUUID();
+        UUID bookingId = refreshed.getBookingId();
 
         Instant now = Instant.now();
         String createDate = cryptoCodec.formatTimestamp(now);
-        String expireDate = cryptoCodec.formatTimestamp(now.plus(Duration.ofMinutes(properties.getExpireMinutes())));
+        Instant expiresAt = now.plus(Duration.ofMinutes(properties.getExpireMinutes()));
+        if (refreshed.getHoldExpiresAt().isBefore(expiresAt)) {
+            expiresAt = refreshed.getHoldExpiresAt();
+        }
+        if (refreshed.getSlotStart().isBefore(expiresAt)) {
+            expiresAt = refreshed.getSlotStart();
+        }
+        String expireDate = cryptoCodec.formatTimestamp(expiresAt);
         String txnRef = generateTxnRef(request.reservationId(), now);
         String locale = (request.locale() != null && !request.locale().isBlank())
                 ? request.locale()
@@ -190,74 +201,68 @@ public class VnPayPaymentService {
         );
     }
 
-    @Transactional
+    @Transactional(readOnly = true)
     public VnPayReturnVerificationResponse handleReturnCallback(Map<String, String> params) {
-        boolean signatureValid = cryptoCodec.verifyCallbackSignature(params, properties.getHashSecret());
+        if (!signatureAndMerchantMatch(params)) {
+            return mapper.toReturnResponse("97", VnPayResponseCode.describe("97"), false, false, null, null);
+        }
         String txnRef = params.get("vnp_TxnRef");
-        if (!hasText(txnRef)) {
-            return mapper.toReturnResponse("01", "Thiếu tham số vnp_TxnRef.", signatureValid, false, null, null);
+        var transaction = !hasText(txnRef) ? null : txnRepository.findByTxnRef(txnRef).orElse(null);
+        if (transaction == null) {
+            return mapper.toReturnResponse("01", "Không tìm thấy giao dịch VNPay.", true, false, null, null);
         }
-
-        VnPayTransaction txn = txnRepository.findByTxnRef(txnRef).orElse(null);
-        if (txn == null) {
-            return mapper.toReturnResponse("01", "Không tìm thấy giao dịch VNPAY: " + txnRef, signatureValid, false, null, null);
+        if (parseLongSafe(params.get("vnp_Amount"), -1L) != transaction.getVnpAmount()) {
+            return mapper.toReturnResponse("04", "Số tiền VNPay không khớp đơn đặt.", true, false, null, null);
         }
-
-        if (!signatureValid) {
-            log.warn("VNPAY Return invalid signature txnRef={}", txnRef);
-            return mapper.toReturnResponse("97", VnPayResponseCode.describe("97"), false, false, txn, null);
-        }
-
-        long callbackVnpAmount = parseLongSafe(params.get("vnp_Amount"), -1L);
-        if (callbackVnpAmount != txn.getVnpAmount()) {
-            return mapper.toReturnResponse("04", "Số tiền VNPAY trả về không khớp đơn hàng.", true, false, txn, null);
-        }
-
-        Reservation updated = txn.getStatus().isFinalized()
-                ? loadReservationQuietly(txn.getReservationId())
-                : applyGatewayOutcome(txn, params);
-
-        boolean succeeded = txn.getStatus() == VnPayTransactionStatus.SUCCESS;
-        String respCode = hasText(txn.getResponseCode()) ? txn.getResponseCode() : "99";
-        return mapper.toReturnResponse(
-                respCode,
-                VnPayResponseCode.describe(respCode),
-                true,
-                succeeded,
-                txn,
-                updated != null ? updated.getStatus() : null
-        );
+        var reservation = loadReservationQuietly(transaction.getReservationId());
+        boolean succeeded = transaction.getStatus() == VnPayTransactionStatus.SUCCESS && transaction.getPayment() != null
+                && "SUCCESS".equals(transaction.getPayment().getStatus())
+                && transaction.getPayment().getGatewayVerifiedAt() != null;
+        String code = transaction.getResponseCode();
+        String message = code == null ? "Đang chờ xác nhận từ VNPay." : VnPayResponseCode.describe(code);
+        return mapper.toReturnResponse(code == null ? "PENDING" : code, message, true, succeeded,
+                transaction, reservation == null ? null : reservation.getStatus());
     }
 
     @Transactional
     public VnPayIpnResponse handleIpnCallback(Map<String, String> params) {
-        try {
-            if (!cryptoCodec.verifyCallbackSignature(params, properties.getHashSecret())) {
-                log.warn("VNPAY IPN rejected: invalid HMAC-SHA512 checksum txnRef={}", params.get("vnp_TxnRef"));
-                return ack(VnPayIpnAckCode.INVALID_CHECKSUM);
-            }
-
-            String txnRef = params.get("vnp_TxnRef");
-            VnPayTransaction txn = hasText(txnRef) ? txnRepository.findByTxnRef(txnRef).orElse(null) : null;
-            if (txn == null) {
-                return ack(VnPayIpnAckCode.ORDER_NOT_FOUND);
-            }
-
-            long callbackVnpAmount = parseLongSafe(params.get("vnp_Amount"), -1L);
-            if (callbackVnpAmount != txn.getVnpAmount()) {
-                return ack(VnPayIpnAckCode.INVALID_AMOUNT);
-            }
-
-            if (txn.getStatus().isFinalized()) {
-                return ack(VnPayIpnAckCode.ALREADY_CONFIRMED);
-            }
-
-            applyGatewayOutcome(txn, params);
-            return ack(VnPayIpnAckCode.SUCCESS);
-        } catch (Exception ex) {
-            log.error("Unhandled error processing VNPAY IPN callback txnRef={}", params.get("vnp_TxnRef"), ex);
+        if (!signatureAndMerchantMatch(params)) {
+            return ack(VnPayIpnAckCode.INVALID_CHECKSUM);
+        }
+        String txnRef = params.get("vnp_TxnRef");
+        var transaction = !hasText(txnRef) ? null : txnRepository.lockByTxnRef(txnRef).orElse(null);
+        if (transaction == null) {
+            return ack(VnPayIpnAckCode.ORDER_NOT_FOUND);
+        }
+        if (parseLongSafe(params.get("vnp_Amount"), -1L) != transaction.getVnpAmount()) {
+            return ack(VnPayIpnAckCode.INVALID_AMOUNT);
+        }
+        boolean succeeded = VnPayResponseCode.isSuccess(params.get("vnp_ResponseCode"), params.get("vnp_TransactionStatus"));
+        if (succeeded && parseLongSafe(params.get("vnp_TransactionNo"), 0) <= 0) {
             return ack(VnPayIpnAckCode.UNKNOWN_ERROR);
         }
+        if (transaction.getStatus().isFinalized()) {
+            // Older successful rows may have been created by a browser return. Accept later IPN evidence
+            // only for that exact provider transaction.
+            if (succeeded && transaction.getStatus() == VnPayTransactionStatus.SUCCESS
+                    && transaction.getPayment() != null && transaction.getPayment().getGatewayVerifiedAt() == null
+                    && java.util.Objects.equals(transaction.getTransactionNo(), params.get("vnp_TransactionNo"))) {
+                transaction.getPayment().setGatewayVerifiedAt(Instant.now());
+            }
+            return ack(VnPayIpnAckCode.ALREADY_CONFIRMED);
+        }
+        if (!hasText(params.get("vnp_ResponseCode")) || !hasText(params.get("vnp_TransactionStatus"))) {
+            return ack(VnPayIpnAckCode.UNKNOWN_ERROR);
+        }
+        if (!"01".equals(params.get("vnp_TransactionStatus"))) {
+            applyGatewayOutcome(transaction, params);
+        }
+        return ack(VnPayIpnAckCode.SUCCESS);
+    }
+
+    private boolean signatureAndMerchantMatch(Map<String, String> params) {
+        return isConfigured() && params != null && properties.getTmnCode().equals(params.get("vnp_TmnCode"))
+                && cryptoCodec.verifyCallbackSignature(params, properties.getHashSecret());
     }
 
     @Transactional

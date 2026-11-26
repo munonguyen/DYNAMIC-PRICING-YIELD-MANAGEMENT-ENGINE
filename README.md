@@ -122,7 +122,22 @@ Truy cập Swagger UI tại:
 | `POST` | `/api/v1/inventory/slots` | Sinh khung giờ kinh doanh và snapshot giá động ban đầu |
 | `GET` | `/api/v1/pricing/quote?slotId={id}` | **Xem giá & Cấp PriceLockToken**: Phục vụ từ Cache (< 1ms, zero DB write) |
 | `POST` | `/api/v1/bookings/hold` | **Giữ sân (ACID)**: Xác thực HMAC-SHA256, bốc sân qua `FOR UPDATE SKIP LOCKED`, ghi `consumed_tokens` chống replay |
-| `POST` | `/api/v1/bookings/{id}/confirm` | Xác nhận thanh toán thành công |
+| `GET` | `/api/v1/bookings/{id}/payment-status` | Người đặt đọc kết quả thanh toán đã ghi nhận |
 | `POST` | `/api/v1/bookings/{id}/cancel` | Hủy đặt sân, hoàn lại số đếm `reserved_count` |
 | `POST` | `/api/v1/simulations/run` | **Monte Carlo Simulation**: Giả lập 1.500 khách đặt 980 giờ sân (+35.8% RevPAR) |
 
+
+## 6. Xác nhận thanh toán trên sandbox và production
+
+1. Tạo lượt giữ sân. Chọn VNPay hoặc MoMo nếu cơ sở triển khai đã cấu hình cổng. Giá trị gửi sang cổng là tiền cọc hoặc tổng tiền sân theo báo giá của backend.
+2. Mở liên kết do cổng trả về và hoàn tất giao dịch trên cổng. Checkout hiển thị trạng thái chờ và tự tải lại kết quả từ backend.
+3. Backend chỉ ghi nhận tiền sau IPN hợp lệ, đối chiếu chữ ký, mã giao dịch và số tiền. Return URL chỉ giúp trình duyệt tìm lại đơn. Sau khi ghi nhận tiền và giữ được sân, backend mới phát hành vé QR/PIN.
+4. Nếu lượt giữ hết hạn và sân không còn, hoặc phát sinh thanh toán trùng, giao dịch có bằng chứng thu tiền được lưu để đối soát. Hệ thống không tự ghi đã hoàn tiền.
+5. Đơn cũ thiếu xác nhận từ cổng được hiển thị là cần đối soát. Với giao dịch VNPay cũ có mã giao dịch trùng khớp, IPN hợp lệ có thể bổ sung bằng chứng. Đơn không yêu cầu cọc có trạng thái xác nhận đặt sân và thanh toán tại quầy.
+
+Sandbox vẫn cần thông tin do cổng cấp cho merchant. Điền `VNPAY_TMN_CODE` và `VNPAY_HASH_SECRET`. Đăng ký URL HTTPS có thể truy cập từ Internet trỏ đến `/api/v1/payments/vnpay/ipn` với VNPay. Với MoMo điền `MOMO_PARTNER_CODE`, `MOMO_ACCESS_KEY`, `MOMO_SECRET_KEY` và `MOMO_IPN_URL` trỏ tới `/api/v1/payments/momo/ipn` qua HTTPS. URL quay lại web có thể cấu hình riêng qua `VNPAY_RETURN_URL` và `MOMO_REDIRECT_URL`. IPN đến `localhost` chỉ tới máy gửi yêu cầu, do đó cần endpoint HTTPS công khai của môi trường thử nghiệm để nhận callback.
+
+Chuyển khoản VietQR trực tiếp và nhập thẻ trên ArenaPulse được bỏ khỏi checkout. Khách có thể dùng các kênh QR hoặc thẻ do cổng được cấu hình cung cấp. Mobile mở luồng web qua biến Expo `EXPO_PUBLIC_WEB_CHECKOUT_URL`.
+
+- [Phân biệt Return URL và IPN của VNPay](https://sandbox.vnpayment.vn/apis/docs/faqs/)
+- [Thông báo thanh toán của MoMo](https://developers.momo.vn/v3/vi/docs/payment/api/result-handling/notification/)

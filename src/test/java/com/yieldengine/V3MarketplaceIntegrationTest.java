@@ -7,8 +7,12 @@ import com.yieldengine.record.finance.CreateCommissionRuleRequest;
 import com.yieldengine.record.finance.ReconciliationReportResponse;
 import com.yieldengine.record.ops.CancelBookingResponse;
 import com.yieldengine.record.ops.CheckInResponse;
+import com.yieldengine.record.ops.CreateMoMoPaymentRequest;
+import com.yieldengine.record.ops.MoMoIpnCallbackRequest;
+import com.yieldengine.utils.CryptoHashUtils;
 import com.yieldengine.record.ops.OpenConversationRequest;
-import com.yieldengine.record.ops.PaymentWebhookRequest;
+import com.yieldengine.record.ops.BookingPaymentStatus.State;
+import com.yieldengine.record.vnpay.CreateVnPayPaymentRequest;
 import com.yieldengine.record.ops.QrCodeResponse;
 import com.yieldengine.record.ops.SendMessageRequest;
 import com.yieldengine.dto.request.CreateTimeSlotRequest;
@@ -28,6 +32,10 @@ import com.yieldengine.service.policy.CancellationRefundPolicyEvaluator;
 import org.junit.jupiter.api.*;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
+import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.request.MockMvcRequestBuilders;
+import com.yieldengine.service.vnpay.VnPayCryptoCodec;
 import org.springframework.jdbc.core.JdbcTemplate;
 
 import java.math.BigDecimal;
@@ -40,7 +48,12 @@ import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-@SpringBootTest
+@SpringBootTest(properties = {
+        "vnpay.tmn-code=ARENA_TEST", "vnpay.hash-secret=arena-test-vnpay-fixture-key",
+        "momo.gateway.partner-code=ARENA_MOMO_TEST", "momo.gateway.access-key=arena-momo-fixture-access",
+        "momo.gateway.secret-key=arena-momo-fixture-secret"
+})
+@AutoConfigureMockMvc
 @TestMethodOrder(MethodOrderer.OrderAnnotation.class)
 @DisplayName("V3 Marketplace End-to-End & Domain Invariant Suite (PostgreSQL 16 + Redis 7)")
 class V3MarketplaceIntegrationTest {
@@ -65,6 +78,19 @@ class V3MarketplaceIntegrationTest {
 
     @Autowired
     private CheckInService checkInService;
+
+    @Autowired
+    private VnPayPaymentService vnPay;
+
+    @Autowired
+    private VnPayCryptoCodec vnPayCodec;
+
+    @Autowired
+    private CheckoutPaymentService checkoutPayment;
+
+    @Autowired
+    private MockMvc mvc;
+
 
     @Autowired
     private ChatService chatService;
@@ -303,14 +329,38 @@ class V3MarketplaceIntegrationTest {
         assertThrows(IdempotencyConflictException.class,
                 () -> bookingOrchestratorService.holdSlot(tamperedHold, idemKey));
 
-        // 4. Process Deposit Payment Webhook (plus duplicate webhook idempotency)
-        String providerRef = "VNPay_" + UUID.randomUUID();
-        PaymentWebhookRequest webhook = new PaymentWebhookRequest(
-                "VNPAY", providerRef, held.getReservationId(), slotStart, held.getDepositAmount(), "SUCCESS"
-        );
-        var confirmedRes = bookingOrchestratorService.processPaymentWebhook(webhook);
-        assertEquals("CONFIRMED", confirmedRes.getStatus());
-        bookingOrchestratorService.processPaymentWebhook(webhook); // Duplicate webhook safely ignored
+        // A provider session and browser return leave the booking on hold.
+        var paymentRequest = new CreateVnPayPaymentRequest(held.getReservationId(), held.getDepositAmount(),
+                null, "vn", null, null, null, null, null, null, null, null, null);
+        assertEquals(State.NOT_STARTED, checkoutPayment.getStatus(held.getReservationId(), player.id()).paymentStatus());
+        assertThrows(ForbiddenAccessException.class, () -> checkoutPayment.getStatus(held.getReservationId(), manager.id()));
+        assertThrows(ForbiddenAccessException.class, () -> vnPay.createPaymentUrl(paymentRequest, "127.0.0.1", manager.id()));
+        var attempt = vnPay.createPaymentUrl(paymentRequest, "127.0.0.1", player.id());
+        assertEquals(State.PENDING, checkoutPayment.getStatus(held.getReservationId(), player.id()).paymentStatus());
+        assertThrows(BusinessConflictException.class, () -> vnPay.createPaymentUrl(paymentRequest, "127.0.0.1", player.id()));
+
+        var rejected = signedVnPayFixture(attempt.txnRef(), attempt.vnpAmount(), "24", "02");
+        assertFalse(vnPay.handleReturnCallback(rejected).paymentSucceeded());
+        assertEquals(State.PENDING, checkoutPayment.getStatus(held.getReservationId(), player.id()).paymentStatus());
+        assertEquals("00", vnPay.handleIpnCallback(rejected).rspCode());
+        assertEquals(State.FAILED, checkoutPayment.getStatus(held.getReservationId(), player.id()).paymentStatus());
+        assertThrows(BusinessConflictException.class, () -> checkInService.issueOrGetQrCode(held.getReservationId()));
+
+        var retry = vnPay.createPaymentUrl(paymentRequest, "127.0.0.1", player.id());
+        var reportedPaid = signedVnPayFixture(retry.txnRef(), retry.vnpAmount(), "00", "00");
+        assertFalse(vnPay.handleReturnCallback(reportedPaid).paymentSucceeded());
+        var pending = checkoutPayment.getStatus(held.getReservationId(), player.id());
+        assertEquals(State.PENDING, pending.paymentStatus());
+        assertEquals(retry.amountVnd(), pending.requestedAmount());
+        assertEquals(0, pending.paidAmount());
+        assertThrows(BusinessConflictException.class, () -> checkInService.issueOrGetQrCode(held.getReservationId()));
+
+        assertEquals("00", vnPay.handleIpnCallback(reportedPaid).rspCode());
+        assertEquals("02", vnPay.handleIpnCallback(reportedPaid).rspCode());
+        var verified = checkoutPayment.getStatus(held.getReservationId(), player.id());
+        assertEquals(State.VERIFIED, verified.paymentStatus());
+        assertEquals(held.getDepositAmount(), verified.paidAmount());
+        assertEquals(retry.txnRef(), verified.providerReference());
 
         // 5. Player retrieves QR Code
         QrCodeResponse qr = checkInService.issueOrGetQrCode(held.getReservationId());
@@ -347,4 +397,70 @@ class V3MarketplaceIntegrationTest {
         assertThrows(Exception.class,
                 () -> jdbcTemplate.update("DELETE FROM ledger_entries WHERE reservation_id = ?", held.getReservationId()));
     }
+    @Test
+    @Order(6)
+    void retiredCheckoutRoutesCannotWritePaymentState() throws Exception {
+        for (String route : List.of("/api/v1/payments/webhook", "/api/v1/bookings/" + UUID.randomUUID() + "/confirm")) {
+            int code = mvc.perform(MockMvcRequestBuilders.post(route))
+                    .andReturn().getResponse().getStatus();
+            assertTrue(code >= 400, "Retired checkout routes must reject requests");
+        }
+    }
+
+    @Test
+    @Order(7)
+    void momoIpnRestoresOnlyTheRegisteredPaymentAttempt() throws Exception {
+        String suffix = UUID.randomUUID().toString().substring(0, 8);
+        var player = authService.register(new RegisterRequest(
+                "momo_" + suffix, "momo_" + suffix + "@example.test", "Pass12345!", "Test", "Player", null));
+        var login = authService.login(new LoginRequest(player.username(), "Pass12345!"));
+        AuthContext.set(sessionStore.findSession(login.accessToken()).orElseThrow(), login.accessToken());
+        Instant start = Instant.now().plusSeconds(21600).truncatedTo(ChronoUnit.MILLIS);
+        inventoryService.createTimeSlot(CreateTimeSlotRequest.builder().groupId(DEFAULT_GROUP_ID)
+                .slotStart(start).slotEnd(start.plusSeconds(3600)).totalCapacity(10).contextMultiplier(BigDecimal.ONE).build());
+        var quote = pricingEngineService.getPriceQuote(DEFAULT_GROUP_ID, start, player.id().toString());
+        var hold = bookingOrchestratorService.holdSlot(HoldSlotRequest.builder().groupId(DEFAULT_GROUP_ID)
+                .slotStart(start).userId(player.id().toString()).priceLockToken(quote.getPriceLockToken()).build());
+        var create = new CreateMoMoPaymentRequest(hold.getReservationId(), hold.getDepositAmount(),
+                null, null, null, false, null, null, null);
+        String orderId = "TEST_" + suffix;
+        bookingOrchestratorService.beginMoMoPayment(create, player.id(), orderId);
+        assertEquals(State.PENDING, checkoutPayment.getStatus(hold.getReservationId(), player.id()).paymentStatus());
+
+        assertEquals(204, sendMoMoFixture(hold, orderId, 7000, 0));
+        assertEquals(State.PENDING, checkoutPayment.getStatus(hold.getReservationId(), player.id()).paymentStatus());
+        assertEquals(204, sendMoMoFixture(hold, orderId, 0, 123456789));
+        assertEquals(204, sendMoMoFixture(hold, orderId, 0, 123456789));
+        var status = checkoutPayment.getStatus(hold.getReservationId(), player.id());
+        assertEquals(State.VERIFIED, status.paymentStatus());
+        assertEquals(hold.getDepositAmount(), status.paidAmount());
+        assertEquals(orderId, status.providerReference());
+    }
+
+    private int sendMoMoFixture(HoldSlotResponse hold, String order, int resultCode, long transactionId) throws Exception {
+        String extraData = java.util.Base64.getEncoder().encodeToString(
+                hold.getReservationId().toString().getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        long time = Instant.now().toEpochMilli();
+        long amount = hold.getDepositAmount();
+        String input = "accessKey=arena-momo-fixture-access&amount=" + amount + "&extraData=" + extraData
+                + "&message=Fixture&orderId=" + order + "&orderInfo=Dat san&orderType=momo_wallet"
+                + "&partnerCode=ARENA_MOMO_TEST&payType=qr&requestId=" + order + "&responseTime=" + time
+                + "&resultCode=" + resultCode + "&transId=" + transactionId;
+        String signature = CryptoHashUtils.hmacSha256Hex(input, "arena-momo-fixture-secret");
+        var notice = new MoMoIpnCallbackRequest("ARENA_MOMO_TEST", order, order, amount, "Dat san", "momo_wallet",
+                transactionId, resultCode, "Fixture", "qr", time, extraData, signature, null);
+        return mvc.perform(MockMvcRequestBuilders.post("/api/v1/payments/momo/ipn")
+                .contentType("application/json").content(new ObjectMapper().writeValueAsString(notice)))
+                .andReturn().getResponse().getStatus();
+    }
+
+    private Map<String, String> signedVnPayFixture(String ref, long amount, String code, String status) {
+        Map<String, String> params = new java.util.LinkedHashMap<>(Map.of(
+                "vnp_TmnCode", "ARENA_TEST", "vnp_TxnRef", ref, "vnp_Amount", String.valueOf(amount),
+                "vnp_ResponseCode", code, "vnp_TransactionStatus", status, "vnp_TransactionNo", "987654321"));
+        String callback = vnPayCodec.buildSignedPaymentUrl("https://example.test", params, "arena-test-vnpay-fixture-key");
+        params.put("vnp_SecureHash", callback.substring(callback.lastIndexOf('=') + 1));
+        return params;
+    }
+
 }

@@ -2793,8 +2793,6 @@ export const LessorPartnerPortal: React.FC<LessorPartnerPortalProps> = ({
         initialOrder={qrModalOrder}
         initialQuery={qrModalQuery}
         providerOrders={providerOrders}
-        allSystemOrders={Object.values(ordersByProvider).flat()}
-        activeProviderId={activeProvider.providerId}
         activeVenueName={activeProvider.providerName}
         onClose={() => setQrModalOpen(false)}
         onPinFailedAttempt={handlePinFailedAttempt}

@@ -9,6 +9,7 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -19,6 +20,7 @@ import java.util.UUID;
 
 @Tag(name = "3b. VNPAY Payment Gateway v2.1.0", description = "Create Payment URL, Return Verification, Idempotent IPN Webhook, QueryDR & Refund")
 @RestController
+@Slf4j
 @RequestMapping("/api/v1/payments/vnpay")
 @RequiredArgsConstructor
 public class VnPayPaymentController {
@@ -32,13 +34,13 @@ public class VnPayPaymentController {
             @Valid @RequestBody CreateVnPayPaymentRequest request,
             HttpServletRequest httpRequest
     ) {
-        rbacGuard.requireAuthenticated();
+        var actor = rbacGuard.requireAuthenticated();
         String clientIp = resolveClientIp(httpRequest);
         return ResponseEntity.status(HttpStatus.CREATED)
-                .body(vnPayPaymentService.createPaymentUrl(request, clientIp));
+                .body(vnPayPaymentService.createPaymentUrl(request, clientIp, actor.userId()));
     }
 
-    @Operation(summary = "Verify VNPAY browser return callback params and sync reservation status")
+    @Operation(summary = "Verify VNPAY browser return and read recorded status")
     @GetMapping("/return")
     public ResponseEntity<VnPayReturnVerificationResponse> handleReturn(
             @RequestParam Map<String, String> vnpParams
@@ -51,7 +53,12 @@ public class VnPayPaymentController {
     public ResponseEntity<VnPayIpnResponse> handleIpn(
             @RequestParam Map<String, String> vnpParams
     ) {
-        return ResponseEntity.ok(vnPayPaymentService.handleIpnCallback(vnpParams));
+        try {
+            return ResponseEntity.ok(vnPayPaymentService.handleIpnCallback(vnpParams));
+        } catch (RuntimeException ex) {
+            log.warn("VNPAY IPN could not be processed", ex);
+            return ResponseEntity.ok(new VnPayIpnResponse("99", "Unknown error"));
+        }
     }
 
     @Operation(summary = "Query transaction status directly from VNPAY merchant_webapi (QueryDR)")

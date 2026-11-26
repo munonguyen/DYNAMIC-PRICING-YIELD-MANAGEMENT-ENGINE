@@ -197,6 +197,20 @@ export interface MyTicketRecord {
 
 export type PaymentGatewayCode = 'VIETQR_NAPAS' | 'VNPAY_ESCROW' | 'MOMO_WALLET' | 'INTL_CARD';
 
+export type CheckoutProvider = 'VNPAY_ESCROW' | 'MOMO_WALLET';
+
+export interface BookingPaymentStatus {
+  reservationId: string;
+  reservationStatus: string;
+  paymentStatus: 'NOT_STARTED' | 'PENDING' | 'FAILED' | 'VERIFIED' | 'NO_DEPOSIT' | 'EXPIRED' | 'UNVERIFIED' | 'REVIEW_REQUIRED';
+  paidAmount: number;
+  remainingAtVenue: number;
+  requestedAmount: number | null;
+  provider: CheckoutProvider | null;
+  providerReference: string | null;
+  verifiedAt: string | null;
+}
+
 export interface MoMoPaymentSession {
   partnerCode: string;
   orderId: string;
@@ -208,7 +222,6 @@ export interface MoMoPaymentSession {
   resultCode: number;
   message: string;
   liveGatewayResponse: boolean;
-  signature: string;
 }
 
 export interface VnPayPaymentUrlResult {

@@ -334,13 +334,14 @@ public class SearchAndAnalyticsSyncService implements ApplicationRunner {
             SELECT
                 r.id, r.slot_start, r.tenant_id, r.group_id, r.status,
                 r.locked_price, r.deposit_amount,
-                COALESCE(p.provider, 'VIETQR_NAPAS') AS payment_provider,
-                COALESCE(p.amount, r.deposit_amount) AS paid_amount,
+                COALESCE(p.provider, '—') AS payment_provider,
+                COALESCE(p.amount, 0) AS paid_amount,
                 st.name AS sport_name
             FROM reservations r
             JOIN resource_groups rg ON r.group_id = rg.id
             JOIN sport_types st ON rg.sport_type_id = st.id
             LEFT JOIN payments p ON p.booking_id = r.booking_id AND p.status = 'SUCCESS'
+                AND p.gateway_verified_at IS NOT NULL AND p.payment_type IN ('DEPOSIT', 'FULL_SETTLEMENT')
             WHERE r.slot_start >= ?
             """ + tenantClause + " ORDER BY r.slot_start ASC";
 
@@ -544,14 +545,15 @@ public class SearchAndAnalyticsSyncService implements ApplicationRunner {
         String sql = """
             SELECT r.id AS res_id, r.tenant_id, r.group_id, rg.name AS group_name,
                    t.name AS venue_name, st.code AS sport_code, st.name AS sport_name,
-                   r.status, COALESCE(p.provider, 'VIETQR_NAPAS') AS payment_provider,
+                   r.status, COALESCE(p.provider, '—') AS payment_provider,
                    r.slot_start, r.locked_price, r.deposit_amount,
-                   COALESCE(p.amount, r.deposit_amount) AS paid_amount
+                   COALESCE(p.amount, 0) AS paid_amount
             FROM reservations r
             JOIN resource_groups rg ON r.group_id = rg.id
             JOIN tenants t ON r.tenant_id = t.id
             JOIN sport_types st ON rg.sport_type_id = st.id
             LEFT JOIN payments p ON p.booking_id = r.booking_id AND p.status = 'SUCCESS'
+                AND p.gateway_verified_at IS NOT NULL AND p.payment_type IN ('DEPOSIT', 'FULL_SETTLEMENT')
             """;
         return jdbcTemplate.query(sql, (rs, i) -> {
             String id = rs.getString("res_id");
@@ -620,8 +622,8 @@ public class SearchAndAnalyticsSyncService implements ApplicationRunner {
                    r.locked_price, r.deposit_amount,
                    COALESCE(b.contact_name, 'Khách đặt sân') AS customer_name,
                    COALESCE(b.contact_phone, '0988 776 655') AS customer_phone,
-                   COALESCE(p.provider, 'VIETQR_NAPAS') AS payment_provider,
-                   COALESCE(p.amount, r.deposit_amount) AS paid_amt
+                   COALESCE(p.provider, '—') AS payment_provider,
+                   COALESCE(p.amount, 0) AS paid_amt
             FROM reservations r
             JOIN resource_groups rg ON r.group_id = rg.id
             JOIN tenants t ON r.tenant_id = t.id
@@ -629,6 +631,7 @@ public class SearchAndAnalyticsSyncService implements ApplicationRunner {
             JOIN units u ON r.unit_id = u.id
             LEFT JOIN bookings b ON r.booking_id = b.id
             LEFT JOIN payments p ON p.booking_id = r.booking_id AND p.status = 'SUCCESS'
+                AND p.gateway_verified_at IS NOT NULL AND p.payment_type IN ('DEPOSIT', 'FULL_SETTLEMENT')
             """ + (tenantId != null ? " WHERE r.tenant_id = ? " : "") + """
             ORDER BY r.slot_start DESC
             LIMIT 25

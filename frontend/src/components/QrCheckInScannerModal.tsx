@@ -28,8 +28,6 @@ interface QrCheckInScannerModalProps {
   initialOrder?: LessorBookingOrder | null;
   initialQuery?: string;
   providerOrders: LessorBookingOrder[];
-  allSystemOrders: LessorBookingOrder[];
-  activeProviderId: string;
   activeVenueName: string;
   onClose: () => void;
   onConfirmCheckIn: (orderId: string, method?: 'QR_SCAN' | 'PIN_COUNTER') => void;
@@ -43,8 +41,6 @@ export const QrCheckInScannerModal: React.FC<QrCheckInScannerModalProps> = ({
   initialOrder = null,
   initialQuery = '',
   providerOrders,
-  allSystemOrders,
-  activeProviderId,
   activeVenueName,
   onClose,
   onConfirmCheckIn,
@@ -134,13 +130,11 @@ export const QrCheckInScannerModal: React.FC<QrCheckInScannerModalProps> = ({
     setQrChallengeError(null);
     setStatusNotice(null);
     try {
-      const res = await marketplaceApi.inspectQrTicket(
-        clean,
-        providerOrders,
-        allSystemOrders,
-        activeProviderId
-      );
+      setInspectResult(null);
+      const res = await marketplaceApi.inspectQrTicket(clean, providerOrders);
       setInspectResult(res);
+    } catch (error) {
+      setStatusNotice(error instanceof Error ? error.message : 'Chưa thể kiểm tra mã QR.');
     } finally {
       setInspecting(false);
     }
@@ -260,10 +254,8 @@ export const QrCheckInScannerModal: React.FC<QrCheckInScannerModalProps> = ({
     setConfirmingQr(true);
     try {
       const res = await marketplaceApi.confirmQrCheckInWithPhoneChallenge(
-        inspectResult.orderId,
         tokenInput,
-        phoneLast4Check,
-        providerOrders
+        phoneLast4Check
       );
       if (!res.ok) {
         setQrChallengeError(res.message);

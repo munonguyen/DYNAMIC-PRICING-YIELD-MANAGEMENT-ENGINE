@@ -2,6 +2,8 @@ package com.yieldengine.repository;
 
 import com.yieldengine.entity.Reservation;
 import com.yieldengine.entity.ReservationId;
+import jakarta.persistence.LockModeType;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -21,6 +23,10 @@ public interface ReservationRepository extends JpaRepository<Reservation, Reserv
     @Query("SELECT r FROM Reservation r WHERE r.id.id = :id AND r.id.slotStart = :slotStart")
     Optional<Reservation> findByIdAndSlotStart(@Param("id") UUID id, @Param("slotStart") Instant slotStart);
 
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("SELECT r FROM Reservation r WHERE r.id.id = :id")
+    Optional<Reservation> lockByReservationId(@Param("id") UUID id);
+
     @Query("SELECT r FROM Reservation r WHERE r.bookingId = :bookingId")
     List<Reservation> findByBookingId(@Param("bookingId") UUID bookingId);
 
@@ -30,6 +36,7 @@ public interface ReservationRepository extends JpaRepository<Reservation, Reserv
     @Query("SELECT r FROM Reservation r WHERE r.groupId = :groupId AND r.id.slotStart = :slotStart")
     List<Reservation> findByGroupIdAndSlotStart(@Param("groupId") UUID groupId, @Param("slotStart") Instant slotStart);
 
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("SELECT r FROM Reservation r WHERE r.status = 'HELD' AND r.holdExpiresAt < :threshold")
     List<Reservation> findExpiredHolds(@Param("threshold") Instant threshold);
 }

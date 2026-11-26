@@ -55,7 +55,7 @@ public class Booking extends BaseEntity {
     @Column(name = "contact_phone", length = 25)
     private String contactPhone;
 
-    @Column(name = "contact_email")
+    @Column(name = "contact_email", columnDefinition = "citext")
     private String contactEmail;
 
     @Column(name = "need_vat_invoice", nullable = false)

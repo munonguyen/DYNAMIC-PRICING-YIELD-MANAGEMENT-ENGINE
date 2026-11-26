@@ -7,6 +7,7 @@ import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.annotations.Type;
 import org.hibernate.type.SqlTypes;
 
+import java.time.Instant;
 import java.util.Map;
 import java.util.UUID;
 
@@ -53,6 +54,9 @@ public class Payment extends BaseEntity {
     @Column(nullable = false, length = 20)
     @Builder.Default
     private String status = "PENDING";
+
+    @Column(name = "gateway_verified_at")
+    private Instant gatewayVerifiedAt;
 
     @Type(JsonType.class)
     @Column(name = "raw_payload", columnDefinition = "jsonb")

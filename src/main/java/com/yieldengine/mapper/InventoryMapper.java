@@ -6,6 +6,7 @@ import com.yieldengine.entity.*;
 import org.mapstruct.Builder;
 import org.mapstruct.Mapper;
 import org.mapstruct.Mapping;
+import org.mapstruct.Named;
 
 import java.time.Instant;
 import java.util.UUID;
@@ -17,6 +18,7 @@ public interface InventoryMapper {
         return new SlotId(groupId, slotStart);
     }
 
+    @Named("checkinMode")
     default String normalizeCheckinMode(String mode) {
         if ("PIN_COUNTER".equalsIgnoreCase(mode) || "MANUAL".equalsIgnoreCase(mode)) {
             return "PIN_COUNTER";
@@ -40,7 +42,7 @@ public interface InventoryMapper {
     @Mapping(target = "depositPercent", expression = "java(request.getDepositPercent() != null ? request.getDepositPercent() : (short) 0)")
     @Mapping(target = "noshowGraceMinutes", expression = "java(request.getNoshowGraceMinutes() != null ? request.getNoshowGraceMinutes() : 15)")
     @Mapping(target = "balancePaymentMode", constant = "AT_VENUE")
-    @Mapping(target = "checkinMode", expression = "java(normalizeCheckinMode(request.getCheckinMode()))")
+    @Mapping(target = "checkinMode", source = "request.checkinMode", qualifiedByName = "checkinMode", defaultValue = "QR_STAFF")
     @Mapping(target = "status", constant = "ACTIVE")
     @Mapping(target = "id", ignore = true)
     @Mapping(target = "version", ignore = true)

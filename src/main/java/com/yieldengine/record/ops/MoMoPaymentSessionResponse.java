@@ -9,7 +9,6 @@ public record MoMoPaymentSessionResponse(
         String deeplink,
         int resultCode,
         String message,
-        boolean liveGatewayResponse,
-        String signature
+        boolean liveGatewayResponse
 ) {
 }

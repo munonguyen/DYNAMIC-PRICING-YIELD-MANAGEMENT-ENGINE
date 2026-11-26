@@ -61,6 +61,7 @@ public class CheckInService {
                 .orElseThrow(() -> new ResourceNotFoundException("Reservation not found: " + reservationId));
 
         bookingValidator.validateQrIssuance(reservation, actor);
+        ticketPassService.requirePaymentForPass(reservation);
         ticketPassService.attachSecurityCredentials(reservation);
         reservationRepository.save(reservation);
 
@@ -95,6 +96,10 @@ public class CheckInService {
                     true, true, venueMatched, false, "NOT_FOUND");
         }
 
+        if (venueMatched && !ticketPassService.hasPaymentForPass(reservation)) {
+            return rejectedInspect("CANCELLED_OR_NO_SHOW", "Đơn này chưa có xác nhận thanh toán từ cổng.",
+                    true, true, true, false, reservation.getStatus());
+        }
         return evaluateReservationInspect(reservation, payload.getQrJti(), venueMatched);
     }
 
@@ -129,6 +134,7 @@ public class CheckInService {
                 .orElseThrow(() -> new ResourceNotFoundException("Reservation not found: " + reservationId));
 
         validatePinCheckInEligibility(reservation, staff);
+        ticketPassService.requirePaymentForPass(reservation);
 
         Instant dbNow = DbClockUtils.now(jdbcTemplate);
         if (reservation.getPinLockedUntil() != null && dbNow.isBefore(reservation.getPinLockedUntil())) {
@@ -177,6 +183,7 @@ public class CheckInService {
         Instant dbNow = DbClockUtils.now(jdbcTemplate);
         int graceMinutes = group.getNoshowGraceMinutes() != null ? group.getNoshowGraceMinutes() : 15;
         bookingValidator.validateNoShowEligibility(reservation, actor, graceMinutes, dbNow);
+        ticketPassService.requirePaymentForPass(reservation);
 
         reservation.setStatus(ReservationStatus.NO_SHOW.name());
         reservation.setNoShowMarkedAt(dbNow);
@@ -301,6 +308,7 @@ public class CheckInService {
             String method,
             UUID qrJti
     ) {
+        ticketPassService.requirePaymentForPass(reservation);
         ReservationStatus.valueOf(reservation.getStatus()).assertCanTransitionTo(ReservationStatus.COMPLETED);
         ResourceGroup group = resourceGroupRepository.findById(reservation.getGroupId())
                 .orElseThrow(() -> new ResourceNotFoundException("ResourceGroup not found"));

@@ -73,7 +73,7 @@ class PaymentWorkflowValidationTest {
         orchestrator = new BookingOrchestratorService(
                 resourceGroupRepository, timeSlotRepository, slotInventoryRepository,
                 unitRepository, unitTimeLockRepository, bookingRepository,
-                reservationRepository, paymentRepository, consumedTokenRepository,
+                reservationRepository, paymentRepository, mock(VnPayTransactionRepository.class), consumedTokenRepository,
                 idempotencyKeyRepository, outboxEventRepository, priceLockTokenService,
                 ticketPassService, pricingEngineService, new CancellationRefundPolicyEvaluator(),
                 financeLedgerService, auditLogService, bookingValidator,
@@ -110,6 +110,7 @@ class PaymentWorkflowValidationTest {
                 .lockedPrice(200_000L)
                 .depositAmount(70_000L)
                 .status(ReservationStatus.HELD.name())
+                .holdExpiresAt(Instant.now().plusSeconds(600))
                 .policySnapshot(Map.of(
                         "depositPercent", 35,
                         "tiers", List.of(
@@ -120,7 +121,7 @@ class PaymentWorkflowValidationTest {
                 .build();
 
         when(paymentRepository.findByProviderAndProviderRef(anyString(), anyString())).thenReturn(Optional.empty());
-        when(reservationRepository.findByIdAndSlotStart(eq(reservationId), any())).thenReturn(Optional.of(heldReservation));
+        when(reservationRepository.lockByReservationId(reservationId)).thenReturn(Optional.of(heldReservation));
         when(resourceGroupRepository.findById(groupId)).thenReturn(Optional.of(group));
         when(bookingRepository.findById(bookingId)).thenReturn(Optional.of(booking));
         when(jdbcTemplate.queryForObject(anyString(), eq(Instant.class))).thenReturn(Instant.now());
@@ -130,13 +131,13 @@ class PaymentWorkflowValidationTest {
     @DisplayName("Rejects webhook underpayment that matches neither deposit nor full price")
     void rejectsUnderpaymentAmountMismatch() {
         PaymentWebhookRequest req = new PaymentWebhookRequest(
-                "VIETQR_NAPAS", "REF_UNDERPAY", reservationId, heldReservation.getSlotStart(), 1_000L, "SUCCESS"
+                "VNPAY_ESCROW", "REF_UNDERPAY", reservationId, heldReservation.getSlotStart(), 1_000L, "SUCCESS"
         );
         IllegalArgumentException ex = assertThrows(
                 IllegalArgumentException.class,
                 () -> orchestrator.processPaymentWebhook(req)
         );
-        assertTrue(ex.getMessage().contains("không khớp"));
+        assertTrue(ex.getMessage().contains("phải khớp"));
         verify(financeLedgerService, never()).recordDepositCollected(any(), any());
     }
 
@@ -157,13 +158,49 @@ class PaymentWorkflowValidationTest {
     }
 
     @Test
+    void recordsProviderConfirmationForCancelledOrderAsReviewRequired() {
+        heldReservation.setStatus("CANCELLED");
+        when(paymentRepository.save(any())).thenAnswer(call -> call.getArgument(0));
+        var request = new PaymentWebhookRequest("VNPAY_ESCROW", "REF_LATE", reservationId,
+                heldReservation.getSlotStart(), 70_000L, "SUCCESS");
+
+        assertEquals("CANCELLED", orchestrator.processPaymentWebhook(request).getStatus());
+        var payment = ArgumentCaptor.forClass(Payment.class);
+        verify(paymentRepository).save(payment.capture());
+        assertEquals("REVIEW_REQUIRED", payment.getValue().getStatus());
+        assertNotNull(payment.getValue().getGatewayVerifiedAt());
+        verify(financeLedgerService, never()).recordDepositCollected(any(), any());
+        verifyNoInteractions(outboxEventRepository);
+    }
+
+    @Test
+    void finalizesOnlyTheMoMoAttemptRegisteredToTheBooking() {
+        var request = new PaymentWebhookRequest("MOMO_WALLET", "MOMO_ORDER", reservationId,
+                heldReservation.getSlotStart(), 70_000L, "SUCCESS");
+
+        assertThrows(com.yieldengine.exception.BusinessConflictException.class,
+                () -> orchestrator.processPaymentWebhook(request));
+        var pending = Payment.builder().booking(booking).tenant(tenant).provider("MOMO_WALLET")
+                .providerRef("MOMO_ORDER").amount(70_000L).status("PENDING").build();
+        when(paymentRepository.findByProviderAndProviderRef("MOMO_WALLET", "MOMO_ORDER"))
+                .thenReturn(Optional.of(pending));
+        when(paymentRepository.save(pending)).thenReturn(pending);
+
+        assertEquals("CONFIRMED", orchestrator.processPaymentWebhook(request).getStatus());
+        assertEquals("SUCCESS", pending.getStatus());
+        assertNotNull(pending.getGatewayVerifiedAt());
+        assertEquals("CONFIRMED", orchestrator.processPaymentWebhook(request).getStatus());
+        verify(financeLedgerService, times(1)).recordDepositCollected(heldReservation, pending);
+    }
+
+    @Test
     @DisplayName("Full settlement collects lockedPrice and refunds pre-paid remainder plus policy refund on cancel")
     void fullSettlementAndFairCancellationRefund() {
         when(paymentRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
         when(unitTimeLockRepository.findByReservationId(reservationId)).thenReturn(Optional.empty());
 
         PaymentWebhookRequest webhook = new PaymentWebhookRequest(
-                "VIETQR_NAPAS", "REF_FULL", reservationId, heldReservation.getSlotStart(), 200_000L, "SUCCESS"
+                "VNPAY_ESCROW", "REF_FULL", reservationId, heldReservation.getSlotStart(), 200_000L, "SUCCESS"
         );
         Reservation confirmed = orchestrator.processPaymentWebhook(webhook);
         assertEquals(ReservationStatus.CONFIRMED.name(), confirmed.getStatus());
@@ -175,7 +212,6 @@ class PaymentWorkflowValidationTest {
         // Now simulate cancellation 5h before play -> 50% tier applies ONLY to 70,000đ deposit (35,000đ forfeit),
         // while 130,000đ pre-paid balance is refunded 100% -> total refund = 165,000đ
         when(paymentRepository.sumSuccessfulEscrowByBookingId(bookingId)).thenReturn(200_000L);
-        when(reservationRepository.findByReservationId(reservationId)).thenReturn(Optional.of(confirmed));
         when(paymentRepository.findFirstByBookingIdAndPaymentTypeAndStatusOrderByCreatedAtDesc(
                 eq(bookingId), eq("DEPOSIT"), eq("SUCCESS"))).thenReturn(Optional.empty());
 

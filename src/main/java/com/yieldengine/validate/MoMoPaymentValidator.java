@@ -31,9 +31,6 @@ public class MoMoPaymentValidator {
     }
 
     public UUID resolveReservationIdFromIpn(UUID explicitReservationId, String extraDataBase64) {
-        if (explicitReservationId != null) {
-            return explicitReservationId;
-        }
         if (isBlank(extraDataBase64)) {
             throw new IllegalArgumentException("Thiếu reservationId cho giao dịch MoMo IPN.");
         }
@@ -42,7 +39,11 @@ public class MoMoPaymentValidator {
                     Base64.getDecoder().decode(extraDataBase64.trim()),
                     StandardCharsets.UTF_8
             ).trim();
-            return UUID.fromString(decoded);
+            UUID signedReservationId = UUID.fromString(decoded);
+            if (explicitReservationId != null && !explicitReservationId.equals(signedReservationId)) {
+                throw new IllegalArgumentException("Mã đơn không khớp dữ liệu đã ký.");
+            }
+            return signedReservationId;
         } catch (IllegalArgumentException ex) {
             throw new IllegalArgumentException("Không giải mã được reservationId từ extraData MoMo.", ex);
         }

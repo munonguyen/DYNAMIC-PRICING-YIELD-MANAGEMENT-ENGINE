@@ -176,6 +176,7 @@ class CheckInPinSecurityTest {
     @Test
     @DisplayName("Option 2: Locks verification for 5 minutes after 5 incorrect PIN guesses (anti-brute-force)")
     void locksAfterFiveWrongPinAttemptsAndRejectsWrongPhone() {
+        when(paymentRepository.sumSuccessfulEscrowByBookingId(any())).thenReturn(70_000L);
         for (int i = 1; i <= 5; i++) {
             BusinessConflictException ex = assertThrows(
                     BusinessConflictException.class,
