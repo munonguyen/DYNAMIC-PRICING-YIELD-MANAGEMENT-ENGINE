@@ -79,7 +79,7 @@ public class CheckInService {
                     true, false, false, false, "EXPIRED");
         } catch (InvalidTokenSignatureException | IllegalArgumentException ex) {
             return rejectedInspect("INVALID_SIGNATURE",
-                    "CẢNH BÁO VÉ GIẢ: Chữ ký HMAC-SHA256 không khớp hoặc mã QR đã bị chỉnh sửa.",
+                    "Cảnh báo: Mã vé không hợp lệ hoặc đã bị chỉnh sửa.",
                     false, false, false, false, "TAMPERED");
         }
 
@@ -99,12 +99,24 @@ public class CheckInService {
 
     @Transactional
     public CheckInResponse scanQrCheckIn(String qrToken) {
+        return scanQrCheckIn(qrToken, null);
+    }
+
+    @Transactional
+    public CheckInResponse scanQrCheckIn(String qrToken, String phoneLast4) {
         PriceLockTokenService.QrTokenPayload payload = priceLockTokenService.verifyAndExtractQrToken(qrToken);
         SessionPrincipal scanner = rbacGuard.requireAuthenticated();
 
         bookingValidator.validateQrScan(payload, scanner);
         Reservation reservation = reservationRepository.findByIdAndSlotStart(payload.getReservationId(), payload.getSlotStart())
                 .orElseThrow(() -> new ResourceNotFoundException("Reservation not found"));
+
+        if (phoneLast4 != null && !phoneLast4.isBlank()) {
+            String expectedLast4 = ticketPassService.resolveCustomerPhoneLast4(reservation);
+            if (!expectedLast4.isBlank() && !expectedLast4.equals(phoneLast4.trim())) {
+                throw new BusinessConflictException("4 số cuối SĐT khách đọc không khớp với thông tin đặt sân.");
+            }
+        }
 
         return completeCheckInInternal(reservation, scanner, "QR_SCAN", payload.getQrJti());
     }
@@ -242,7 +254,7 @@ public class CheckInService {
         }
 
         return inspectFromSnapshot(pass, qrJti, true, "VALID_READY",
-                "Vé QR hợp lệ (Chữ ký HMAC-SHA256 khớp • Đúng cơ sở • Chưa sử dụng).",
+                "Vé hợp lệ (Đã xác thực chữ ký điện tử • Đúng cơ sở • Chưa sử dụng).",
                 true, true, reservation.getStatus(), null);
     }
 
@@ -261,7 +273,7 @@ public class CheckInService {
                 valid, verdictCode, verdictMessage, true, true, venueMatched, unused,
                 pass.reservationId(), qrJti, pass.unitNumber(), pass.groupName(),
                 pass.slotStart(), pass.slotEnd(), pass.customerName(), pass.customerPhoneMasked(),
-                pass.customerPhoneLast4(), pass.customerEmail(), pass.lockedPrice(),
+                pass.customerEmail(), pass.lockedPrice(),
                 pass.paidAmount(), pass.remainingAtVenue(), status, previousScannedAt
         );
     }
@@ -278,7 +290,7 @@ public class CheckInService {
         return new QrInspectResponse(
                 false, verdictCode, message, sigValid, notExpired, venueMatched, unused,
                 null, null, null, null, null, null,
-                null, null, null, null, 0L, 0L, 0L, status, null
+                null, null, null, 0L, 0L, 0L, status, null
         );
     }
 

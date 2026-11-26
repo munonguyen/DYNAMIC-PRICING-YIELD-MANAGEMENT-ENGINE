@@ -91,7 +91,7 @@ export const INITIAL_ANNOUNCEMENTS: VenueAnnouncement[] = [
     coverImageUrl: '/images/sport-complex-aerial.jpg',
     imageCaption: 'Hệ thống thanh toán đa cổng đồng bộ tức thời với Sổ cái kế toán kép và phát hành vé QR.',
     pullQuote:
-      'Ngay khi giao dịch xác thực chữ ký HMAC thành công, vé QR check-in một lần được kích hoạt trên hệ thống và gửi đính kèm ảnh PNG về Gmail người đặt.',
+      'Ngay khi giao dịch thanh toán được xác nhận thành công, vé QR check-in một lần được kích hoạt trên hệ thống và gửi đính kèm về Gmail người đặt.',
     keyTakeaways: [
       'Hỗ trợ đồng thời 4 phương thức: VietQR Napas 247, VNPAY v2.1.0 (QR/NCB/Visa), Ví MoMo PayGate v2 và Thẻ quốc tế.',
       'Chống trùng lặp Webhook/IPN và tự động hoàn cọc 100% nếu cổng trả kết quả trễ sau thời hạn giữ chỗ 10 phút.',
@@ -101,14 +101,14 @@ export const INITIAL_ANNOUNCEMENTS: VenueAnnouncement[] = [
       {
         heading: '1. Tình hình nâng cấp hạ tầng thanh toán hiện tại',
         paragraphs: [
-          'Kể từ hôm nay, ArenaPulse.vn hoàn tất tích hợp chuẩn kết nối VNPAY Payment Gateway v2.1.0 (ký xác thực HMAC-SHA512, hỗ trợ Return URL, IPN Idempotent, QueryDR và Refund) song song cùng cổng MoMo PayGate v2.',
+          'Kể từ hôm nay, ArenaPulse.vn hoàn tất tích hợp chuẩn kết nối VNPAY Payment Gateway (xác thực đa lớp, hỗ trợ hoàn tiền tự động) song song cùng cổng MoMo.',
           'Điều này cho phép người chơi thanh toán nhanh bằng quét mã QR ứng dụng ngân hàng, thẻ ATM nội địa hoặc ví điện tử chỉ trong vài giây với độ an toàn cấp ngân hàng.',
         ],
       },
       {
         heading: '2. Cơ chế lưu giữ Vé QR song song trên Hệ thống và Gmail',
         paragraphs: [
-          'Sau khi hệ thống ghi nhận trạng thái thanh toán thành công, mã QR check-in dùng một lần (ký số HMAC-SHA256 riêng biệt) được lưu vĩnh viễn trong hồ sơ "Vé của tôi" và tự động phát hành kèm file ảnh PNG gửi về địa chỉ Gmail bạn đã khai báo.',
+          'Sau khi hệ thống ghi nhận thanh toán thành công, mã QR check-in và mã PIN dùng một lần được lưu trong hồ sơ "Vé của tôi" và gửi tự động về địa chỉ Gmail bạn đã khai báo.',
           'Tại quầy tiếp đón của cụm sân, nhân viên chỉ cần quét mã QR một lần trên điện thoại hoặc email của bạn để hoàn tất thủ tục nhận sân.',
         ],
       },
@@ -309,7 +309,7 @@ export const INITIAL_ANNOUNCEMENTS: VenueAnnouncement[] = [
       'Tài khoản đã đăng nhập mới truy cập được quy trình nộp hồ sơ đối tác và mọi hồ sơ đều phải qua 7 lớp xác thực pháp luật Việt Nam trước khi duyệt nội bộ.',
     keyTakeaways: [
       'Bắt buộc xác thực OTP và kiểm tra khớp thông tin CCCD 63 tỉnh, MST Modulo-11, GPĐKKD.',
-      'Chống trùng lặp hồ sơ và tệp chứng từ bằng mã băm SHA-256.',
+      'Chống trùng lặp hồ sơ và tệp chứng từ tự động.',
       'Bộ phận Quản trị & Kế toán nội bộ phê duyệt và cấp Tenant vận hành chuyên nghiệp.',
     ],
     articleSections: [

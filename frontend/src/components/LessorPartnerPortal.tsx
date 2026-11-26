@@ -1141,13 +1141,13 @@ export const LessorPartnerPortal: React.FC<LessorPartnerPortalProps> = ({
                     <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
                       <div className="space-y-1">
                         <span className="text-[11px] font-bold uppercase tracking-wider text-[#16422C]">
-                          Quầy Soát Vé QR Chống Giả Mạo Tại Sân
+                          Quầy Soát Vé &amp; Xác Minh Khách Hàng
                         </span>
                         <h3 className="text-base sm:text-lg font-bold text-[#0F172A]">
-                          Quét mã QR từ Email khách để xác thực chữ ký HMAC &amp; đối chiếu đúng chủ vé
+                          Quét mã QR hoặc nhập PIN 6 số để xác thực vé &amp; đối chiếu đúng chủ vé
                         </h3>
                         <p className="text-xs text-neutral-600">
-                          Hệ thống tự kiểm tra 4 lớp: chữ ký số chống sửa vé, đúng cụm sân, khóa vé dùng 1 lần và SĐT/Email người đặt trước khi mở sân.
+                          Hệ thống kiểm tra chứng thực vé điện tử, đúng cụm sân, hiệu lực sử dụng 1 lần và hỏi 4 số cuối SĐT trước khi mở sân.
                         </p>
                       </div>
 
@@ -1315,7 +1315,7 @@ export const LessorPartnerPortal: React.FC<LessorPartnerPortalProps> = ({
                                 }`}
                               >
                                 {usesPinCounter
-                                  ? `🔢 PIN 6 số (${order.pinHint || '••••••'})`
+                                  ? '🔢 PIN 6 số (Tại quầy)'
                                   : '📷 Quét QR tại quầy'}
                               </span>
                               <span className="text-xs font-semibold text-[#0F172A]">
@@ -1346,20 +1346,15 @@ export const LessorPartnerPortal: React.FC<LessorPartnerPortalProps> = ({
 
                             <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-neutral-500">
                               <span>
-                                Khách: <strong className="text-neutral-800">{order.customerName}</strong> ({order.customerPhone})
+                                Khách: <strong className="text-neutral-800">{order.customerName}</strong> (
+                                {order.customerPhone.replace(/\s+/g, '').length >= 4
+                                  ? `${order.customerPhone.replace(/\s+/g, '').slice(0, 4)} ••• •••`
+                                  : 'Đã bảo mật'}
+                                )
                               </span>
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  setQrModalOrder(order);
-                                  setQrModalTab('TICKET_PREVIEW');
-                                  setQrModalQuery('');
-                                  setQrModalOpen(true);
-                                }}
-                                className="inline-flex items-center gap-1 rounded-full bg-[#E6F1F8] px-2.5 py-0.5 text-[11px] font-bold text-[#0E4F7E] hover:brightness-95 cursor-pointer"
-                              >
-                                🎟 Xem vé Email ({order.qrCode})
-                              </button>
+                              <span className="inline-flex items-center gap-1 rounded-full bg-[#F1F5F9] px-2.5 py-0.5 text-[11px] font-semibold text-neutral-700">
+                                Mã vé: {order.qrCode}
+                              </span>
                               {order.addOnSummary && (
                                 <span className="font-medium text-[#16422C]">
                                   + Dịch vụ kèm: {order.addOnSummary} ({formatVnd(order.addOnTotal)})
@@ -1690,7 +1685,7 @@ export const LessorPartnerPortal: React.FC<LessorPartnerPortalProps> = ({
                                 {
                                   id: 'QR_STAFF' as const,
                                   title: '📷 Option 1: Có máy quét QR / Camera quầy',
-                                  desc: 'Khách đưa ảnh QR trong Email; nhân viên quét Camera / đầu đọc 2D (kiểm tra chữ ký HMAC 4 lớp + vé dùng 1 lần).',
+                                  desc: 'Khách đưa ảnh QR trong Email; nhân viên quét Camera / đầu đọc 2D (kiểm tra tính hợp lệ của vé, hiệu lực 1 lần & đối chiếu chủ sân).',
                                 },
                                 {
                                   id: 'PIN_COUNTER' as const,

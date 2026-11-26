@@ -184,8 +184,8 @@ export const CourtDetailView: React.FC<CourtDetailViewProps> = ({
       setActiveImageIdx(0);
       setUploadNotice(
         result.persistedToBackend
-          ? 'Đã tải ảnh lên Backend Spring Boot & lưu metadata vào PostgreSQL.'
-          : 'Backend đang offline — đã lưu ảnh thực tế vào bộ nhớ cục bộ trình duyệt để xem trước.'
+          ? 'Đã tải lên và lưu trữ ảnh cụm sân thành công.'
+          : 'Đã lưu ảnh thực tế vào bộ nhớ phiên để xem trước.'
       );
     } catch {
       setUploadNotice('Không thể đọc hoặc lưu tệp ảnh. Vui lòng chọn ảnh JPEG, PNG hoặc WebP dưới 10MB.');

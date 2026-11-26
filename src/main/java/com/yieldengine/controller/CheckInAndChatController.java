@@ -36,7 +36,7 @@ public class CheckInAndChatController {
     @Operation(summary = "Scan customer QR code to check in once at venue (STAFF/MANAGER - UC-16)")
     @PostMapping("/checkins/scan")
     public ResponseEntity<CheckInResponse> scanQr(@Valid @RequestBody ScanQrRequest request) {
-        return ResponseEntity.ok(checkInService.scanQrCheckIn(request.qrToken()));
+        return ResponseEntity.ok(checkInService.scanQrCheckIn(request.qrToken(), request.phoneLast4()));
     }
 
     @Operation(summary = "Verify 6-digit single-use PIN from customer email for venues without QR scanner (Option 2)")

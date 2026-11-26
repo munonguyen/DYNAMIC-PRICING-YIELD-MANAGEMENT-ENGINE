@@ -141,8 +141,12 @@ public final class BookingOpsDtos {
     }
 
     public record ScanQrRequest(
-            @NotBlank String qrToken
+            @NotBlank String qrToken,
+            @Size(max = 6) String phoneLast4
     ) {
+        public ScanQrRequest(String qrToken) {
+            this(qrToken, null);
+        }
     }
 
     public record VerifyPinRequest(
@@ -178,7 +182,6 @@ public final class BookingOpsDtos {
             Instant slotEnd,
             String customerName,
             String customerPhoneMasked,
-            String customerPhoneLast4,
             String customerEmail,
             long totalPrice,
             long paidAmount,

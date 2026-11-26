@@ -325,7 +325,6 @@ export interface QrInspectResult {
   slotLabel?: string | null;
   customerName?: string | null;
   customerPhoneMasked?: string | null;
-  customerPhoneLast4?: string | null;
   customerEmail?: string | null;
   totalPrice?: number;
   paidAmount?: number;

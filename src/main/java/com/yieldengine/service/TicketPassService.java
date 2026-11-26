@@ -176,9 +176,9 @@ public class TicketPassService {
             return "Chưa cập nhật";
         }
         String clean = rawPhone.replaceAll("\\s+", "");
-        if (clean.length() < 7) {
-            return clean;
+        if (clean.length() < 4) {
+            return "•••";
         }
-        return clean.substring(0, 4) + " ••• " + extractPhoneLast4(clean);
+        return clean.substring(0, 4) + " ••• •••";
     }
 }

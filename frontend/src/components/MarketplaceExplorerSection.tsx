@@ -363,8 +363,8 @@ export const MarketplaceExplorerSection: React.FC<MarketplaceExplorerSectionProp
                     <div className="mt-1.5 flex items-center gap-1.5 px-2 text-[10.5px] font-semibold text-[#16422C]">
                       <span>
                         {esSearchInfo.dataSource === 'ELASTICSEARCH_CQRS'
-                          ? '⚡ Đọc từ Elasticsearch'
-                          : '🗄 Đọc từ PostgreSQL DB'}
+                          ? '⚡ Tìm kiếm Nhanh'
+                          : '✓ Dữ liệu Trực tiếp'}
                       </span>
                       <span className="text-neutral-400">•</span>
                       <span className="tabular-nums">{esSearchInfo.queryLatencyMs}ms</span>

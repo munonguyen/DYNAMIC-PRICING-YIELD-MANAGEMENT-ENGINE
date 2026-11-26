@@ -195,9 +195,9 @@ export const LoginPage: React.FC<LoginPageProps> = ({
 
                 <div className="rounded-2xl bg-[#F8F9FA] p-4 border border-neutral-200/70 text-xs space-y-1.5">
                   <div className="flex justify-between">
-                    <span className="text-neutral-500">Mã phiên Redis</span>
-                    <span className="tabular-nums font-semibold text-[#16422C]">
-                      {session.accessToken.slice(0, 18)}…
+                    <span className="text-neutral-500">Trạng thái phiên</span>
+                    <span className="font-semibold text-[#16422C]">
+                      Đang hoạt động an toàn
                     </span>
                   </div>
                   <div className="flex justify-between">

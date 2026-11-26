@@ -1588,14 +1588,10 @@ class MarketplaceApiClient {
 
     const maskPhone = (phone: string) => {
       const clean = phone.replace(/\s+/g, '');
-      const last4 = clean.slice(-4);
-      if (clean.length >= 7) {
-        return {
-          masked: `${clean.slice(0, 4)} ••• ${last4}`,
-          last4,
-        };
+      if (clean.length >= 4) {
+        return `${clean.slice(0, 4)} ••• •••`;
       }
-      return { masked: phone || 'Chưa cung cấp', last4 };
+      return phone || 'Chưa cung cấp';
     };
 
     const normalize = query.toLowerCase();
@@ -1625,7 +1621,7 @@ class MarketplaceApiClient {
           valid: false,
           verdictCode: 'INVALID_SIGNATURE',
           verdictMessage:
-            'CẢNH BÁO VÉ GIẢ: Chữ ký số HMAC-SHA256 không khớp với bất kỳ vé hợp lệ nào — có thể ảnh QR đã bị chỉnh sửa hoặc tạo giả!',
+            'Cảnh báo: Mã vé không hợp lệ hoặc đã bị chỉnh sửa!',
           signatureValid: false,
           notExpired: false,
           venueMatched: false,
@@ -1651,7 +1647,7 @@ class MarketplaceApiClient {
       };
     }
 
-    const { masked, last4 } = maskPhone(target.customerPhone);
+    const masked = maskPhone(target.customerPhone);
     const basePayload = {
       reservationId: target.reservationId,
       qrJti: target.qrJti ?? target.qrCode,
@@ -1661,7 +1657,6 @@ class MarketplaceApiClient {
       slotLabel: target.slotLabel,
       customerName: target.customerName,
       customerPhoneMasked: masked,
-      customerPhoneLast4: last4,
       customerEmail: target.customerEmail ?? 'Chưa cập nhật email',
       totalPrice: target.courtPrice + target.addOnTotal,
       paidAmount: target.paidEscrow,
@@ -1687,7 +1682,7 @@ class MarketplaceApiClient {
         ...basePayload,
         valid: false,
         verdictCode: 'ALREADY_USED',
-        verdictMessage: `CHẶN QUÉT LẠI (Anti-Replay): Vé ${target.orderId} đã được dùng để nhận sân trước đó (${target.createdAtLabel}). Nghi vấn dùng lại ảnh QR cũ!`,
+        verdictMessage: `Vé ${target.orderId} đã được sử dụng để nhận sân trước đó (${target.createdAtLabel}). Không thể quét lại lần thứ hai.`,
         signatureValid: true,
         notExpired: true,
         venueMatched: true,
@@ -1714,12 +1709,58 @@ class MarketplaceApiClient {
       valid: true,
       verdictCode: 'VALID_READY',
       verdictMessage:
-        'Vé QR hợp lệ (Đúng chữ ký số • Đúng cơ sở • Chưa từng quét). Hãy đối chiếu tên/SĐT khách trước khi bấm Mở sân.',
+        'Vé hợp lệ (Đã xác thực chữ ký điện tử • Đúng cơ sở • Chưa sử dụng). Hãy đối chiếu tên & hỏi khách 4 số cuối SĐT trước khi mở sân.',
       signatureValid: true,
       notExpired: true,
       venueMatched: true,
       unusedAntiReplay: true,
     };
+  }
+
+  async confirmQrCheckInWithPhoneChallenge(
+    orderId: string,
+    qrTokenOrCode: string,
+    phoneLast4Input: string,
+    providerOrders: LessorBookingOrder[]
+  ): Promise<{ ok: boolean; message: string }> {
+    const cleanLast4 = phoneLast4Input.replace(/\D/g, '');
+    if (cleanLast4.length !== 4) {
+      return {
+        ok: false,
+        message: 'Vui lòng nhập đủ 4 số cuối SĐT mà khách hàng đọc để xác nhận chính chủ.',
+      };
+    }
+    const target = providerOrders.find((o) => o.orderId === orderId);
+    if (!target) {
+      return { ok: false, message: 'Không tìm thấy đơn cần mở sân.' };
+    }
+    if (qrTokenOrCode.includes('.')) {
+      try {
+        const res = await fetch('/api/v1/checkins/scan', {
+          method: 'POST',
+          headers: this.headers(),
+          body: JSON.stringify({ qrToken: qrTokenOrCode, phoneLast4: cleanLast4 }),
+        });
+        if (res.ok) {
+          return { ok: true, message: `✓ Đã xác thực & mở sân thành công cho đơn ${orderId}.` };
+        }
+        const err = await res.json().catch(() => null);
+        if (err?.message) {
+          return { ok: false, message: String(err.message) };
+        }
+      } catch {
+        // Fallback to local verification when backend is offline
+      }
+    }
+
+    const expectedLast4 = target.customerPhone.replace(/\D/g, '').slice(-4);
+    if (expectedLast4.length === 4 && cleanLast4 !== expectedLast4) {
+      return {
+        ok: false,
+        message: '4 số cuối SĐT khách đọc không khớp với thông tin đặt sân — từ chối mở sân.',
+      };
+    }
+    return { ok: true, message: `✓ Đã xác thực & mở sân thành công cho đơn ${orderId}.` };
   }
 
   async verifyPinAtVenue(
@@ -2452,7 +2493,7 @@ class MarketplaceApiClient {
       indexedCourts: 0,
       durationMs: Math.max(1, Math.round(performance.now() - t0)),
       message:
-        'Backend Spring Boot chưa chạy cục bộ — vui lòng khởi chạy `docker compose up -d && ./mvnw spring-boot:run` để đồng bộ trực tiếp PostgreSQL & Elasticsearch.',
+        'Dữ liệu đang đồng bộ ở chế độ ngoại tuyến. Kết nối máy chủ hệ thống để cập nhật báo cáo thời gian thực.',
     };
   }
 }

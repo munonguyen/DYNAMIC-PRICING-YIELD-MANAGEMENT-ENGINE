@@ -99,10 +99,10 @@ export const LessorAnalyticsDashboard: React.FC<LessorAnalyticsDashboardProps> =
 
   const sourceLabel =
     analytics.dataSource === 'ELASTICSEARCH_CQRS'
-      ? 'Elasticsearch 8 CQRS'
+      ? 'Phân tích Thời gian thực'
       : analytics.dataSource === 'POSTGRESQL_DB'
-        ? 'PostgreSQL DB Trực tiếp'
-        : 'Dữ liệu Phiên thực tế (DB offline)';
+        ? 'Dữ liệu Hệ thống Trực tiếp'
+        : 'Dữ liệu Phiên làm việc';
 
   const sourceBadgeClass =
     analytics.dataSource === 'ELASTICSEARCH_CQRS'
@@ -164,7 +164,7 @@ export const LessorAnalyticsDashboard: React.FC<LessorAnalyticsDashboardProps> =
               }}
               className="rounded-full border border-neutral-200 bg-[#F8FAFC] px-3.5 py-1.5 text-xs font-semibold text-[#0F172A] hover:border-[#16422C] hover:bg-[#F4F8F4] disabled:opacity-60 transition cursor-pointer"
             >
-              {reindexing ? 'Đang đồng bộ ES…' : '↻ Đồng bộ DB → Elasticsearch'}
+              {reindexing ? 'Đang làm mới…' : '↻ Làm mới Dữ liệu Phân tích'}
             </button>
           )}
 

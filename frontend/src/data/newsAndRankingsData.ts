@@ -21,10 +21,10 @@ export const INITIAL_NEWS_ARTICLES: NewsArticleItem[] = [
     imageCaption: 'Toàn cảnh tổ hợp đa bộ môn tích hợp quản lý công suất lấp đầy theo khung giờ thực tế.',
     featured: true,
     pullQuote:
-      'Mỗi khi bạn chọn một khung giờ, PriceLockToken ký số HMAC-SHA256 lập tức đóng băng mức giá trong đúng 10 phút — bảo vệ bạn khỏi biến động giá khi đang thanh toán.',
+      'Mỗi khi bạn chọn một khung giờ, hệ thống tự động giữ giá cố định trong đúng 10 phút — bảo vệ bạn khỏi biến động giá khi đang thanh toán.',
     keyTakeaways: [
       'Khung giờ 09:00 – 15:30 từ Thứ 2 đến Thứ 6 có hệ số M_time thấp, tiết kiệm 15–25%.',
-      'Khóa giá 10 phút chống đặt trùng bằng PostgreSQL GiST exclusion & Idempotency-Key.',
+      'Khóa giá 10 phút chống đặt trùng tuyệt đối trong suốt quá trình thanh toán.',
       'Chủ sân tăng doanh thu giờ trống mà không cần ép giá cao vào giờ cao điểm.',
     ],
     sections: [
@@ -38,7 +38,7 @@ export const INITIAL_NEWS_ARTICLES: NewsArticleItem[] = [
       {
         heading: '2. Cơ chế Khóa giá 10 phút chống thay đổi giá giữa chừng',
         paragraphs: [
-          'Nhiều người lo ngại giá hiển thị bị nhảy ngay khi vừa bấm thanh toán. Trên ArenaPulse.vn, mỗi báo giá đều đi kèm một PriceLockToken ký số bằng HMAC-SHA256 có hiệu lực 10 phút và chỉ dùng một lần.',
+          'Nhiều người lo ngại giá hiển thị bị nhảy ngay khi vừa bấm thanh toán. Trên ArenaPulse.vn, mỗi báo giá được giữ cứng bằng mã bảo mật dùng một lần có hiệu lực 10 phút.',
           'Ngay cả khi lượng đặt sân tăng vọt ngay sau giây bạn bấm giữ chỗ, đơn của bạn vẫn được hạch toán đúng tuyệt đối theo mức giá đã khóa ban đầu.',
         ],
       },
@@ -116,7 +116,7 @@ export const INITIAL_NEWS_ARTICLES: NewsArticleItem[] = [
       {
         heading: '1. Tiền cọc đi đâu sau khi bạn quét mã VNPAY hoặc MoMo?',
         paragraphs: [
-          'Ngay khi cổng VNPAY v2.1.0 hoặc MoMo PayGate v2 xác thực chữ ký HMAC thành công, tiền được hạch toán vào Tài khoản Ký quỹ trung gian (Escrow Liability) chứ chưa giải ngân ngay cho chủ sân.',
+          'Ngay khi cổng VNPAY hoặc MoMo xác nhận giao dịch hợp lệ, tiền được hạch toán an toàn vào Tài khoản Ký quỹ trung gian chứ chưa giải ngân ngay cho chủ sân.',
           'Chỉ sau khi bạn quét mã QR check-in thành công tại sân hoặc hoàn tất ca chơi, hệ thống mới ghi nhận doanh thu ròng cho đối tác sau khi khấu trừ hoa hồng sàn.',
         ],
       },
@@ -148,7 +148,7 @@ export const INITIAL_NEWS_ARTICLES: NewsArticleItem[] = [
       'Mỗi hồ sơ đối tác phải vượt qua xác thực OTP, đối chiếu 63 mã tỉnh CCCD, kiểm tra Modulo-11 Mã số thuế và hợp đồng quyền sử dụng mặt bằng.',
     keyTakeaways: [
       'Đảm bảo quyền sử dụng đất hợp pháp hoặc hợp đồng cho thuê lại còn hạn tối thiểu 180 ngày.',
-      'Đầy đủ chứng nhận PCCC và ảnh thực tế sân đấu đối chiếu SHA-256 chống trùng lặp.',
+      'Đầy đủ chứng nhận PCCC và ảnh thực tế sân đấu đã được kiểm duyệt chống trùng lặp.',
       'Cổng đăng ký dành riêng cho tài khoản đã đăng nhập và được Ban quản trị duyệt nội bộ.',
     ],
     sections: [
