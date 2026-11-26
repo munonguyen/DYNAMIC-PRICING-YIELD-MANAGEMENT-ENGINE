@@ -1,0 +1,43 @@
+{
+  "branch": "service/admin/account-management",
+  "title": "Quản lý tài khoản",
+  "scope": "Tra cứu, tạo và đổi trạng thái tài khoản.",
+  "operations": [
+    {
+      "method": "GET",
+      "path": "/api/v1/admin/users",
+      "operationId": "listUsers"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/admin/users",
+      "operationId": "createUser"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/v1/admin/users/{id}/status",
+      "operationId": "updateUserStatus"
+    }
+  ],
+  "source": [
+    {
+      "file": "src/main/java/com/yieldengine/controller/admin/AdminPlatformController.java",
+      "anchors": [
+        "listUsers("
+      ]
+    },
+    {
+      "file": "src/main/java/com/yieldengine/controller/admin/AdminIdentityRbacController.java",
+      "anchors": [
+        "createUser(",
+        "updateUserStatus("
+      ]
+    },
+    {
+      "file": "frontend/src/components/AdminAccountManager.tsx",
+      "anchors": [
+        "AdminAccountManager"
+      ]
+    }
+  ]
+}
