@@ -1,0 +1,20 @@
+{
+  "branch": "service/admin/search-reindex",
+  "title": "Lập lại chỉ mục tìm kiếm",
+  "scope": "Quản trị nền tảng đồng bộ lại dữ liệu tìm kiếm.",
+  "operations": [
+    {
+      "method": "POST",
+      "path": "/api/v1/analytics/reindex",
+      "operationId": "reindexElasticsearch"
+    }
+  ],
+  "source": [
+    {
+      "file": "src/main/java/com/yieldengine/controller/admin/AdminPlatformAnalyticsController.java",
+      "anchors": [
+        "reindexElasticsearch("
+      ]
+    }
+  ]
+}
