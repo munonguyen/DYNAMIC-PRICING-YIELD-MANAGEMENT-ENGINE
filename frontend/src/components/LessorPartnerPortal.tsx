@@ -52,12 +52,14 @@ import { QrCheckInScannerModal, type QrModalTabId } from './QrCheckInScannerModa
 import { CreateCourtGroupModal } from './CreateCourtGroupModal';
 import { BookingOrderDetailModal } from './BookingOrderDetailModal';
 import { LiveCourtsInUseSection } from './LiveCourtsInUseSection';
+import { WeeklyScheduleGrid, type WeeklyFixedBlock } from './WeeklyScheduleGrid';
 import { getActiveLessorServices, resolveCourtThumbnail } from '../data/courtServicesData';
 
 export type LessorPortalTabId =
   | 'OVERVIEW'
   | 'ORDERS_CHECKIN'
   | 'LIVE_COURTS'
+  | 'WEEKLY_SCHEDULE'
   | 'COURTS_INVENTORY'
   | 'ADDON_PRODUCTS'
   | 'YIELD_PRICING'
@@ -108,6 +110,7 @@ interface LessorPartnerPortalProps {
 const LESSOR_ORDERS_STORAGE_KEY = 'arenapulse_lessor_orders_v1';
 const LESSOR_PAYOUTS_STORAGE_KEY = 'arenapulse_lessor_payouts_v1';
 const WALKIN_LOCKS_STORAGE_KEY = 'arenapulse_walkin_court_locks_v1';
+const WEEKLY_FIXED_BLOCKS_KEY = 'arenapulse_weekly_fixed_blocks_v1';
 
 const PRESET_COURT_COVERS: { label: string; url: string }[] = [
   { label: 'Sân Pickleball Mái Vòm Chuẩn Giải', url: '/images/court-pickleball-dome.jpg' },
@@ -281,7 +284,13 @@ export const LessorPartnerPortal: React.FC<LessorPartnerPortalProps> = ({
     );
     const convertedLiveTickets: LessorBookingOrder[] = storedTickets
       .filter((t) => !savedOrders.some((o) => o.reservationId === t.reservationId))
-      .map((t) => ({
+      .map((t) => {
+        const slotDate = new Date(t.slotStart);
+        const dateIso = !Number.isNaN(slotDate.getTime())
+          ? `${slotDate.getFullYear()}-${String(slotDate.getMonth() + 1).padStart(2, '0')}-${String(slotDate.getDate()).padStart(2, '0')}`
+          : undefined;
+        const slotHour = !Number.isNaN(slotDate.getTime()) ? slotDate.getHours() : undefined;
+        return {
         orderId: `WEB-${t.reservationId.slice(0, 6).toUpperCase()}`,
         reservationId: t.reservationId,
         providerId: activeProvider.providerId,
@@ -308,7 +317,10 @@ export const LessorPartnerPortal: React.FC<LessorPartnerPortalProps> = ({
                 ? 'CANCELLED'
                 : 'CONFIRMED',
         createdAtLabel: 'Đơn đặt thực tế',
-      }));
+        dateIso,
+        slotHour,
+      };
+      });
 
     return [...convertedLiveTickets, ...savedOrders];
   }, [ordersByProvider, activeProvider.providerId, myListings]);
@@ -394,6 +406,41 @@ export const LessorPartnerPortal: React.FC<LessorPartnerPortalProps> = ({
       return {};
     }
   });
+  const [weeklyFixedBlocks, setWeeklyFixedBlocks] = useState<WeeklyFixedBlock[]>(() => {
+    if (typeof window === 'undefined') return [];
+    try {
+      const raw = window.localStorage.getItem(WEEKLY_FIXED_BLOCKS_KEY);
+      return raw ? (JSON.parse(raw) as WeeklyFixedBlock[]) : [];
+    } catch {
+      return [];
+    }
+  });
+
+  const handleAddWeeklyFixedBlock = (block: WeeklyFixedBlock) => {
+    setWeeklyFixedBlocks((prev) => {
+      const next = [block, ...prev];
+      try {
+        window.localStorage.setItem(WEEKLY_FIXED_BLOCKS_KEY, JSON.stringify(next));
+      } catch {
+        // ignore quota errors
+      }
+      return next;
+    });
+    flashToast(`✓ Đã thêm "${block.title}" (${block.unitNumber}) lên lịch tuần.`);
+  };
+
+  const handleRemoveWeeklyFixedBlock = (blockId: string) => {
+    setWeeklyFixedBlocks((prev) => {
+      const next = prev.filter((b) => b.id !== blockId);
+      try {
+        window.localStorage.setItem(WEEKLY_FIXED_BLOCKS_KEY, JSON.stringify(next));
+      } catch {
+        // ignore quota errors
+      }
+      return next;
+    });
+    flashToast('Đã gỡ lịch cố định khỏi thời khóa biểu tuần.');
+  };
 
   const handleToggleWalkInLock = (groupId: string, unitNumber: string, groupName: string) => {
     const key = `${groupId}__${unitNumber}`;
@@ -690,6 +737,13 @@ export const LessorPartnerPortal: React.FC<LessorPartnerPortalProps> = ({
       label: 'Sân Đang Dùng & Vị Trí',
       sub: 'Sơ đồ ô sân & vị trí khách đang chơi',
       badge: `${providerOrders.filter((o) => o.status === 'COMPLETED' || o.status === 'CONFIRMED').length + Object.keys(walkInLocksByUnit).length} ô`,
+      staffAllowed: true,
+    },
+    {
+      id: 'WEEKLY_SCHEDULE',
+      label: 'Lịch Thuê Theo Tuần',
+      sub: 'Thời khóa biểu T2 → CN theo ca giờ',
+      badge: `${weeklyFixedBlocks.length > 0 ? `${weeklyFixedBlocks.length} cố định` : 'T2–CN'}`,
       staffAllowed: true,
     },
     {
@@ -1666,6 +1720,28 @@ export const LessorPartnerPortal: React.FC<LessorPartnerPortalProps> = ({
                       flashToast(`✓ Đã mở chi tiết hoàn tất thanh toán tại sân cho đơn ${orderId}.`);
                       setDetailOrderId(orderId);
                     }}
+                  />
+                </motion.div>
+              )}
+
+              {/* ===================================================================== */}
+              {/* TAB 1D: WEEKLY TIMETABLE VIEW (THỜI KHÓA BIỂU THEO TUẦN)               */}
+              {/* ===================================================================== */}
+              {activeTab === 'WEEKLY_SCHEDULE' && (
+                <motion.div
+                  key="lessor-weekly-schedule"
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -6 }}
+                  transition={{ duration: 0.24, ease: EXPO_EASE }}
+                >
+                  <WeeklyScheduleGrid
+                    listings={myListings}
+                    providerOrders={providerOrders}
+                    fixedBlocks={weeklyFixedBlocks}
+                    onAddFixedBlock={handleAddWeeklyFixedBlock}
+                    onRemoveFixedBlock={handleRemoveWeeklyFixedBlock}
+                    onOpenOrderDetail={(orderId) => setDetailOrderId(orderId)}
                   />
                 </motion.div>
               )}
