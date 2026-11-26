@@ -1,7 +1,7 @@
 package com.yieldengine.service;
 
 import com.yieldengine.constant.SystemConstant;
-import com.yieldengine.dto.auth.AuthDtos.*;
+import com.yieldengine.record.auth.*;
 import com.yieldengine.entity.Role;
 import com.yieldengine.entity.User;
 import com.yieldengine.entity.UserRole;
@@ -11,7 +11,8 @@ import com.yieldengine.repository.RoleRepository;
 import com.yieldengine.repository.UserRepository;
 import com.yieldengine.repository.UserRoleRepository;
 import com.yieldengine.security.AuthContext;
-import com.yieldengine.security.SessionPrincipal;
+import com.yieldengine.record.security.RoleGrant;
+import com.yieldengine.record.security.SessionPrincipal;
 import com.yieldengine.security.SessionStorePort;
 import com.yieldengine.utils.CommonTextAndPageUtils;
 import com.yieldengine.validate.AuthAndRbacValidator;
@@ -93,8 +94,8 @@ public class AuthService {
         userRepository.save(user);
 
         List<UserRole> activeRoles = userRoleRepository.findActiveByUserId(user.getId());
-        List<SessionPrincipal.RoleGrant> grants = activeRoles.stream()
-                .map(ur -> new SessionPrincipal.RoleGrant(
+        List<RoleGrant> grants = activeRoles.stream()
+                .map(ur -> new RoleGrant(
                         ur.getRole().getCode(),
                         ur.getRoleScope(),
                         ur.getTenantId()

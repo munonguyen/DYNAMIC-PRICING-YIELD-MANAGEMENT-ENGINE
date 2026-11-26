@@ -1,14 +1,14 @@
 package com.yieldengine.service;
 
-import com.yieldengine.dto.marketplace.MarketplaceDtos.CourtMediaDto;
-import com.yieldengine.dto.marketplace.MediaBinaryPayload;
+import com.yieldengine.record.marketplace.CourtMediaDto;
+import com.yieldengine.record.marketplace.MediaBinaryPayload;
 import com.yieldengine.entity.ResourceGroup;
 import com.yieldengine.entity.ResourceGroupMedia;
 import com.yieldengine.exception.BusinessConflictException;
 import com.yieldengine.exception.ResourceNotFoundException;
 import com.yieldengine.repository.ResourceGroupMediaRepository;
 import com.yieldengine.repository.ResourceGroupRepository;
-import com.yieldengine.security.SessionPrincipal;
+import com.yieldengine.record.security.SessionPrincipal;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;

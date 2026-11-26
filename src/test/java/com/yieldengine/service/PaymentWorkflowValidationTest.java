@@ -1,8 +1,8 @@
 package com.yieldengine.service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.yieldengine.dto.ops.BookingOpsDtos.CancelBookingResponse;
-import com.yieldengine.dto.ops.BookingOpsDtos.PaymentWebhookRequest;
+import com.yieldengine.record.ops.CancelBookingResponse;
+import com.yieldengine.record.ops.PaymentWebhookRequest;
 import com.yieldengine.entity.*;
 import com.yieldengine.enums.ReservationStatus;
 import com.yieldengine.mapper.BookingMapper;

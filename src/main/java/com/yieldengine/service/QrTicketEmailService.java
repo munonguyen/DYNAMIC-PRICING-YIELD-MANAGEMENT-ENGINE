@@ -1,7 +1,7 @@
 package com.yieldengine.service;
 
-import com.yieldengine.dto.ops.EmailDispatchResult;
-import com.yieldengine.dto.ops.TicketPassSnapshot;
+import com.yieldengine.record.ops.EmailDispatchResult;
+import com.yieldengine.record.ops.TicketPassSnapshot;
 import com.yieldengine.entity.Reservation;
 import com.yieldengine.exception.ResourceNotFoundException;
 import com.yieldengine.repository.ReservationRepository;

@@ -1,9 +1,9 @@
 package com.yieldengine.controller;
 
 import com.yieldengine.constant.SystemConstant;
-import com.yieldengine.dto.marketplace.LessorOnboardingDtos.*;
+import com.yieldengine.record.marketplace.*;
 import com.yieldengine.security.RbacGuard;
-import com.yieldengine.security.SessionPrincipal;
+import com.yieldengine.record.security.SessionPrincipal;
 import com.yieldengine.service.LessorOnboardingService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;

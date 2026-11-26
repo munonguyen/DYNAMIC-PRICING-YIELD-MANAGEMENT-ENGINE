@@ -1,6 +1,7 @@
 package com.yieldengine.validate;
 
-import com.yieldengine.dto.marketplace.LessorOnboardingDtos.SubmitLessorApplicationRequest;
+import com.yieldengine.record.validate.InternalRiskAssessment;
+import com.yieldengine.record.marketplace.SubmitLessorApplicationRequest;
 import org.springframework.stereotype.Component;
 
 import java.text.Normalizer;
@@ -46,14 +47,6 @@ public class LessorComplianceValidator {
             Map.entry("094", "Sóc Trăng"), Map.entry("095", "Bạc Liêu"), Map.entry("096", "Cà Mau")
     );
 
-    public record InternalRiskAssessment(
-            boolean compliant,
-            short riskScore,
-            String cccdProvinceName,
-            List<String> internalFlags,
-            String blockingUserMessage
-    ) {
-    }
 
     public InternalRiskAssessment evaluateStrictAndScoreRisk(SubmitLessorApplicationRequest req, LocalDate today) {
         List<String> blockingErrors = new ArrayList<>();

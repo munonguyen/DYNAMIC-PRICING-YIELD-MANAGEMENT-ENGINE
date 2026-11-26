@@ -1,7 +1,7 @@
 package com.yieldengine.validate;
 
-import com.yieldengine.dto.marketplace.LessorOnboardingDtos.SubmitLessorApplicationRequest;
-import com.yieldengine.validate.LessorComplianceValidator.InternalRiskAssessment;
+import com.yieldengine.record.marketplace.SubmitLessorApplicationRequest;
+import com.yieldengine.record.validate.InternalRiskAssessment;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 

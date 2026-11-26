@@ -1,6 +1,6 @@
 package com.yieldengine.service;
 
-import com.yieldengine.dto.marketplace.MarketplaceDtos.*;
+import com.yieldengine.record.marketplace.*;
 import com.yieldengine.dto.request.CreateTimeSlotRequest;
 import com.yieldengine.dto.request.ResourceGroupRequest;
 import com.yieldengine.entity.*;

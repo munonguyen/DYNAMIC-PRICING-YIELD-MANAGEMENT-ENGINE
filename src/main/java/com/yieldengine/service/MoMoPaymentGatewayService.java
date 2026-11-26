@@ -2,10 +2,10 @@ package com.yieldengine.service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.yieldengine.config.MoMoGatewayProperties;
-import com.yieldengine.dto.momo.MoMoGatewayDtos.MoMoGatewayApiResponse;
-import com.yieldengine.dto.momo.MoMoGatewayDtos.MoMoGatewayCreatePayload;
-import com.yieldengine.dto.momo.MoMoGatewayDtos.MoMoPaymentInitResult;
-import com.yieldengine.dto.ops.BookingOpsDtos.MoMoIpnCallbackRequest;
+import com.yieldengine.record.momo.MoMoGatewayApiResponse;
+import com.yieldengine.record.momo.MoMoGatewayCreatePayload;
+import com.yieldengine.record.momo.MoMoPaymentInitResult;
+import com.yieldengine.record.ops.MoMoIpnCallbackRequest;
 import com.yieldengine.mapper.MoMoGatewayMapper;
 import com.yieldengine.utils.CryptoHashUtils;
 import com.yieldengine.validate.MoMoPaymentValidator;

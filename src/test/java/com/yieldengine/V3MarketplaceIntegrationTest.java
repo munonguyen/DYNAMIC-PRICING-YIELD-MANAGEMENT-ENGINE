@@ -2,15 +2,15 @@ package com.yieldengine;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.yieldengine.config.PricingProperties;
-import com.yieldengine.dto.auth.AuthDtos.*;
-import com.yieldengine.dto.finance.FinanceDtos.CreateCommissionRuleRequest;
-import com.yieldengine.dto.finance.FinanceDtos.ReconciliationReportResponse;
-import com.yieldengine.dto.ops.BookingOpsDtos.CancelBookingResponse;
-import com.yieldengine.dto.ops.BookingOpsDtos.CheckInResponse;
-import com.yieldengine.dto.ops.BookingOpsDtos.OpenConversationRequest;
-import com.yieldengine.dto.ops.BookingOpsDtos.PaymentWebhookRequest;
-import com.yieldengine.dto.ops.BookingOpsDtos.QrCodeResponse;
-import com.yieldengine.dto.ops.BookingOpsDtos.SendMessageRequest;
+import com.yieldengine.record.auth.*;
+import com.yieldengine.record.finance.CreateCommissionRuleRequest;
+import com.yieldengine.record.finance.ReconciliationReportResponse;
+import com.yieldengine.record.ops.CancelBookingResponse;
+import com.yieldengine.record.ops.CheckInResponse;
+import com.yieldengine.record.ops.OpenConversationRequest;
+import com.yieldengine.record.ops.PaymentWebhookRequest;
+import com.yieldengine.record.ops.QrCodeResponse;
+import com.yieldengine.record.ops.SendMessageRequest;
 import com.yieldengine.dto.request.CreateTimeSlotRequest;
 import com.yieldengine.dto.request.HoldSlotRequest;
 import com.yieldengine.dto.response.HoldSlotResponse;
@@ -235,9 +235,9 @@ class V3MarketplaceIntegrationTest {
         // 1. Setup Player, Venue1 Staff, Venue2 Staff, and Accountant
         var setupAdmin = authService.register(new RegisterRequest(
                 "sys_" + suffix, "sys_" + suffix + "@test.vn", "AdminPass123!", "Sys", "Admin", null));
-        var dummyPrincipal = new com.yieldengine.security.SessionPrincipal(
+        var dummyPrincipal = new com.yieldengine.record.security.SessionPrincipal(
                 setupAdmin.id(), setupAdmin.username(),
-                List.of(new com.yieldengine.security.SessionPrincipal.RoleGrant("ADMIN", "PLATFORM", null)),
+                List.of(new com.yieldengine.record.security.RoleGrant("ADMIN", "PLATFORM", null)),
                 Instant.now(), Instant.now().plusSeconds(3600)
         );
 

@@ -2,7 +2,7 @@ package com.yieldengine.service;
 
 import com.icegreen.greenmail.util.GreenMail;
 import com.icegreen.greenmail.util.ServerSetupTest;
-import com.yieldengine.dto.ops.EmailDispatchResult;
+import com.yieldengine.record.ops.EmailDispatchResult;
 import com.yieldengine.entity.*;
 import com.yieldengine.repository.*;
 import jakarta.mail.internet.MimeMessage;
@@ -209,14 +209,14 @@ class QrTicketEmailAndMoMoTest {
                 + "&responseTime=1795650000&resultCode=0&transId=999888777";
         String validIpnSig = com.yieldengine.utils.CryptoHashUtils.hmacSha256Hex(ipnRaw, "SECRET_KEY_2026");
 
-        var validIpnReq = new com.yieldengine.dto.ops.BookingOpsDtos.MoMoIpnCallbackRequest(
+        var validIpnReq = new com.yieldengine.record.ops.MoMoIpnCallbackRequest(
                 "MOMO_TEST", init.orderId(), init.requestId(), 70_000L,
                 "Dat san", "momo_wallet", 999888777L, 0, "Successful.", "qr", 1795650000L, "", validIpnSig, resId
         );
         assertTrue(momo.verifyIpnSignature(validIpnReq));
 
         // Tampered amount must fail HMAC
-        var tamperedIpnReq = new com.yieldengine.dto.ops.BookingOpsDtos.MoMoIpnCallbackRequest(
+        var tamperedIpnReq = new com.yieldengine.record.ops.MoMoIpnCallbackRequest(
                 "MOMO_TEST", init.orderId(), init.requestId(), 1_000L,
                 "Dat san", "momo_wallet", 999888777L, 0, "Successful.", "qr", 1795650000L, "", validIpnSig, resId
         );

@@ -1,11 +1,11 @@
 package com.yieldengine.controller;
 
 import com.yieldengine.constant.SystemConstant;
-import com.yieldengine.dto.marketplace.MarketplaceDtos.CourtMediaDto;
-import com.yieldengine.dto.marketplace.MediaBinaryPayload;
 import com.yieldengine.entity.ResourceGroup;
+import com.yieldengine.record.marketplace.CourtMediaDto;
+import com.yieldengine.record.marketplace.MediaBinaryPayload;
+import com.yieldengine.record.security.SessionPrincipal;
 import com.yieldengine.security.RbacGuard;
-import com.yieldengine.security.SessionPrincipal;
 import com.yieldengine.service.CourtMediaStorageService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;

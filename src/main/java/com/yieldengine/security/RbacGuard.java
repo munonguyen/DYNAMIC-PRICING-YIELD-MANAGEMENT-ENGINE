@@ -1,5 +1,7 @@
 package com.yieldengine.security;
 
+
+import com.yieldengine.record.security.SessionPrincipal;
 import com.yieldengine.exception.ForbiddenAccessException;
 import com.yieldengine.exception.UnauthorizedException;
 import org.springframework.stereotype.Component;

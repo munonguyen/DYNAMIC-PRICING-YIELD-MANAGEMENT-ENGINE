@@ -1,6 +1,6 @@
 package com.yieldengine.controller;
 
-import com.yieldengine.dto.vnpay.VnPayDtos.*;
+import com.yieldengine.record.vnpay.*;
 import com.yieldengine.enums.RoleCode;
 import com.yieldengine.security.RbacGuard;
 import com.yieldengine.service.VnPayPaymentService;

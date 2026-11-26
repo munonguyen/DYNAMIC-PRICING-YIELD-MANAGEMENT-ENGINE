@@ -1,5 +1,7 @@
 package com.yieldengine.security;
 
+
+import com.yieldengine.record.security.SessionPrincipal;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.yieldengine.utils.CryptoHashUtils;
 import lombok.RequiredArgsConstructor;

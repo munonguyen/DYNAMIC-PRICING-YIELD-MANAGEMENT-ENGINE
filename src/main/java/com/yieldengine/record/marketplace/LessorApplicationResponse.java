@@ -1,0 +1,41 @@
+package com.yieldengine.record.marketplace;
+
+import java.math.BigDecimal;
+import java.time.Instant;
+import java.time.LocalDate;
+import java.util.UUID;
+public record LessorApplicationResponse(
+        UUID id,
+        String referenceCode,
+        String businessType,
+        String legalEntityName,
+        String representativeFullName,
+        String maskedCccdNumber,
+        String taxCode,
+        String businessLicenseNumber,
+        String venueName,
+        String venueAddress,
+        String city,
+        String district,
+        String sportCodes,
+        int totalCourts,
+        String propertyRightType,
+        String propertyDocumentNumber,
+        LocalDate propertyExpiryDate,
+        String pcccCertificateNumber,
+        String bankCode,
+        String maskedBankAccountNumber,
+        String bankAccountHolder,
+        short proposedDepositPercent,
+        BigDecimal acceptedCommissionRate,
+        boolean otpVerified,
+        short riskScore,
+        String internalRiskFlags,
+        String validationSummary,
+        String status,
+        UUID provisionedTenantId,
+        String reviewNote,
+        Instant createdAt,
+        Instant reviewedAt
+) {
+}

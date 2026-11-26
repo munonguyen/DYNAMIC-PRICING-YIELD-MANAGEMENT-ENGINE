@@ -1,6 +1,6 @@
 package com.yieldengine.service.policy;
 
-import com.yieldengine.dto.ops.RefundEvaluation;
+import com.yieldengine.record.ops.RefundEvaluation;
 import com.yieldengine.entity.CancellationPolicy;
 import com.yieldengine.entity.CancellationPolicyTier;
 import com.yieldengine.utils.MoneyMathUtils;

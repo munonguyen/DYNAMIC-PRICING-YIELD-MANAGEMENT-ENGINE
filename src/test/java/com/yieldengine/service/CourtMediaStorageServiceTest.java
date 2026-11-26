@@ -1,14 +1,15 @@
 package com.yieldengine.service;
 
-import com.yieldengine.dto.marketplace.MarketplaceDtos.CourtMediaDto;
-import com.yieldengine.dto.marketplace.MediaBinaryPayload;
+import com.yieldengine.record.marketplace.CourtMediaDto;
+import com.yieldengine.record.marketplace.MediaBinaryPayload;
 import com.yieldengine.entity.ResourceGroup;
 import com.yieldengine.entity.ResourceGroupMedia;
 import com.yieldengine.entity.Tenant;
 import com.yieldengine.exception.BusinessConflictException;
 import com.yieldengine.repository.ResourceGroupMediaRepository;
 import com.yieldengine.repository.ResourceGroupRepository;
-import com.yieldengine.security.SessionPrincipal;
+import com.yieldengine.record.security.RoleGrant;
+import com.yieldengine.record.security.SessionPrincipal;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -76,7 +77,7 @@ class CourtMediaStorageServiceTest {
         managerActor = new SessionPrincipal(
                 UUID.randomUUID(),
                 "owner_phunhuan",
-                List.of(new SessionPrincipal.RoleGrant("MANAGER", "TENANT", tenantId)),
+                List.of(new RoleGrant("MANAGER", "TENANT", tenantId)),
                 Instant.now().minusSeconds(60),
                 Instant.now().plusSeconds(3600)
         );

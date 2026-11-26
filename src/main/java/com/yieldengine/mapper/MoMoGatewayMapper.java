@@ -1,12 +1,12 @@
 package com.yieldengine.mapper;
 
 import com.yieldengine.config.MoMoGatewayProperties;
-import com.yieldengine.dto.momo.MoMoGatewayDtos.MoMoGatewayApiResponse;
-import com.yieldengine.dto.momo.MoMoGatewayDtos.MoMoGatewayCreatePayload;
-import com.yieldengine.dto.momo.MoMoGatewayDtos.MoMoPaymentInitResult;
-import com.yieldengine.dto.ops.BookingOpsDtos.MoMoIpnCallbackRequest;
-import com.yieldengine.dto.ops.BookingOpsDtos.MoMoPaymentSessionResponse;
-import com.yieldengine.dto.ops.BookingOpsDtos.PaymentWebhookRequest;
+import com.yieldengine.record.momo.MoMoGatewayApiResponse;
+import com.yieldengine.record.momo.MoMoGatewayCreatePayload;
+import com.yieldengine.record.momo.MoMoPaymentInitResult;
+import com.yieldengine.record.ops.MoMoIpnCallbackRequest;
+import com.yieldengine.record.ops.MoMoPaymentSessionResponse;
+import com.yieldengine.record.ops.PaymentWebhookRequest;
 import org.mapstruct.Builder;
 import org.mapstruct.Mapper;
 import org.mapstruct.Mapping;

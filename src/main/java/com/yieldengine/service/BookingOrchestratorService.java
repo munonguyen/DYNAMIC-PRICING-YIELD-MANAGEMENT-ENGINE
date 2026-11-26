@@ -3,9 +3,9 @@ package com.yieldengine.service;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.yieldengine.dto.SlotOccupancyChangedEvent;
-import com.yieldengine.dto.ops.BookingOpsDtos.CancelBookingResponse;
-import com.yieldengine.dto.ops.BookingOpsDtos.PaymentWebhookRequest;
-import com.yieldengine.dto.ops.TicketPassSnapshot;
+import com.yieldengine.record.ops.CancelBookingResponse;
+import com.yieldengine.record.ops.PaymentWebhookRequest;
+import com.yieldengine.record.ops.TicketPassSnapshot;
 import com.yieldengine.dto.request.HoldSlotRequest;
 import com.yieldengine.dto.response.HoldSlotResponse;
 import com.yieldengine.entity.*;
@@ -16,7 +16,7 @@ import com.yieldengine.exception.SlotUnavailableException;
 import com.yieldengine.mapper.BookingMapper;
 import com.yieldengine.repository.*;
 import com.yieldengine.security.AuthContext;
-import com.yieldengine.security.SessionPrincipal;
+import com.yieldengine.record.security.SessionPrincipal;
 import com.yieldengine.service.policy.CancellationRefundPolicyEvaluator;
 import com.yieldengine.utils.CommonTextAndPageUtils;
 import com.yieldengine.utils.CryptoHashUtils;
@@ -600,7 +600,7 @@ public class BookingOrchestratorService {
     }
 
     @Transactional(readOnly = true)
-    public java.util.List<com.yieldengine.dto.ops.BookingOpsDtos.MyTicketResponse> listMyTickets(UUID userId) {
+    public java.util.List<com.yieldengine.record.ops.MyTicketResponse> listMyTickets(UUID userId) {
         return reservationRepository.findByUserIdOrderBySlotStartDesc(userId).stream()
                 .map(res -> {
                     TicketPassSnapshot pass = ticketPassService.buildPassSnapshot(res);
@@ -609,7 +609,7 @@ public class BookingOrchestratorService {
                     String pinCode = activePass && res.getQrJti() != null && res.getPinConsumedAt() == null
                             ? pass.checkinPinCode()
                             : null;
-                    return new com.yieldengine.dto.ops.BookingOpsDtos.MyTicketResponse(
+                    return new com.yieldengine.record.ops.MyTicketResponse(
                             res.getReservationId(),
                             pass.venueName(),
                             pass.venueAddress(),

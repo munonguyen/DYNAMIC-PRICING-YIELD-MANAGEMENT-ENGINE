@@ -1,6 +1,6 @@
 package com.yieldengine.validate;
 
-import com.yieldengine.dto.finance.FinanceDtos.CreateCommissionRuleRequest;
+import com.yieldengine.record.finance.CreateCommissionRuleRequest;
 import org.springframework.stereotype.Component;
 
 import java.math.BigDecimal;

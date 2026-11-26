@@ -1,14 +1,14 @@
 package com.yieldengine.controller;
 
 import com.yieldengine.constant.SystemConstant;
-import com.yieldengine.dto.auth.AuthDtos.CreateStaffRequest;
-import com.yieldengine.dto.auth.AuthDtos.UserSummaryResponse;
-import com.yieldengine.dto.marketplace.MarketplaceDtos.*;
+import com.yieldengine.record.auth.CreateStaffRequest;
+import com.yieldengine.record.auth.UserSummaryResponse;
+import com.yieldengine.record.marketplace.*;
 import com.yieldengine.entity.CancellationPolicy;
 import com.yieldengine.entity.SportType;
 import com.yieldengine.entity.Tenant;
 import com.yieldengine.security.RbacGuard;
-import com.yieldengine.security.SessionPrincipal;
+import com.yieldengine.record.security.SessionPrincipal;
 import com.yieldengine.service.AuthService;
 import com.yieldengine.service.InventoryService;
 import io.swagger.v3.oas.annotations.Operation;

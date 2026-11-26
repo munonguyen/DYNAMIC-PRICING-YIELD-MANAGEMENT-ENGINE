@@ -2,13 +2,14 @@ package com.yieldengine.service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.yieldengine.config.PricingProperties;
-import com.yieldengine.dto.ops.BookingOpsDtos.CheckInResponse;
+import com.yieldengine.record.ops.CheckInResponse;
 import com.yieldengine.entity.*;
 import com.yieldengine.exception.BusinessConflictException;
 import com.yieldengine.exception.ForbiddenAccessException;
 import com.yieldengine.repository.*;
 import com.yieldengine.security.RbacGuard;
-import com.yieldengine.security.SessionPrincipal;
+import com.yieldengine.record.security.RoleGrant;
+import com.yieldengine.record.security.SessionPrincipal;
 import com.yieldengine.validate.BookingAndOpsValidator;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -135,7 +136,7 @@ class CheckInPinSecurityTest {
         staffPrincipal = new SessionPrincipal(
                 UUID.randomUUID(),
                 "nhanvien.san01",
-                List.of(new SessionPrincipal.RoleGrant("STAFF", "TENANT", tenantId)),
+                List.of(new RoleGrant("STAFF", "TENANT", tenantId)),
                 Instant.now(),
                 Instant.now().plusSeconds(3600)
         );
@@ -197,7 +198,7 @@ class CheckInPinSecurityTest {
         SessionPrincipal otherVenueStaff = new SessionPrincipal(
                 UUID.randomUUID(),
                 "other",
-                List.of(new SessionPrincipal.RoleGrant("STAFF", "TENANT", UUID.randomUUID())),
+                List.of(new RoleGrant("STAFF", "TENANT", UUID.randomUUID())),
                 Instant.now(),
                 Instant.now().plusSeconds(3600)
         );

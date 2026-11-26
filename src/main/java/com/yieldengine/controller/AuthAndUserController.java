@@ -1,9 +1,9 @@
 package com.yieldengine.controller;
 
 import com.yieldengine.constant.SystemConstant;
-import com.yieldengine.dto.auth.AuthDtos.*;
+import com.yieldengine.record.auth.*;
 import com.yieldengine.security.RbacGuard;
-import com.yieldengine.security.SessionPrincipal;
+import com.yieldengine.record.security.SessionPrincipal;
 import com.yieldengine.service.AuthService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;

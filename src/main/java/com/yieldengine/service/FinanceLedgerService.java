@@ -1,8 +1,8 @@
 package com.yieldengine.service;
 
-import com.yieldengine.dto.finance.FinanceDtos.CreateCommissionRuleRequest;
-import com.yieldengine.dto.finance.FinanceDtos.ReconciliationReportResponse;
-import com.yieldengine.dto.finance.JournalLeg;
+import com.yieldengine.record.finance.CreateCommissionRuleRequest;
+import com.yieldengine.record.finance.ReconciliationReportResponse;
+import com.yieldengine.record.finance.JournalLeg;
 import com.yieldengine.entity.CommissionRule;
 import com.yieldengine.entity.LedgerEntry;
 import com.yieldengine.entity.LedgerEntryId;

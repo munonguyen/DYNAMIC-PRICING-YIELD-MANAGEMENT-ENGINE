@@ -1,7 +1,7 @@
 package com.yieldengine.service;
 
-import com.yieldengine.dto.ops.BookingOpsDtos.OpenConversationRequest;
-import com.yieldengine.dto.ops.BookingOpsDtos.SendMessageRequest;
+import com.yieldengine.record.ops.OpenConversationRequest;
+import com.yieldengine.record.ops.SendMessageRequest;
 import com.yieldengine.entity.*;
 import com.yieldengine.exception.ResourceNotFoundException;
 import com.yieldengine.repository.ConversationReadRepository;
@@ -9,7 +9,7 @@ import com.yieldengine.repository.ConversationRepository;
 import com.yieldengine.repository.MessageRepository;
 import com.yieldengine.repository.TenantRepository;
 import com.yieldengine.security.RbacGuard;
-import com.yieldengine.security.SessionPrincipal;
+import com.yieldengine.record.security.SessionPrincipal;
 import com.yieldengine.utils.CommonTextAndPageUtils;
 import com.yieldengine.validate.AuthAndRbacValidator;
 import com.yieldengine.validate.BookingAndOpsValidator;

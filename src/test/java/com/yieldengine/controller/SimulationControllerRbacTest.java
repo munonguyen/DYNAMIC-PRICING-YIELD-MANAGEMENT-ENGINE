@@ -6,7 +6,8 @@ import com.yieldengine.exception.ForbiddenAccessException;
 import com.yieldengine.exception.UnauthorizedException;
 import com.yieldengine.security.AuthContext;
 import com.yieldengine.security.RbacGuard;
-import com.yieldengine.security.SessionPrincipal;
+import com.yieldengine.record.security.RoleGrant;
+import com.yieldengine.record.security.SessionPrincipal;
 import com.yieldengine.service.SimulationService;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.DisplayName;
@@ -61,7 +62,7 @@ class SimulationControllerRbacTest {
         return new SessionPrincipal(
                 UUID.randomUUID(),
                 role.toLowerCase(),
-                List.of(new SessionPrincipal.RoleGrant(role, scope, tenantId)),
+                List.of(new RoleGrant(role, scope, tenantId)),
                 Instant.now(),
                 Instant.now().plusSeconds(3600)
         );

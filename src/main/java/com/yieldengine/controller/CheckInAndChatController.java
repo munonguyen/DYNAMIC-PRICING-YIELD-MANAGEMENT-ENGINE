@@ -1,6 +1,6 @@
 package com.yieldengine.controller;
 
-import com.yieldengine.dto.ops.BookingOpsDtos.*;
+import com.yieldengine.record.ops.*;
 import com.yieldengine.entity.Conversation;
 import com.yieldengine.entity.Message;
 import com.yieldengine.entity.Reservation;

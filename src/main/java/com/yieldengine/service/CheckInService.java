@@ -1,9 +1,9 @@
 package com.yieldengine.service;
 
-import com.yieldengine.dto.ops.BookingOpsDtos.CheckInResponse;
-import com.yieldengine.dto.ops.BookingOpsDtos.QrCodeResponse;
-import com.yieldengine.dto.ops.BookingOpsDtos.QrInspectResponse;
-import com.yieldengine.dto.ops.TicketPassSnapshot;
+import com.yieldengine.record.ops.CheckInResponse;
+import com.yieldengine.record.ops.QrCodeResponse;
+import com.yieldengine.record.ops.QrInspectResponse;
+import com.yieldengine.record.ops.TicketPassSnapshot;
 import com.yieldengine.entity.CheckIn;
 import com.yieldengine.entity.Reservation;
 import com.yieldengine.entity.ResourceGroup;
@@ -17,7 +17,7 @@ import com.yieldengine.repository.CheckInRepository;
 import com.yieldengine.repository.ReservationRepository;
 import com.yieldengine.repository.ResourceGroupRepository;
 import com.yieldengine.security.RbacGuard;
-import com.yieldengine.security.SessionPrincipal;
+import com.yieldengine.record.security.SessionPrincipal;
 import com.yieldengine.utils.CryptoHashUtils;
 import com.yieldengine.utils.DbClockUtils;
 import com.yieldengine.validate.BookingAndOpsValidator;

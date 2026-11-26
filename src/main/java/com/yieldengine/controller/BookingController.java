@@ -1,15 +1,15 @@
 package com.yieldengine.controller;
 
 import com.yieldengine.constant.SystemConstant;
-import com.yieldengine.dto.momo.MoMoGatewayDtos.MoMoPaymentInitResult;
-import com.yieldengine.dto.ops.BookingOpsDtos.*;
-import com.yieldengine.dto.ops.EmailDispatchResult;
+import com.yieldengine.record.momo.MoMoPaymentInitResult;
+import com.yieldengine.record.ops.*;
+import com.yieldengine.record.ops.EmailDispatchResult;
 import com.yieldengine.dto.request.HoldSlotRequest;
 import com.yieldengine.dto.response.HoldSlotResponse;
 import com.yieldengine.entity.Reservation;
 import com.yieldengine.mapper.MoMoGatewayMapper;
 import com.yieldengine.security.RbacGuard;
-import com.yieldengine.security.SessionPrincipal;
+import com.yieldengine.record.security.SessionPrincipal;
 import com.yieldengine.service.BookingOrchestratorService;
 import com.yieldengine.service.CheckInService;
 import com.yieldengine.service.MoMoPaymentGatewayService;

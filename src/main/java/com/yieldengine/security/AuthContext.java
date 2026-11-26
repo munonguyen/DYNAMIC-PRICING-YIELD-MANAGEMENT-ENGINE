@@ -1,5 +1,7 @@
 package com.yieldengine.security;
 
+
+import com.yieldengine.record.security.SessionPrincipal;
 import java.util.Optional;
 
 public final class AuthContext {

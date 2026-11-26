@@ -1,9 +1,9 @@
 package com.yieldengine.controller;
 
 import com.yieldengine.constant.SystemConstant;
-import com.yieldengine.dto.analytics.SearchAndAnalyticsDtos.AnalyticsDashboardResponse;
-import com.yieldengine.dto.analytics.SearchAndAnalyticsDtos.CourtSearchResponse;
-import com.yieldengine.dto.analytics.SearchAndAnalyticsDtos.ReindexResponse;
+import com.yieldengine.record.analytics.AnalyticsDashboardResponse;
+import com.yieldengine.record.analytics.CourtSearchResponse;
+import com.yieldengine.record.analytics.ReindexResponse;
 import com.yieldengine.security.RbacGuard;
 import com.yieldengine.service.SearchAndAnalyticsSyncService;
 import io.swagger.v3.oas.annotations.Operation;

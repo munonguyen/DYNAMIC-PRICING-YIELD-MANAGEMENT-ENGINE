@@ -1,6 +1,6 @@
 package com.yieldengine.validate;
 
-import com.yieldengine.dto.marketplace.MarketplaceDtos.PolicyTierDto;
+import com.yieldengine.record.marketplace.PolicyTierDto;
 import com.yieldengine.dto.request.CreateTimeSlotRequest;
 import com.yieldengine.dto.request.ResourceGroupRequest;
 import com.yieldengine.entity.CancellationPolicy;

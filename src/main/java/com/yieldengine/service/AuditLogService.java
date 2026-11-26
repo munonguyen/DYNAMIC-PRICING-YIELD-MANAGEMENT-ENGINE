@@ -4,7 +4,7 @@ import com.yieldengine.entity.AuditLog;
 import com.yieldengine.entity.AuditLogId;
 import com.yieldengine.repository.AuditLogRepository;
 import com.yieldengine.security.AuthContext;
-import com.yieldengine.security.SessionPrincipal;
+import com.yieldengine.record.security.SessionPrincipal;
 import com.yieldengine.utils.TimeAndRangeUtils;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;

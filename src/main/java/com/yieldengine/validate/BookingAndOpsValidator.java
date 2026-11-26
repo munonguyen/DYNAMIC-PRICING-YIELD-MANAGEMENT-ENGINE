@@ -11,7 +11,7 @@ import com.yieldengine.exception.IdempotencyConflictException;
 import com.yieldengine.exception.TokenAlreadyConsumedException;
 import com.yieldengine.repository.CheckInRepository;
 import com.yieldengine.repository.ConsumedTokenRepository;
-import com.yieldengine.security.SessionPrincipal;
+import com.yieldengine.record.security.SessionPrincipal;
 import com.yieldengine.service.PriceLockTokenService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;

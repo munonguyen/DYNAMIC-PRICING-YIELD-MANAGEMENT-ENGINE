@@ -3,7 +3,7 @@ package com.yieldengine.service;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.yieldengine.config.ElasticsearchProperties;
-import com.yieldengine.dto.analytics.IndexDoc;
+import com.yieldengine.record.analytics.IndexDoc;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 

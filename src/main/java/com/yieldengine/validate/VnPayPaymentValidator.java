@@ -1,7 +1,7 @@
 package com.yieldengine.validate;
 
-import com.yieldengine.dto.vnpay.VnPayDtos.CreateVnPayPaymentRequest;
-import com.yieldengine.dto.vnpay.VnPayDtos.VnPayRefundRequest;
+import com.yieldengine.record.vnpay.CreateVnPayPaymentRequest;
+import com.yieldengine.record.vnpay.VnPayRefundRequest;
 import com.yieldengine.entity.Reservation;
 import com.yieldengine.entity.VnPayTransaction;
 import com.yieldengine.enums.ReservationStatus;

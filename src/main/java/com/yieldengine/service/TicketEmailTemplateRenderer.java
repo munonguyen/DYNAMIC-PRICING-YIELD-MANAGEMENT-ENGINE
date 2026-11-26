@@ -1,6 +1,6 @@
 package com.yieldengine.service;
 
-import com.yieldengine.dto.ops.TicketPassSnapshot;
+import com.yieldengine.record.ops.TicketPassSnapshot;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.stereotype.Component;
 import org.springframework.web.util.HtmlUtils;

@@ -1,14 +1,14 @@
 package com.yieldengine.service;
 
 import com.yieldengine.constant.SystemConstant;
-import com.yieldengine.dto.marketplace.LessorOnboardingDtos.*;
+import com.yieldengine.record.marketplace.*;
 import com.yieldengine.entity.*;
 import com.yieldengine.exception.BusinessConflictException;
 import com.yieldengine.exception.ResourceNotFoundException;
 import com.yieldengine.repository.*;
-import com.yieldengine.security.SessionPrincipal;
+import com.yieldengine.record.security.SessionPrincipal;
 import com.yieldengine.validate.LessorComplianceValidator;
-import com.yieldengine.validate.LessorComplianceValidator.InternalRiskAssessment;
+import com.yieldengine.record.validate.InternalRiskAssessment;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;

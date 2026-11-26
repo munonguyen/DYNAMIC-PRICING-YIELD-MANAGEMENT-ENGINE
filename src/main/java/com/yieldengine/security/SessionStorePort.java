@@ -1,5 +1,7 @@
 package com.yieldengine.security;
 
+
+import com.yieldengine.record.security.SessionPrincipal;
 import java.time.Duration;
 import java.util.Optional;
 import java.util.UUID;

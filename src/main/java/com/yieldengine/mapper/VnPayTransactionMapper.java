@@ -1,7 +1,7 @@
 package com.yieldengine.mapper;
 
-import com.yieldengine.dto.vnpay.VnPayDtos.VnPayReturnVerificationResponse;
-import com.yieldengine.dto.vnpay.VnPayDtos.VnPayTransactionSummaryDto;
+import com.yieldengine.record.vnpay.VnPayReturnVerificationResponse;
+import com.yieldengine.record.vnpay.VnPayTransactionSummaryDto;
 import com.yieldengine.entity.VnPayTransaction;
 import com.yieldengine.enums.VnPayTransactionStatus;
 import org.mapstruct.Builder;
