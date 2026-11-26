@@ -1,0 +1,27 @@
+{
+  "branch": "service/lessor/deposit-bookings",
+  "title": "Quản lý đơn chờ thanh toán",
+  "scope": "Cổng chủ sân theo dõi lượt giữ ca có trạng thái HELD. Trạng thái này thể hiện lượt giữ đang chờ xử lý và chưa xác nhận thu cọc.",
+  "operations": [
+    {
+      "method": "GET",
+      "path": "/api/v1/checkins/orders",
+      "operationId": "venueOrders"
+    }
+  ],
+  "source": [
+    {
+      "file": "frontend/src/components/LessorPartnerPortal.tsx",
+      "anchors": [
+        "Chờ thanh toán",
+        "id: 'HELD'"
+      ]
+    },
+    {
+      "file": "src/main/java/com/yieldengine/controller/staff/StaffCheckInController.java",
+      "anchors": [
+        "venueOrders("
+      ]
+    }
+  ]
+}
