@@ -25,7 +25,6 @@ import type {
   CourtServiceOption,
   LessorBookingOrder,
   LessorPayoutRecord,
-  LessorStaffMember,
   PublishedListing,
   RoleCode,
   SlotListingQuote,
@@ -33,14 +32,10 @@ import type {
   VenueProviderInfo,
 } from '../types/marketplace';
 import {
-  ALL_LESSOR_PROVIDERS,
-  CUSTOM_STAFF_STORAGE_KEY,
-  ensureSeededOperationalOrdersMap,
   formatSlotWindow,
   formatVnd,
-  getStoredTicketsForLessor,
   marketplaceApi,
-  writePersistedOperationalOrdersMap,
+  type VenueStaffAccount,
 } from '../api/marketplaceApi';
 import {
   AnimatedCounter,
@@ -94,8 +89,8 @@ interface LessorPartnerPortalProps {
   ) => void;
   onUpdateListingServices: (groupId: string, nextServices: CourtServiceOption[]) => void;
   onToggleListingPublished: (groupId: string) => void;
-  onUpdateListingSlots: (groupId: string, nextSlots: SlotListingQuote[]) => void;
-  onCreateNewListing: (newListing: PublishedListing) => void;
+  onCreateListingSlot: (groupId: string, start: string, end: string) => Promise<void>;
+  onCreateNewListing: (newListing: PublishedListing) => Promise<void>;
   onUpdateProviderProfile: (
     providerId: string,
     patch: Partial<Pick<VenueProviderInfo, 'shopSlogan' | 'voucherLabel' | 'responseTimeLabel'>>
@@ -110,11 +105,6 @@ interface LessorPartnerPortalProps {
   embeddedForAdmin?: boolean;
 }
 
-const LESSOR_ORDERS_STORAGE_KEY = 'arenapulse_lessor_orders_v1';
-const LESSOR_PAYOUTS_STORAGE_KEY = 'arenapulse_lessor_payouts_v1';
-const WALKIN_LOCKS_STORAGE_KEY = 'arenapulse_walkin_court_locks_v1';
-const WEEKLY_FIXED_BLOCKS_KEY = 'arenapulse_weekly_fixed_blocks_v1';
-
 const PRESET_COURT_COVERS: { label: string; url: string }[] = [
   { label: 'Sân Pickleball Mái Vòm Chuẩn Giải', url: '/images/court-pickleball-dome.jpg' },
   { label: 'Sân Pickleball Ngoài Trời', url: '/images/real-pickleball-outdoor.jpg' },
@@ -123,63 +113,6 @@ const PRESET_COURT_COVERS: { label: string; url: string }[] = [
   { label: 'Sân Tennis Acrylic Tiêu Chuẩn', url: '/images/court-tennis-pro.jpg' },
   { label: 'Sân Bóng Rổ Sàn Gỗ FIBA', url: '/images/court-basketball-fiba.jpg' },
 ];
-
-function readPersistedOrders(): Record<string, LessorBookingOrder[]> {
-  if (typeof window === 'undefined') return {};
-  try {
-    const raw = window.localStorage.getItem(LESSOR_ORDERS_STORAGE_KEY);
-    return raw ? (JSON.parse(raw) as Record<string, LessorBookingOrder[]>) : {};
-  } catch {
-    return {};
-  }
-}
-
-function writePersistedOrders(map: Record<string, LessorBookingOrder[]>): void {
-  if (typeof window === 'undefined') return;
-  try {
-    window.localStorage.setItem(LESSOR_ORDERS_STORAGE_KEY, JSON.stringify(map));
-  } catch {
-    // ignore storage errors
-  }
-}
-
-function readCustomStaffList(): LessorStaffMember[] {
-  if (typeof window === 'undefined') return [];
-  try {
-    const raw = window.localStorage.getItem(CUSTOM_STAFF_STORAGE_KEY);
-    return raw ? (JSON.parse(raw) as LessorStaffMember[]) : [];
-  } catch {
-    return [];
-  }
-}
-
-function writeCustomStaffList(list: LessorStaffMember[]): void {
-  if (typeof window === 'undefined') return;
-  try {
-    window.localStorage.setItem(CUSTOM_STAFF_STORAGE_KEY, JSON.stringify(list));
-  } catch {
-    // ignore storage errors
-  }
-}
-
-function readPayoutRecords(): LessorPayoutRecord[] {
-  if (typeof window === 'undefined') return [];
-  try {
-    const raw = window.localStorage.getItem(LESSOR_PAYOUTS_STORAGE_KEY);
-    return raw ? (JSON.parse(raw) as LessorPayoutRecord[]) : [];
-  } catch {
-    return [];
-  }
-}
-
-function writePayoutRecords(list: LessorPayoutRecord[]): void {
-  if (typeof window === 'undefined') return;
-  try {
-    window.localStorage.setItem(LESSOR_PAYOUTS_STORAGE_KEY, JSON.stringify(list));
-  } catch {
-    // ignore storage errors
-  }
-}
 
 export const LessorPartnerPortal: React.FC<LessorPartnerPortalProps> = ({
   session,
@@ -197,7 +130,7 @@ export const LessorPartnerPortal: React.FC<LessorPartnerPortalProps> = ({
   onUpdateListingPricing,
   onUpdateListingServices,
   onToggleListingPublished,
-  onUpdateListingSlots,
+  onCreateListingSlot,
   onCreateNewListing,
   onUpdateProviderProfile,
   onUploadCourtPhoto,
@@ -207,41 +140,24 @@ export const LessorPartnerPortal: React.FC<LessorPartnerPortalProps> = ({
   const isStaffOnly = activeRole === 'STAFF';
   const isAdminInspector = activeRole === 'ADMIN';
 
-  // Resolve all distinct providers from current listings + curated providers
-  const allProviders = useMemo<VenueProviderInfo[]>(() => {
-    const map = new Map<string, VenueProviderInfo>();
-    for (const p of ALL_LESSOR_PROVIDERS) {
-      map.set(p.providerId, p);
-    }
-    for (const item of listings) {
-      if (item.provider) {
-        map.set(item.provider.providerId, item.provider);
-      }
-    }
-    return Array.from(map.values());
-  }, [listings]);
-
-  const [selectedProviderId, setSelectedProviderId] = useState<string>(
-    session.managedProviderId || allProviders[0]?.providerId || 'PROV_HN_01'
+  const tenantGrants = session.roles.filter((grant) =>
+    grant.scope === 'TENANT' && grant.roleCode === activeRole && grant.tenantId
   );
-
-  useEffect(() => {
-    if (session.managedProviderId) {
-      setSelectedProviderId(session.managedProviderId);
-    }
-  }, [session.managedProviderId]);
-
-  const activeProvider = useMemo<VenueProviderInfo>(() => {
-    return (
-      allProviders.find((p) => p.providerId === selectedProviderId) ??
-      allProviders[0]
-    );
-  }, [allProviders, selectedProviderId]);
-
-  const myListings = useMemo<PublishedListing[]>(
-    () => listings.filter((l) => l.provider?.providerId === activeProvider.providerId),
-    [listings, activeProvider.providerId]
-  );
+  const allowedTenants = new Set(tenantGrants.map((grant) => grant.tenantId));
+  const allProviders = Array.from(new Map(listings.flatMap((listing) =>
+    listing.provider && (isAdminInspector || allowedTenants.has(listing.tenantId))
+      ? [[listing.tenantId, listing.provider] as const] : []
+  )).values());
+  const [selectedProviderId, setSelectedProviderId] = useState('');
+  const fallbackTenantId = isAdminInspector ? allProviders[0]?.providerId : tenantGrants[0]?.tenantId;
+  const tenantId = (isAdminInspector ? allProviders.some((p) => p.providerId === selectedProviderId)
+    : allowedTenants.has(selectedProviderId)) ? selectedProviderId : fallbackTenantId ?? '';
+  const activeProvider = allProviders.find((p) => p.providerId === tenantId) ?? {
+    providerId: tenantId, providerName: session.fullName, badge: '', city: '', district: '',
+    verified: false, yearsPartner: 0, responseRatePct: 0, responseTimeLabel: '',
+    totalManagedCourts: 0, commissionRatePct: 0, platformGuarantee: '',
+  };
+  const myListings = useMemo(() => listings.filter((l) => l.tenantId === tenantId), [listings, tenantId]);
 
   const [internalActiveTab, setInternalActiveTab] = useState<LessorPortalTabId>(
     isStaffOnly ? 'ORDERS_CHECKIN' : 'OVERVIEW'
@@ -261,12 +177,10 @@ export const LessorPartnerPortal: React.FC<LessorPartnerPortalProps> = ({
     window.setTimeout(() => setToastMsg(null), 3200);
   };
 
-  // --- BOOKING ORDERS & QR CHECK-IN STATE (REAL STORED TICKETS + DB/ES ORDERS) ---
-  const [ordersByProvider, setOrdersByProvider] = useState<Record<string, LessorBookingOrder[]>>(
-    () => ensureSeededOperationalOrdersMap(listings)
-  );
+  const [providerOrders, setProviderOrders] = useState<LessorBookingOrder[]>([]);
+  const [orderRevision, setOrderRevision] = useState(0);
   const [orderFilter, setOrderFilter] = useState<
-    'ALL' | 'CONFIRMED' | 'COMPLETED' | 'NO_SHOW'
+    'ALL' | 'HELD' | 'CONFIRMED' | 'COMPLETED' | 'NO_SHOW' | 'CANCELLED'
   >('ALL');
   const [orderSearchQuery, setOrderSearchQuery] = useState<string>('');
   const [orderCourtFilter, setOrderCourtFilter] = useState<string>('ALL');
@@ -279,116 +193,52 @@ export const LessorPartnerPortal: React.FC<LessorPartnerPortalProps> = ({
   const [analyticsLoading, setAnalyticsLoading] = useState<boolean>(false);
   const [reindexingEs, setReindexingEs] = useState<boolean>(false);
 
-  const localProviderOrders = useMemo<LessorBookingOrder[]>(() => {
-    const savedOrders = ordersByProvider[activeProvider.providerId] ?? [];
-    const myVenueNames = new Set(myListings.map((l) => l.venueName));
-    const storedTickets = getStoredTicketsForLessor().filter((t) =>
-      myVenueNames.has(t.venueName)
-    );
-    const convertedLiveTickets: LessorBookingOrder[] = storedTickets
-      .filter((t) => !savedOrders.some((o) => o.reservationId === t.reservationId))
-      .map((t) => {
-        const slotDate = new Date(t.slotStart);
-        const dateIso = !Number.isNaN(slotDate.getTime())
-          ? `${slotDate.getFullYear()}-${String(slotDate.getMonth() + 1).padStart(2, '0')}-${String(slotDate.getDate()).padStart(2, '0')}`
-          : undefined;
-        const slotHour = !Number.isNaN(slotDate.getTime()) ? slotDate.getHours() : undefined;
-        return {
-        orderId: `WEB-${t.reservationId.slice(0, 6).toUpperCase()}`,
-        reservationId: t.reservationId,
-        providerId: activeProvider.providerId,
-        groupId: myListings[0]?.groupId ?? '',
-        groupName: t.groupName,
-        venueName: t.venueName,
-        sportName: myListings[0]?.sportName ?? 'Thể thao',
-        unitNumber: t.unitNumber,
-        slotLabel: formatSlotWindow(t.slotStart, t.slotEnd),
-        customerName: t.contactEmail || 'Khách đặt trực tuyến',
-        customerPhone: 'Đã xác thực Email QR',
-        courtPrice: t.lockedPrice,
-        addOnTotal: Math.max(0, t.paidOnlineAmount + t.remainingAtVenue - t.lockedPrice),
-        paidEscrow: t.paidOnlineAmount,
-        remainingAtVenue: t.remainingAtVenue,
-        paymentGateway: 'Thanh toán Trực tuyến',
-        qrCode: t.qrToken || t.qrJti || `QR-${t.reservationId.slice(0, 8)}`,
-        status:
-          t.status === 'COMPLETED'
-            ? 'COMPLETED'
-            : t.status === 'NO_SHOW'
-              ? 'NO_SHOW'
-              : t.status === 'CANCELLED'
-                ? 'CANCELLED'
-                : 'CONFIRMED',
-        createdAtLabel: 'Đơn đặt thực tế',
-        dateIso,
-        slotHour,
-      };
-      });
-
-    return [...convertedLiveTickets, ...savedOrders];
-  }, [ordersByProvider, activeProvider.providerId, myListings]);
+  useEffect(() => {
+    let active = true;
+    setProviderOrders([]);
+    if (!tenantId) return;
+    const poll = async () => {
+      if (document.visibilityState === 'hidden') return;
+      try {
+        const orders = await marketplaceApi.getVenueOrders(tenantId);
+        if (active) setProviderOrders(orders);
+      } catch (error) {
+        if (active) setToastMsg(error instanceof Error ? error.message : 'Không tải được danh sách đơn.');
+      }
+    };
+    void poll();
+    const timer = window.setInterval(poll, 15_000);
+    return () => {
+      active = false;
+      window.clearInterval(timer);
+    };
+  }, [tenantId, orderRevision]);
 
   const loadAnalyticsFromDbOrEs = async () => {
+    if (!tenantId || isStaffOnly) return;
     setAnalyticsLoading(true);
     try {
-      const data = await marketplaceApi.fetchLessorAnalytics(
-        analyticsDays,
-        myListings,
-        localProviderOrders,
-        activeProvider
-      );
-      setAnalyticsData(data);
+      setAnalyticsData(await marketplaceApi.fetchLessorAnalytics(analyticsDays, tenantId));
+    } catch (error) {
+      flashToast(error instanceof Error ? error.message : 'Không tải được báo cáo.');
     } finally {
       setAnalyticsLoading(false);
     }
   };
 
   useEffect(() => {
-    let active = true;
-    setAnalyticsLoading(true);
-    marketplaceApi
-      .fetchLessorAnalytics(analyticsDays, myListings, localProviderOrders, activeProvider)
-      .then((data) => {
-        if (active) setAnalyticsData(data);
-      })
-      .finally(() => {
-        if (active) setAnalyticsLoading(false);
-      });
-    return () => {
-      active = false;
-    };
-  }, [analyticsDays, activeProvider.providerId, myListings, localProviderOrders]);
+    setAnalyticsData(null);
+    void loadAnalyticsFromDbOrEs();
+  }, [analyticsDays, tenantId, isStaffOnly, orderRevision]);
 
-  const providerOrders = useMemo<LessorBookingOrder[]>(() => {
-    const dbOrders = analyticsData?.recentOrders ?? [];
-    const seen = new Set(localProviderOrders.map((o) => o.reservationId));
-    return [
-      ...localProviderOrders,
-      ...dbOrders.filter((d) => d.reservationId && !seen.has(d.reservationId)),
-    ];
-  }, [localProviderOrders, analyticsData?.recentOrders]);
-
-  const updateOrderStatus = (
-    orderId: string,
-    nextStatus: LessorBookingOrder['status']
-  ) => {
-    const updatedList = providerOrders.map((o) =>
-      o.orderId === orderId
-        ? {
-            ...o,
-            status: nextStatus,
-            createdAtLabel:
-              nextStatus === 'COMPLETED'
-                ? `Đã nhận sân lúc ${new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}`
-                : nextStatus === 'NO_SHOW'
-                  ? 'Đánh dấu bỏ lịch (>15p)'
-                  : o.createdAtLabel,
-          }
-        : o
-    );
-    const nextMap = { ...ordersByProvider, [activeProvider.providerId]: updatedList };
-    setOrdersByProvider(nextMap);
-    writePersistedOperationalOrdersMap(nextMap);
+  const updateOrderStatus = async (orderId: string, status: 'COMPLETED' | 'NO_SHOW') => {
+    const order = providerOrders.find((item) => item.orderId === orderId);
+    try {
+      if (status === 'NO_SHOW' && order) await marketplaceApi.markNoShow(order.reservationId);
+      setOrderRevision((revision) => revision + 1);
+    } catch (error) {
+      flashToast(error instanceof Error ? error.message : 'Không thể cập nhật trạng thái đơn.');
+    }
   };
 
   const [qrModalOpen, setQrModalOpen] = useState(false);
@@ -400,70 +250,14 @@ export const LessorPartnerPortal: React.FC<LessorPartnerPortalProps> = ({
   const [qrModalOrder, setQrModalOrder] = useState<LessorBookingOrder | null>(null);
   const [qrModalQuery, setQrModalQuery] = useState('');
   const [detailOrderId, setDetailOrderId] = useState<string | null>(null);
-  const [walkInLocksByUnit, setWalkInLocksByUnit] = useState<Record<string, string>>(() => {
-    if (typeof window === 'undefined') return {};
-    try {
-      const raw = window.localStorage.getItem(WALKIN_LOCKS_STORAGE_KEY);
-      return raw ? (JSON.parse(raw) as Record<string, string>) : {};
-    } catch {
-      return {};
-    }
-  });
-  const [weeklyFixedBlocks, setWeeklyFixedBlocks] = useState<WeeklyFixedBlock[]>(() => {
-    if (typeof window === 'undefined') return [];
-    try {
-      const raw = window.localStorage.getItem(WEEKLY_FIXED_BLOCKS_KEY);
-      return raw ? (JSON.parse(raw) as WeeklyFixedBlock[]) : [];
-    } catch {
-      return [];
-    }
-  });
-
-  const handleAddWeeklyFixedBlock = (block: WeeklyFixedBlock) => {
-    setWeeklyFixedBlocks((prev) => {
-      const next = [block, ...prev];
-      try {
-        window.localStorage.setItem(WEEKLY_FIXED_BLOCKS_KEY, JSON.stringify(next));
-      } catch {
-        // ignore quota errors
-      }
-      return next;
-    });
-    flashToast(`✓ Đã thêm "${block.title}" (${block.unitNumber}) lên lịch tuần.`);
-  };
-
-  const handleRemoveWeeklyFixedBlock = (blockId: string) => {
-    setWeeklyFixedBlocks((prev) => {
-      const next = prev.filter((b) => b.id !== blockId);
-      try {
-        window.localStorage.setItem(WEEKLY_FIXED_BLOCKS_KEY, JSON.stringify(next));
-      } catch {
-        // ignore quota errors
-      }
-      return next;
-    });
-    flashToast('Đã gỡ lịch cố định khỏi thời khóa biểu tuần.');
-  };
-
-  const handleToggleWalkInLock = (groupId: string, unitNumber: string, groupName: string) => {
-    const key = `${groupId}__${unitNumber}`;
-    setWalkInLocksByUnit((prev) => {
-      const next = { ...prev };
-      if (next[key]) {
-        delete next[key];
-        flashToast(`Đã mở trống lại ${unitNumber} (${groupName}).`);
-      } else {
-        next[key] = new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
-        flashToast(`Đã đánh dấu ${unitNumber} (${groupName}) đang có khách chơi tại quầy.`);
-      }
-      try {
-        window.localStorage.setItem(WALKIN_LOCKS_STORAGE_KEY, JSON.stringify(next));
-      } catch {
-        // ignore quota errors
-      }
-      return next;
-    });
-  };
+  const walkInLocksByUnit: Record<string, string> = {};
+  const weeklyFixedBlocks: WeeklyFixedBlock[] = [];
+  const handleAddWeeklyFixedBlock = (_block: WeeklyFixedBlock) =>
+    flashToast('Lịch định kỳ chưa có dịch vụ lưu. Vui lòng tạo từng ca sân.');
+  const handleRemoveWeeklyFixedBlock = (_blockId: string) =>
+    flashToast('Lịch định kỳ chưa có dịch vụ lưu.');
+  const handleToggleWalkInLock = (_groupId: string, _unitNumber: string, _groupName: string) =>
+    flashToast('Giữ sân tại quầy chưa có dịch vụ lưu.');
 
   const selectedDetailOrder = useMemo<LessorBookingOrder | null>(
     () => (detailOrderId ? providerOrders.find((o) => o.orderId === detailOrderId) ?? null : null),
@@ -480,44 +274,15 @@ export const LessorPartnerPortal: React.FC<LessorPartnerPortalProps> = ({
     [selectedDetailOrder, myListings, listings]
   );
 
-  const handleUpdateOrderAddOns = (
-    orderId: string,
-    nextSummary: string | undefined,
-    nextAddOnTotal: number,
-    nextQuantities: Record<string, number>
-  ) => {
-    const updatedList = providerOrders.map((o) => {
-      if (o.orderId !== orderId) return o;
-      const nextRemaining = Math.max(0, o.courtPrice + nextAddOnTotal - o.paidEscrow);
-      return {
-        ...o,
-        addOnSummary: nextSummary,
-        addOnTotal: nextAddOnTotal,
-        addOnQuantities: nextQuantities,
-        remainingAtVenue: nextRemaining,
-      };
-    });
-    const nextMap = { ...ordersByProvider, [activeProvider.providerId]: updatedList };
-    setOrdersByProvider(nextMap);
-    writePersistedOperationalOrdersMap(nextMap);
-    flashToast(`✓ Đã cập nhật dịch vụ đi kèm cho đơn ${orderId}!`);
-  };
+  const handleUpdateOrderAddOns = () =>
+    flashToast('Chỉnh dịch vụ trên đơn đã đặt cần nghiệp vụ điều chỉnh hóa đơn.');
 
   const venueSupportsQr = myListings.some((l) => l.checkinMode === 'QR_STAFF');
   const venueSupportsPin = myListings.some(
     (l) => l.checkinMode === 'PIN_COUNTER' || l.checkinMode === 'MANUAL'
   );
 
-  const handlePinFailedAttempt = (orderId: string) => {
-    const updatedList = providerOrders.map((o) =>
-      o.orderId === orderId
-        ? { ...o, pinFailedAttempts: (o.pinFailedAttempts ?? 0) + 1 }
-        : o
-    );
-    const nextMap = { ...ordersByProvider, [activeProvider.providerId]: updatedList };
-    setOrdersByProvider(nextMap);
-    writePersistedOperationalOrdersMap(nextMap);
-  };
+  const handlePinFailedAttempt = () => setOrderRevision((revision) => revision + 1);
 
   const handleManualQrVerify = (e: React.FormEvent) => {
     e.preventDefault();
@@ -585,57 +350,44 @@ export const LessorPartnerPortal: React.FC<LessorPartnerPortalProps> = ({
     setResponseDraft(activeProvider.responseTimeLabel ?? 'Trong vài phút');
   }, [activeProvider]);
 
-  const [staffList, setStaffList] = useState<LessorStaffMember[]>(() => readCustomStaffList());
-  const [staffName, setStaffName] = useState<string>('');
-  const [staffUsername, setStaffUsername] = useState<string>('');
-  const [staffPassword, setStaffPassword] = useState<string>('123456');
-  const [staffPhone, setStaffPhone] = useState<string>('');
-  const [staffShift, setStaffShift] = useState<string>('Ca Tối (16:00 – 22:30)');
+  const [myStaffMembers, setStaffList] = useState<VenueStaffAccount[]>([]);
+  const [staffName, setStaffName] = useState('');
+  const [staffUsername, setStaffUsername] = useState('');
+  const [staffPassword, setStaffPassword] = useState('');
+  const [staffEmail, setStaffEmail] = useState('');
 
-  const myStaffMembers = useMemo(
-    () => staffList.filter((s) => s.providerId === activeProvider.providerId),
-    [staffList, activeProvider.providerId]
-  );
-
-  const handleCreateStaffAccount = (e: React.FormEvent) => {
-    e.preventDefault();
-    const cleanU = staffUsername.trim().toLowerCase();
-    if (!cleanU || !staffName.trim() || !staffPassword.trim()) return;
-    if (
-      cleanU === 'nhanvien.san01' ||
-      staffList.some((s) => s.username.toLowerCase() === cleanU)
-    ) {
-      flashToast('Tên đăng nhập nhân viên đã tồn tại. Vui lòng chọn tên khác.');
-      return;
+  useEffect(() => {
+    let active = true;
+    setStaffList([]);
+    if (tenantId && !isStaffOnly && activeTab === 'SHOP_AND_STAFF') {
+      marketplaceApi.getVenueStaff(tenantId)
+        .then((staff) => { if (active) setStaffList(staff); })
+        .catch((error) => { if (active) flashToast(error.message); });
     }
-    const created: LessorStaffMember = {
-      id: `staff-${Date.now()}`,
-      providerId: activeProvider.providerId,
-      username: cleanU,
-      passwordPlain: staffPassword.trim(),
-      fullName: staffName.trim(),
-      phone: staffPhone.trim() || '0900 000 000',
-      shiftLabel: staffShift,
-      active: true,
-      createdAt: new Date().toLocaleDateString('vi-VN'),
-    };
-    const next = [created, ...staffList];
-    setStaffList(next);
-    writeCustomStaffList(next);
-    setStaffName('');
-    setStaffUsername('');
-    setStaffPhone('');
-    flashToast(
-      `✓ Đã cấp tài khoản nhân viên "${created.username}" (Mật khẩu: ${created.passwordPlain}) — có thể đăng nhập ngay!`
-    );
+    return () => { active = false; };
+  }, [tenantId, isStaffOnly, activeTab]);
+
+  const handleCreateStaffAccount = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!tenantId || staffPassword.length < 8) return;
+    const [firstName, ...lastNames] = staffName.trim().split(/\s+/);
+    try {
+      const staff = await marketplaceApi.createVenueStaff(tenantId, {
+        username: staffUsername.trim(), email: staffEmail.trim(), password: staffPassword,
+        firstName, lastName: lastNames.join(' ') || firstName,
+      });
+      setStaffList((current) => [...current, staff]);
+      setStaffName('');
+      setStaffUsername('');
+      setStaffEmail('');
+      setStaffPassword('');
+      flashToast(`Đã cấp tài khoản @${staff.username}.`);
+    } catch (error) {
+      flashToast(error instanceof Error ? error.message : 'Không thể cấp tài khoản.');
+    }
   };
 
-  // --- ESCROW WALLET & PAYOUTS STATE ---
-  const [payouts, setPayouts] = useState<LessorPayoutRecord[]>(() => readPayoutRecords());
-  const myPayouts = useMemo(
-    () => payouts.filter((p) => p.providerId === activeProvider.providerId),
-    [payouts, activeProvider.providerId]
-  );
+  const myPayouts: LessorPayoutRecord[] = [];
 
   // --- COMPUTED METRICS FOR THIS LESSOR (100% REAL DATA FROM DB/ES + STORED ORDERS) ---
   const metrics = useMemo(() => {
@@ -687,33 +439,6 @@ export const LessorPartnerPortal: React.FC<LessorPartnerPortalProps> = ({
       withdrawableBalance,
     };
   }, [myListings, providerOrders, activeProvider.commissionRatePct, myPayouts, analyticsData]);
-
-  const handleRequestPayout = () => {
-    if (metrics.withdrawableBalance < 100_000) {
-      flashToast('Số dư khả dụng hiện dưới mức rút tối thiểu (100.000₫).');
-      return;
-    }
-    const gross = Math.round(
-      metrics.withdrawableBalance / (1 - activeProvider.commissionRatePct / 100)
-    );
-    const comm = gross - metrics.withdrawableBalance;
-    const record: LessorPayoutRecord = {
-      payoutId: `PAYOUT-${Date.now().toString().slice(-6)}`,
-      providerId: activeProvider.providerId,
-      requestedAt: new Date().toLocaleString('vi-VN'),
-      grossAmount: gross,
-      commissionAmount: comm,
-      netReceived: metrics.withdrawableBalance,
-      bankLabel: `Vietcombank •••• 8842 (${activeProvider.providerName})`,
-      status: 'SETTLED',
-    };
-    const next = [record, ...payouts];
-    setPayouts(next);
-    writePayoutRecords(next);
-    flashToast(
-      `✓ Đã tất toán ${formatVnd(record.netReceived)} về tài khoản ngân hàng đối soát!`
-    );
-  };
 
   const navItems: {
     id: LessorPortalTabId;
@@ -799,6 +524,8 @@ export const LessorPartnerPortal: React.FC<LessorPartnerPortalProps> = ({
   const orderStatusCounts = useMemo(() => {
     return {
       ALL: providerOrders.length,
+      HELD: providerOrders.filter((o) => o.status === 'HELD').length,
+      CANCELLED: providerOrders.filter((o) => o.status === 'CANCELLED').length,
       CONFIRMED: providerOrders.filter((o) => o.status === 'CONFIRMED').length,
       COMPLETED: providerOrders.filter((o) => o.status === 'COMPLETED').length,
       NO_SHOW: providerOrders.filter((o) => o.status === 'NO_SHOW').length,
@@ -1135,16 +862,18 @@ export const LessorPartnerPortal: React.FC<LessorPartnerPortalProps> = ({
                       onChangeDays={setAnalyticsDays}
                       loading={analyticsLoading}
                       reindexing={reindexingEs}
-                      onReindexEs={async () => {
+                      onReindexEs={isAdminInspector ? async () => {
                         setReindexingEs(true);
                         try {
                           const res = await marketplaceApi.triggerElasticsearchReindex();
                           flashToast(res.message);
                           await loadAnalyticsFromDbOrEs();
+                        } catch (error) {
+                          flashToast(error instanceof Error ? error.message : 'Không thể lập lại chỉ mục.');
                         } finally {
                           setReindexingEs(false);
                         }
-                      }}
+                      } : undefined}
                     />
                   )}
 
@@ -1377,7 +1106,9 @@ export const LessorPartnerPortal: React.FC<LessorPartnerPortalProps> = ({
 
                         <div className="flex flex-wrap gap-1.5">
                           {[
-                            { id: 'ALL', label: `Tất cả (${orderStatusCounts.ALL})` },
+                            { id: 'ALL', label: `Đơn gần đây (${orderStatusCounts.ALL})` },
+                            { id: 'HELD', label: `Chờ thanh toán (${orderStatusCounts.HELD})` },
+                            { id: 'CANCELLED', label: `Đã hủy (${orderStatusCounts.CANCELLED})` },
                             { id: 'CONFIRMED', label: `Chờ nhận sân (${orderStatusCounts.CONFIRMED})` },
                             { id: 'COMPLETED', label: `Đã nhận sân (${orderStatusCounts.COMPLETED})` },
                             { id: 'NO_SHOW', label: `Bỏ lịch (${orderStatusCounts.NO_SHOW})` },
@@ -2067,95 +1798,38 @@ export const LessorPartnerPortal: React.FC<LessorPartnerPortalProps> = ({
                                   </div>
                                 </div>
 
-                                {/* Layer 3: Live Slot Availability Stepper */}
-                                <div className="rounded-2xl border border-neutral-200/75 bg-white p-3.5">
-                                  <div className="mb-2.5 flex flex-wrap items-center justify-between gap-2 text-[11px]">
-                                    <span className="font-bold text-[#0F172A]">
-                                      Số sân trống hôm nay
-                                    </span>
-                                    <span className="text-neutral-500">
-                                      Bấm − hoặc + để cập nhật nhanh khi có khách đặt trực tiếp
-                                    </span>
-                                  </div>
-                                  <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-3">
-                                    {court.upcomingSlots.slice(0, 3).map((slot, idx) => {
-                                      const availTone =
-                                        slot.availableCourts === 0
-                                          ? 'text-rose-700 bg-rose-50 border-rose-200'
-                                          : slot.availableCourts <= 2
-                                            ? 'text-amber-800 bg-amber-50 border-amber-200'
-                                            : 'text-[#16422C] bg-[#F4F8F4] border-[#16422C]/20';
-                                      return (
-                                        <div
-                                          key={slot.slotStart}
-                                          className="flex items-center justify-between rounded-xl border border-neutral-200/80 bg-[#F8FAFC] px-3 py-2 text-xs"
-                                        >
-                                          <div>
-                                            <div className="font-semibold text-[#0F172A]">
-                                              {slot.timePeriod === 'MORNING'
-                                                ? 'Ca Sáng'
-                                                : slot.timePeriod === 'AFTERNOON'
-                                                  ? 'Ca Chiều'
-                                                  : 'Ca Tối'}
-                                            </div>
-                                            <div className="tabular-nums text-[11px] font-medium text-neutral-600">
-                                              {formatVnd(slot.currentDynamicPrice)}
-                                            </div>
-                                          </div>
-
-                                          <div className="flex items-center gap-1.5">
-                                            <button
-                                              type="button"
-                                              aria-label="Giảm số sân trống"
-                                              onClick={() => {
-                                                const nextSlots = court.upcomingSlots.map((s, i) =>
-                                                  i === idx
-                                                    ? {
-                                                        ...s,
-                                                        availableCourts: Math.max(
-                                                          0,
-                                                          s.availableCourts - 1
-                                                        ),
-                                                      }
-                                                    : s
-                                                );
-                                                onUpdateListingSlots(court.groupId, nextSlots);
-                                              }}
-                                              className="flex h-7 w-7 items-center justify-center rounded-full border border-neutral-200 bg-white font-bold text-[#0F172A] hover:bg-neutral-100"
-                                            >
-                                              −
-                                            </button>
-                                            <span
-                                              className={`min-w-[46px] rounded-lg border px-1.5 py-0.5 text-center tabular-nums text-xs font-bold ${availTone}`}
-                                            >
-                                              {slot.availableCourts}/{slot.totalCapacity}
-                                            </span>
-                                            <button
-                                              type="button"
-                                              aria-label="Tăng số sân trống"
-                                              onClick={() => {
-                                                const nextSlots = court.upcomingSlots.map((s, i) =>
-                                                  i === idx
-                                                    ? {
-                                                        ...s,
-                                                        availableCourts: Math.min(
-                                                          s.totalCapacity,
-                                                          s.availableCourts + 1
-                                                        ),
-                                                      }
-                                                    : s
-                                                );
-                                                onUpdateListingSlots(court.groupId, nextSlots);
-                                              }}
-                                              className="flex h-7 w-7 items-center justify-center rounded-full border border-neutral-200 bg-white font-bold text-[#0F172A] hover:bg-neutral-100"
-                                            >
-                                              +
-                                            </button>
-                                          </div>
-                                        </div>
-                                      );
-                                    })}
-                                  </div>
+                                <div className="space-y-2 rounded-2xl border border-neutral-200 bg-white p-3.5 text-xs">
+                                  <strong>Ca sân sắp tới</strong>
+                                  {court.upcomingSlots.slice(0, 3).map((slot) => (
+                                    <div key={slot.slotStart} className="flex justify-between gap-2">
+                                      <span>{formatSlotWindow(slot.slotStart, slot.slotEnd)}</span>
+                                      <span>{slot.availableCourts}/{slot.totalCapacity} sân trống</span>
+                                    </div>
+                                  ))}
+                                  {!isStaffOnly && (
+                                    <form className="flex flex-wrap items-end gap-2"
+                                      onSubmit={async (event) => {
+                                        event.preventDefault();
+                                        const form = event.currentTarget;
+                                        const value = new FormData(form).get('start');
+                                        if (typeof value !== 'string' || !value) return;
+                                        const start = new Date(`${value}:00+07:00`);
+                                        const end = new Date(+start + court.slotMinutes * 60_000);
+                                        try {
+                                          await onCreateListingSlot(court.groupId, start.toISOString(), end.toISOString());
+                                          form.reset();
+                                        } catch (error) {
+                                          flashToast(error instanceof Error ? error.message : 'Không tạo được ca.');
+                                        }
+                                      }}>
+                                      <label className="grid gap-1">
+                                        Giờ bắt đầu ca (Việt Nam)
+                                        <input name="start" type="datetime-local" required
+                                          className="rounded-lg border border-neutral-300 px-2 py-1" />
+                                      </label>
+                                      <ActionButton type="submit" variant="outline" size="sm">Tạo ca</ActionButton>
+                                    </form>
+                                  )}
                                 </div>
 
                                 {/* Layer 4: Clean Footer Actions */}
@@ -2549,13 +2223,14 @@ export const LessorPartnerPortal: React.FC<LessorPartnerPortalProps> = ({
                       </div>
                       <div>
                         <label className="mb-1 block font-semibold text-neutral-700">
-                          Ca làm việc
+                          Email nhân viên
                         </label>
                         <input
-                          type="text"
-                          value={staffShift}
-                          onChange={(e) => setStaffShift(e.target.value)}
-                          className="w-full rounded-xl border border-neutral-200 bg-[#F8FAFC] px-3 py-2 text-[#0F172A]"
+                          value={staffEmail}
+                          onChange={(e) => setStaffEmail(e.target.value)}
+                          required
+                          type="email"
+                          className="w-full rounded-xl border border-neutral-200 px-3 py-2"
                         />
                       </div>
                       <div>
@@ -2576,7 +2251,8 @@ export const LessorPartnerPortal: React.FC<LessorPartnerPortalProps> = ({
                           Mật khẩu đăng nhập *
                         </label>
                         <input
-                          type="text"
+                          type="password"
+                          minLength={8}
                           required
                           value={staffPassword}
                           onChange={(e) => setStaffPassword(e.target.value)}
@@ -2591,22 +2267,6 @@ export const LessorPartnerPortal: React.FC<LessorPartnerPortalProps> = ({
                     </form>
 
                     <div className="space-y-2 border-t border-neutral-100 pt-3 text-xs">
-                      {activeProvider.providerId === 'PROV_HN_01' && (
-                        <div className="flex items-center justify-between rounded-xl border border-neutral-200/80 bg-[#F8FAFC] px-3.5 py-2.5">
-                          <div>
-                            <div className="font-bold text-[#0F172A]">
-                              Vũ Tuấn Kiệt • <code>nhanvien.san01</code>
-                            </div>
-                            <div className="text-[11px] text-neutral-500">
-                              Mật khẩu mặc định: <code>123456</code> • Ca Sáng &amp; Chiều
-                            </div>
-                          </div>
-                          <span className="rounded-full bg-[#E7F7D4] px-2.5 py-0.5 text-[10.5px] font-bold text-[#16422C]">
-                            ĐANG HOẠT ĐỘNG
-                          </span>
-                        </div>
-                      )}
-
                       {myStaffMembers.map((st) => (
                         <div
                           key={st.id}
@@ -2614,29 +2274,13 @@ export const LessorPartnerPortal: React.FC<LessorPartnerPortalProps> = ({
                         >
                           <div>
                             <div className="font-bold text-[#0F172A]">
-                              {st.fullName} • <code>{st.username}</code>
+                              {st.firstName} {st.lastName} • <code>{st.username}</code>
                             </div>
                             <div className="text-[11px] text-neutral-500">
-                              MK: <code>{st.passwordPlain}</code> • {st.shiftLabel}
+                              {st.email}
                             </div>
                           </div>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              const next = staffList.map((x) =>
-                                x.id === st.id ? { ...x, active: !x.active } : x
-                              );
-                              setStaffList(next);
-                              writeCustomStaffList(next);
-                            }}
-                            className={`rounded-full px-2.5 py-1 text-[10.5px] font-bold ${
-                              st.active
-                                ? 'bg-[#E7F7D4] text-[#16422C]'
-                                : 'bg-rose-100 text-rose-800'
-                            }`}
-                          >
-                            {st.active ? 'Đang mở' : 'Đã khóa'}
-                          </button>
+                          <span>{st.status === 'ACTIVE' ? 'Đang hoạt động' : 'Đã khóa'}</span>
                         </div>
                       ))}
                     </div>
@@ -2659,20 +2303,20 @@ export const LessorPartnerPortal: React.FC<LessorPartnerPortalProps> = ({
                   <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
                     <div className="rounded-[26px] border border-[#16422C]/25 bg-[#F4F8F4] p-6">
                       <span className="text-xs font-bold text-[#16422C]">
-                        Số dư khả dụng có thể rút ngay
+                        Phải trả cho cơ sở trong kỳ
                       </span>
                       <div className="mt-2 tabular-nums text-2xl sm:text-3xl font-bold text-[#16422C]">
                         {formatVnd(metrics.withdrawableBalance)}
                       </div>
                       <p className="mt-1 text-xs text-neutral-600">
-                        Đã khấu trừ {activeProvider.commissionRatePct}% phí sàn ({formatVnd(metrics.commissionAmt)})
+                        Hoa hồng đã ghi sổ {formatVnd(metrics.commissionAmt)}
                       </p>
                       <button
                         type="button"
-                        onClick={handleRequestPayout}
+                        disabled
                         className="mt-4 w-full rounded-full bg-[#16422C] py-2.5 text-xs font-bold text-white hover:bg-[#0F172A]"
                       >
-                        Rút tiền đối soát về Ngân hàng →
+                        Giải ngân qua ngân hàng chưa khả dụng
                       </button>
                     </div>
 
@@ -2712,7 +2356,7 @@ export const LessorPartnerPortal: React.FC<LessorPartnerPortalProps> = ({
 
                     {myPayouts.length === 0 ? (
                       <div className="rounded-2xl bg-[#F8FAFC] p-5 text-xs text-neutral-500 border border-neutral-200/60">
-                        Chưa phát sinh lệnh rút tiền mới trong phiên này. Bấm <strong>“Rút tiền đối soát về Ngân hàng”</strong> để tạo bút toán giải ngân tức thời.
+                        Chưa tích hợp yêu cầu giải ngân qua ngân hàng.
                       </div>
                     ) : (
                       <div className="space-y-2.5 text-xs">

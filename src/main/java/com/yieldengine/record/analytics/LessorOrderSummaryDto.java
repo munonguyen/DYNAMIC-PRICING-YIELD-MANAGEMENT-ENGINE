@@ -1,6 +1,7 @@
 package com.yieldengine.record.analytics;
 
 import java.util.UUID;
+import java.time.Instant;
 public record LessorOrderSummaryDto(
         String orderId,
         UUID reservationId,
@@ -17,5 +18,7 @@ public record LessorOrderSummaryDto(
         long remainingAtVenue,
         String paymentGateway,
         String status,
-        String createdAtLabel
+        String createdAtLabel,
+        Instant slotStart,
+        Instant slotEnd
 ) {}

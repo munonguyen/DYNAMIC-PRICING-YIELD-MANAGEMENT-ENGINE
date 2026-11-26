@@ -7,7 +7,7 @@ import type {
   SportTypeItem,
   VenueProviderInfo,
 } from '../types/marketplace';
-import { buildFreshListingSlots, formatVnd } from '../api/marketplaceApi';
+import { formatVnd } from '../api/marketplaceApi';
 import { ActionButton, PillSelect } from './FairwayControls';
 import { EXPO_EASE } from './motionPrimitives';
 
@@ -19,7 +19,7 @@ interface CreateCourtGroupModalProps {
   defaultVenueName: string;
   defaultAddress: string;
   presetCovers: { label: string; url: string }[];
-  onCreateListing: (created: PublishedListing) => void;
+  onCreateListing: (created: PublishedListing) => Promise<void>;
   onCreatedSuccess: (groupName: string) => void;
 }
 
@@ -84,16 +84,18 @@ export const CreateCourtGroupModal: React.FC<CreateCourtGroupModalProps> = ({
     reader.readAsDataURL(file);
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState('');
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!groupName.trim()) return;
+    if (!groupName.trim() || !sports.length || submitting) return;
     const sportObj = sports.find((s) => s.code === sportCode) ?? sports[0];
 
     const created: PublishedListing = {
       groupId: `custom-group-${Date.now()}`,
       groupCode: `${sportCode}_${Date.now().toString(36).toUpperCase()}`,
       groupName: groupName.trim(),
-      tenantId: '00000000-0000-0000-0000-000000000001',
+      tenantId: activeProvider.providerId,
       venueName: venueName.trim() || activeProvider.providerName,
       venueAddress: address.trim(),
       city: activeProvider.city,
@@ -124,20 +126,23 @@ export const CreateCourtGroupModal: React.FC<CreateCourtGroupModalProps> = ({
         ],
       },
       addOnServices: [],
-      published: true,
-      upcomingSlots: buildFreshListingSlots(
-        safeBase,
-        safeMin,
-        safeMax,
-        durationMinutes,
-        capacity
-      ),
+      published: false,
+      upcomingSlots: [],
+      totalUnits: capacity,
     };
 
-    onCreateListing(created);
-    onCreatedSuccess(created.groupName);
-    setGroupName('');
-    onClose();
+    setSubmitting(true);
+    setError('');
+    try {
+      await onCreateListing(created);
+      onCreatedSuccess(created.groupName);
+      setGroupName('');
+      onClose();
+    } catch (error) {
+      setError(error instanceof Error ? error.message : 'Không thể tạo cụm sân.');
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   return (
@@ -160,6 +165,7 @@ export const CreateCourtGroupModal: React.FC<CreateCourtGroupModalProps> = ({
             transition={{ duration: 0.22, ease: EXPO_EASE }}
             onClick={(e) => e.stopPropagation()}
             onSubmit={handleSubmit}
+            aria-busy={submitting}
             className="flex max-h-[90vh] w-full max-w-3xl flex-col overflow-hidden rounded-[28px] border border-neutral-200 bg-white shadow-[0_28px_80px_rgba(15,23,42,0.34)]"
           >
             {/* STICKY MODAL HEADER */}
@@ -513,7 +519,7 @@ export const CreateCourtGroupModal: React.FC<CreateCourtGroupModalProps> = ({
                 <ActionButton type="button" variant="outline" size="sm" onClick={onClose}>
                   Hủy bỏ
                 </ActionButton>
-                <ActionButton type="submit" variant="forest" size="md">
+                <ActionButton type="submit" disabled={submitting || !sports.length} variant="forest" size="md">
                   ✓ Tạo &amp; Mở bán cụm sân
                 </ActionButton>
               </div>

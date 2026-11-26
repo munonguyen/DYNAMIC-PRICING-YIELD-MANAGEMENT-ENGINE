@@ -1,6 +1,8 @@
 package com.yieldengine.entity;
 
 import jakarta.persistence.*;
+import com.yieldengine.record.marketplace.CourtAddOn;
+import java.util.List;
 import lombok.*;
 import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.type.SqlTypes;
@@ -86,6 +88,11 @@ public class ResourceGroup extends BaseEntity {
     @Column(nullable = false)
     @Builder.Default
     private String status = "ACTIVE";
+
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "add_on_services", nullable = false, columnDefinition = "jsonb")
+    @Builder.Default
+    private List<CourtAddOn> addOnServices = List.of();
 
     @Version
     @Column(nullable = false)

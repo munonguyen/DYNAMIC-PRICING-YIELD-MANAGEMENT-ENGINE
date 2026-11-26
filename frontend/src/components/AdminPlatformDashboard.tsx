@@ -18,7 +18,7 @@ import type {
   PublishedListing,
   ReconciliationSummary,
 } from '../types/marketplace';
-import { ALL_LESSOR_PROVIDERS, formatVnd } from '../api/marketplaceApi';
+import { formatVnd } from '../api/marketplaceApi';
 import { AnimatedCounter, EXPO_EASE } from './motionPrimitives';
 
 interface AdminPlatformDashboardProps {
@@ -88,11 +88,11 @@ export const AdminPlatformDashboard: React.FC<AdminPlatformDashboardProps> = ({
   const activeDayIdx = hoveredDayIdx ?? Math.min(selectedDayIdx, Math.max(0, dailySeries.length - 1));
   const activeDay = dailySeries[activeDayIdx] ?? null;
 
-  const grossGmv = analytics.grossRevenue || reconciliation?.totalEscrowCredits || 0;
+  const grossGmv = analytics.grossRevenue;
   const platformCommission =
-    analytics.commissionAmount || reconciliation?.totalPlatformCommission || 0;
+    analytics.commissionAmount;
   const venuePayable =
-    analytics.withdrawableBalance || reconciliation?.totalVenuePayable || 0;
+    analytics.withdrawableBalance;
   const customerRefunds = reconciliation?.totalCustomerRefunds ?? 0;
 
   const takeRatePct =
@@ -263,30 +263,15 @@ export const AdminPlatformDashboard: React.FC<AdminPlatformDashboardProps> = ({
       }
     >();
 
-    for (const p of ALL_LESSOR_PROVIDERS) {
-      map.set(p.providerId, {
-        providerId: p.providerId,
-        providerName: p.providerName,
-        district: p.district,
-        city: p.city,
-        legalEntityType: p.legalEntityType ?? 'Đối tác Sân',
-        commissionRatePct: p.commissionRatePct,
-        groups: 0,
-        courts: 0,
-        bookings: 0,
-        revenue: 0,
-      });
-    }
-
     for (const l of listings) {
-      const pid = l.provider?.providerId || 'unknown';
+      const pid = l.tenantId;
       const existing = map.get(pid) ?? {
         providerId: pid,
         providerName: l.provider?.providerName || l.venueName,
         district: l.provider?.district || '',
         city: l.provider?.city || '',
         legalEntityType: l.provider?.legalEntityType || 'Hộ / Doanh nghiệp',
-        commissionRatePct: l.provider?.commissionRatePct ?? 10,
+        commissionRatePct: l.provider?.commissionRatePct ?? 0,
         groups: 0,
         courts: 0,
         bookings: 0,
@@ -294,12 +279,10 @@ export const AdminPlatformDashboard: React.FC<AdminPlatformDashboardProps> = ({
       };
       const perf = revByGroupId.get(l.groupId);
       existing.groups += 1;
-      existing.courts += l.upcomingSlots[0]?.totalCapacity ?? 4;
+      existing.courts += l.upcomingSlots[0]?.totalCapacity ?? 0;
       if (perf) {
         existing.bookings += perf.bookings;
         existing.revenue += perf.rev;
-      } else {
-        existing.revenue += l.basePrice * 12;
       }
       map.set(pid, existing);
     }

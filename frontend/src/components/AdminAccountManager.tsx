@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import {
   CheckCircle2,
@@ -13,8 +13,8 @@ import {
   Users,
   X,
 } from 'lucide-react';
-import type { AdminUserAccount, RoleCode } from '../types/marketplace';
-import { ALL_LESSOR_PROVIDERS, marketplaceApi } from '../api/marketplaceApi';
+import type { AdminTenantOverview, AdminUserAccount, RoleCode } from '../types/marketplace';
+import { marketplaceApi } from '../api/marketplaceApi';
 import { ActionButton, PillSelect } from './FairwayControls';
 import { EXPO_EASE } from './motionPrimitives';
 
@@ -92,18 +92,27 @@ export const AdminAccountManager: React.FC<AdminAccountManagerProps> = ({
   const [username, setUsername] = useState('');
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
-  const [password, setPassword] = useState('123456');
+  const [password, setPassword] = useState('');
   const [newRoleCode, setNewRoleCode] = useState<RoleCode>('MANAGER');
-  const [newProviderId, setNewProviderId] = useState<string>(
-    ALL_LESSOR_PROVIDERS[0]?.providerId ?? 'PROV_HN_01'
-  );
-
-  // Assign Role Modal
+  const [newProviderId, setNewProviderId] = useState('');
   const [roleModalUser, setRoleModalUser] = useState<AdminUserAccount | null>(null);
   const [grantRoleCode, setGrantRoleCode] = useState<RoleCode>('MANAGER');
-  const [grantProviderId, setGrantProviderId] = useState<string>(
-    ALL_LESSOR_PROVIDERS[0]?.providerId ?? 'PROV_HN_01'
-  );
+  const [grantProviderId, setGrantProviderId] = useState('');
+  const [tenants, setTenants] = useState<AdminTenantOverview[]>([]);
+
+  useEffect(() => {
+    if (!isAdmin) return;
+    let active = true;
+    marketplaceApi.fetchAdminTenantsStrict().then((data) => {
+      if (!active) return;
+      setTenants(data);
+      setNewProviderId(data[0]?.id ?? '');
+      setGrantProviderId(data[0]?.id ?? '');
+    }).catch((error) => {
+      if (active) onFlashToast(error.message);
+    });
+    return () => { active = false; };
+  }, [isAdmin]);
 
   const stats = useMemo(() => {
     const total = accounts.length;
@@ -141,6 +150,8 @@ export const AdminAccountManager: React.FC<AdminAccountManagerProps> = ({
           res.live ? 'PostgreSQL DB' : 'Phiên cục bộ'
         }).`
       );
+    } catch (error) {
+      onFlashToast(error instanceof Error ? error.message : 'Không thể cập nhật tài khoản.');
     } finally {
       setMutatingId(null);
     }
@@ -159,7 +170,7 @@ export const AdminAccountManager: React.FC<AdminAccountManagerProps> = ({
         lastName,
         phone,
         roleCode: newRoleCode,
-        providerId:
+        tenantId:
           newRoleCode === 'MANAGER' || newRoleCode === 'STAFF' ? newProviderId : null,
       });
       await onRefresh();
@@ -174,7 +185,7 @@ export const AdminAccountManager: React.FC<AdminAccountManagerProps> = ({
       setUsername('');
       setEmail('');
       setPhone('');
-      setPassword('123456');
+      setPassword('');
     } catch (err) {
       setCreateError(err instanceof Error ? err.message : 'Không thể tạo tài khoản.');
     } finally {
@@ -190,7 +201,7 @@ export const AdminAccountManager: React.FC<AdminAccountManagerProps> = ({
       const res = await marketplaceApi.assignAdminAccountRole(
         roleModalUser.id,
         grantRoleCode,
-        grantRoleCode === 'MANAGER' || grantRoleCode === 'STAFF' ? undefined : null
+        grantRoleCode === 'MANAGER' || grantRoleCode === 'STAFF' ? grantProviderId : null
       );
       await onRefresh();
       onFlashToast(
@@ -199,6 +210,8 @@ export const AdminAccountManager: React.FC<AdminAccountManagerProps> = ({
         }).`
       );
       setRoleModalUser(null);
+    } catch (error) {
+      onFlashToast(error instanceof Error ? error.message : 'Không thể cập nhật tài khoản.');
     } finally {
       setMutatingId(null);
     }
@@ -655,9 +668,9 @@ export const AdminAccountManager: React.FC<AdminAccountManagerProps> = ({
                         ariaLabel="Chọn cơ sở cho thuê"
                         variant="field"
                         menuAlign="full"
-                        options={ALL_LESSOR_PROVIDERS.map((p) => ({
-                          value: p.providerId,
-                          label: p.providerName,
+                        options={tenants.map((p) => ({
+                          value: p.id,
+                          label: p.name,
                         }))}
                       />
                     </div>
@@ -746,9 +759,9 @@ export const AdminAccountManager: React.FC<AdminAccountManagerProps> = ({
                       ariaLabel="Chọn cơ sở áp dụng quyền"
                       variant="field"
                       menuAlign="full"
-                      options={ALL_LESSOR_PROVIDERS.map((p) => ({
-                        value: p.providerId,
-                        label: p.providerName,
+                      options={tenants.map((p) => ({
+                        value: p.id,
+                        label: p.name,
                       }))}
                     />
                   </div>

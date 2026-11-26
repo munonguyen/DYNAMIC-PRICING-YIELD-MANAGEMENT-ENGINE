@@ -19,6 +19,9 @@ public record PublishedListingResponse(
         String checkinMode,
         String imageUrl,
         List<CourtMediaDto> galleryMedia,
-        List<SlotListingQuoteDto> upcomingSlots
+        List<SlotListingQuoteDto> upcomingSlots,
+        boolean published,
+        List<CourtAddOn> addOnServices,
+        boolean staffChatEnabled
 ) {
 }

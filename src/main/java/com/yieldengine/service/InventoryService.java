@@ -8,6 +8,9 @@ import com.yieldengine.exception.ResourceNotFoundException;
 import com.yieldengine.mapper.InventoryMapper;
 import com.yieldengine.repository.*;
 import com.yieldengine.utils.CommonTextAndPageUtils;
+import com.yieldengine.security.AuthContext;
+import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
+import java.sql.Timestamp;
 import com.yieldengine.validate.AuthAndRbacValidator;
 import com.yieldengine.validate.InventoryAndPolicyValidator;
 import lombok.RequiredArgsConstructor;
@@ -31,7 +34,8 @@ public class InventoryService {
     private final UnitRepository unitRepository;
     private final TimeSlotRepository timeSlotRepository;
     private final SlotInventoryRepository slotInventoryRepository;
-    private final SlotPriceCurrentRepository slotPriceCurrentRepository;
+    private final YieldRuleSetRepository yieldRuleSetRepository;
+    private final NamedParameterJdbcTemplate catalogueJdbc;
     private final PricingEngineService pricingEngineService;
     private final AuditLogService auditLogService;
     private final InventoryMapper inventoryMapper;
@@ -142,11 +146,8 @@ public class InventoryService {
         String sportCode = CommonTextAndPageUtils.normalizeOptionalUpperCode(request.getSportCode());
         final String effectiveSportCode = sportCode != null ? sportCode : "PICKLEBALL";
         SportType sportType = sportTypeRepository.findByCode(effectiveSportCode)
-                .orElseGet(() -> sportTypeRepository.save(SportType.builder()
-                        .code(effectiveSportCode)
-                        .name(effectiveSportCode)
-                        .status("ACTIVE")
-                        .build()));
+                .filter(sport -> "ACTIVE".equals(sport.getStatus()))
+                .orElseThrow(() -> new ResourceNotFoundException("Môn thể thao không tồn tại hoặc đã ngừng hoạt động."));
 
         CancellationPolicy policy = null;
         if (request.getCancellationPolicyId() != null) {
@@ -158,6 +159,14 @@ public class InventoryService {
 
         ResourceGroup group = inventoryMapper.toResourceGroup(request, tenant, sportType, policy);
         group = resourceGroupRepository.save(group);
+
+        yieldRuleSetRepository.save(YieldRuleSet.builder()
+                .resourceGroup(group)
+                .tenantId(tenant.getId())
+                .versionNo(1)
+                .status("ACTIVE")
+                .effective("(,)")
+                .build());
 
         List<Unit> units = new ArrayList<>();
         for (int i = 1; i <= request.getTotalUnits(); i++) {
@@ -204,49 +213,100 @@ public class InventoryService {
         Instant startRange = from != null ? from : Instant.now();
         Instant endRange = to != null ? to : startRange.plus(Duration.ofDays(2));
 
-        List<ResourceGroup> groups = resourceGroupRepository.findPublishedListings(normalizedSport, tenantId);
-        List<UUID> groupIds = groups.stream().map(ResourceGroup::getId).toList();
-        Map<UUID, List<CourtMediaDto>> mediaByGroup = courtMediaStorageService.listMediaGroupedByGroupIds(groupIds);
-        List<PublishedListingResponse> responses = new ArrayList<>();
-
-        for (ResourceGroup group : groups) {
-            List<SlotListingQuoteDto> slotDtos = timeSlotRepository
-                    .findSlotsInRange(group.getId(), startRange, endRange)
-                    .stream()
-                    .filter(s -> "OPEN".equals(s.getStatus()))
-                    .map(slot -> toSlotListingQuote(group, slot))
-                    .toList();
-
-            List<CourtMediaDto> gallery = mediaByGroup.getOrDefault(group.getId(), List.of());
-            String coverUrl = gallery.stream().findFirst().map(CourtMediaDto::url).orElse(null);
-
-            responses.add(new PublishedListingResponse(
-                    group.getId(),
-                    group.getCode(),
-                    group.getName(),
-                    group.getTenant().getId(),
-                    group.getTenant().getName(),
-                    group.getTenant().getAddress(),
-                    group.getSportType().getCode(),
-                    group.getSportType().getName(),
-                    group.getBasePrice(),
-                    group.getMinPrice(),
-                    group.getMaxPrice(),
-                    group.getDepositPercent(),
-                    group.getSlotMinutes(),
-                    group.resolveEffectiveCheckinMode(),
-                    coverUrl,
-                    gallery,
-                    slotDtos
-            ));
+        if (!endRange.isAfter(startRange) || Duration.between(startRange, endRange).compareTo(Duration.ofDays(31)) > 0) {
+            throw new IllegalArgumentException("Khoảng xem lịch phải hợp lệ và không quá 31 ngày.");
         }
-        return responses;
+        return assembleListings(resourceGroupRepository.findPublishedListings(normalizedSport, tenantId), startRange, endRange);
+    }
+
+    @Transactional(readOnly = true)
+    public List<PublishedListingResponse> listManagedGroups(UUID tenantId) {
+        Instant now = Instant.now();
+        var groups = resourceGroupRepository.findByTenantIdOrderByCreatedAtDesc(tenantId).stream()
+                .filter(group -> group.getDeletedAt() == null).toList();
+        return assembleListings(groups, now, now.plus(Duration.ofDays(7)));
+    }
+
+    @Transactional
+    public ResourceGroup updateGroup(UUID groupId, UpdateCourtGroupRequest request) {
+        ResourceGroup group = getResourceGroup(groupId);
+        long min = request.minPrice() != null ? request.minPrice() : group.getMinPrice();
+        long base = request.basePrice() != null ? request.basePrice() : group.getBasePrice();
+        long max = request.maxPrice() != null ? request.maxPrice() : group.getMaxPrice();
+        if (min > base || base > max) {
+            throw new IllegalArgumentException("Giá phải thỏa min ≤ giá cơ sở ≤ max.");
+        }
+        if (request.depositPercent() != null && request.depositPercent() > 0 && group.getCancellationPolicy() == null) {
+            throw new IllegalArgumentException("Cần chính sách hủy trước khi yêu cầu đặt cọc.");
+        }
+        boolean changedPrice = min != group.getMinPrice() || base != group.getBasePrice() || max != group.getMaxPrice();
+        group.setMinPrice(min);
+        group.setBasePrice(base);
+        group.setMaxPrice(max);
+        if (request.depositPercent() != null) group.setDepositPercent(request.depositPercent());
+        if (request.checkinMode() != null) group.setCheckinMode(request.checkinMode());
+        if (request.addOnServices() != null) {
+            if (request.addOnServices().stream().map(CourtAddOn::id).distinct().count() != request.addOnServices().size()) {
+                throw new IllegalArgumentException("Mã dịch vụ không được trùng.");
+            }
+            group.setAddOnServices(new ArrayList<>(request.addOnServices()));
+        }
+        if (changedPrice) {
+            catalogueJdbc.update("DELETE FROM slot_price_current WHERE group_id = :id AND slot_start >= now()", Map.of("id", groupId));
+        }
+        return resourceGroupRepository.save(group);
+    }
+
+    private List<PublishedListingResponse> assembleListings(List<ResourceGroup> groups, Instant from, Instant to) {
+        if (groups.isEmpty()) return List.of();
+        var groupIds = groups.stream().map(ResourceGroup::getId).toList();
+        var media = courtMediaStorageService.listMediaGroupedByGroupIds(groupIds);
+        Map<UUID, List<SlotListingQuoteDto>> slots = new HashMap<>();
+        catalogueJdbc.query("""
+                SELECT ts.group_id, ts.slot_start, ts.slot_end, ts.total_capacity,
+                       GREATEST(0, ts.total_capacity - COALESCE(si.held_count + si.confirmed_count, 0)) AS available,
+                       COALESCE(sp.current_price, rg.base_price) AS price
+                FROM time_slots ts
+                JOIN resource_groups rg ON rg.id = ts.group_id
+                LEFT JOIN slot_inventory si ON si.group_id = ts.group_id AND si.slot_start = ts.slot_start
+                LEFT JOIN slot_price_current sp ON sp.group_id = ts.group_id AND sp.slot_start = ts.slot_start
+                WHERE ts.group_id IN (:groups) AND ts.slot_start >= :from AND ts.slot_start < :to AND ts.status = 'OPEN'
+                ORDER BY ts.slot_start
+                """, Map.of("groups", groupIds, "from", Timestamp.from(from), "to", Timestamp.from(to)), row -> {
+            UUID groupId = row.getObject("group_id", UUID.class);
+            slots.computeIfAbsent(groupId, id -> new ArrayList<>()).add(new SlotListingQuoteDto(
+                    row.getTimestamp("slot_start").toInstant(), row.getTimestamp("slot_end").toInstant(),
+                    row.getInt("total_capacity"), row.getInt("available"), row.getLong("price")));
+        });
+        return groups.stream().map(group -> {
+            var gallery = media.getOrDefault(group.getId(), List.of());
+            var cover = gallery.stream().findFirst().map(CourtMediaDto::url).orElse(null);
+            return new PublishedListingResponse(group.getId(), group.getCode(), group.getName(),
+                    group.getTenant().getId(), group.getTenant().getName(), group.getTenant().getAddress(),
+                    group.getSportType().getCode(), group.getSportType().getName(), group.getBasePrice(),
+                    group.getMinPrice(), group.getMaxPrice(), group.getDepositPercent(), group.getSlotMinutes(),
+                    group.resolveEffectiveCheckinMode(), cover, gallery, slots.getOrDefault(group.getId(), List.of()),
+                    "PUBLISHED".equals(group.getPublishStatus()), group.getAddOnServices(),
+                    Boolean.TRUE.equals(group.getTenant().getIsStaffChatEnabled()));
+        }).toList();
     }
 
     @Transactional(readOnly = true)
     public ResourceGroup getResourceGroup(UUID id) {
         return resourceGroupRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("ResourceGroup not found: " + id));
+    }
+
+    @Transactional(readOnly = true)
+    public ResourceGroup getVisibleResourceGroup(UUID id) {
+        ResourceGroup group = getResourceGroup(id);
+        boolean visible = "PUBLISHED".equals(group.getPublishStatus()) && "ACTIVE".equals(group.getStatus())
+                && group.getDeletedAt() == null && "ACTIVE".equals(group.getTenant().getStatus());
+        if (visible || AuthContext.current().filter(actor -> actor.hasPlatformRole("ADMIN")
+                || actor.hasTenantRole(group.getTenant().getId(), "MANAGER", "STAFF")).isPresent()) {
+            return group;
+        }
+        throw new ResourceNotFoundException("Không tìm thấy cụm sân.");
     }
 
     @Transactional
@@ -275,6 +335,9 @@ public class InventoryService {
 
     @Transactional(readOnly = true)
     public List<TimeSlot> getSlots(UUID groupId, Instant start, Instant end) {
+        if (!end.isAfter(start) || Duration.between(start, end).compareTo(Duration.ofDays(31)) > 0) {
+            throw new IllegalArgumentException("Khoảng thời gian phải hợp lệ và không quá 31 ngày.");
+        }
         return timeSlotRepository.findSlotsInRange(groupId, start, end);
     }
 
@@ -291,29 +354,4 @@ public class InventoryService {
                         .build()));
     }
 
-    private SlotListingQuoteDto toSlotListingQuote(ResourceGroup group, TimeSlot slot) {
-        SlotId sid = slot.getId();
-        int occupied = slotInventoryRepository.findById(sid)
-                .map(inv -> inv.getHeldCount() + inv.getConfirmedCount())
-                .orElse(0);
-        int available = Math.max(0, slot.getTotalCapacity() - occupied);
-
-        Long dynamicPrice;
-        try {
-            dynamicPrice = pricingEngineService
-                    .getPriceQuote(group.getId(), slot.getSlotStart(), "ANONYMOUS")
-                    .getCurrentPrice();
-        } catch (Exception ex) {
-            dynamicPrice = slotPriceCurrentRepository.findById(sid)
-                    .map(SlotPriceCurrent::getCurrentPrice)
-                    .orElse(group.getBasePrice());
-        }
-        return new SlotListingQuoteDto(
-                slot.getSlotStart(),
-                slot.getSlotEnd(),
-                slot.getTotalCapacity(),
-                available,
-                dynamicPrice
-        );
-    }
 }

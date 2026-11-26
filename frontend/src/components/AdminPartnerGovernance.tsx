@@ -20,7 +20,7 @@ import type {
   PublishedListing,
   VenueProviderInfo,
 } from '../types/marketplace';
-import { ALL_LESSOR_PROVIDERS, marketplaceApi } from '../api/marketplaceApi';
+import { marketplaceApi } from '../api/marketplaceApi';
 import { EXPO_EASE } from './motionPrimitives';
 
 interface AdminPartnerGovernanceProps {
@@ -35,25 +35,7 @@ interface AdminPartnerGovernanceProps {
   onFlashToast: (msg: string) => void;
 }
 
-const TENANT_STATUS_STORAGE_KEY = 'arenapulse_admin_tenant_statuses_v1';
 const CARD_VIEWPORT = { once: true, amount: 0.14 } as const;
-
-function readLocalTenantStatuses(): Record<string, 'ACTIVE' | 'SUSPEND'> {
-  try {
-    const raw = window.localStorage.getItem(TENANT_STATUS_STORAGE_KEY);
-    return raw ? (JSON.parse(raw) as Record<string, 'ACTIVE' | 'SUSPEND'>) : {};
-  } catch {
-    return {};
-  }
-}
-
-function writeLocalTenantStatuses(map: Record<string, 'ACTIVE' | 'SUSPEND'>): void {
-  try {
-    window.localStorage.setItem(TENANT_STATUS_STORAGE_KEY, JSON.stringify(map));
-  } catch {
-    // Ignore storage quota restrictions
-  }
-}
 
 interface MergedPartnerRow {
   key: string;
@@ -88,9 +70,6 @@ export const AdminPartnerGovernance: React.FC<AdminPartnerGovernanceProps> = ({
   const [dbTenants, setDbTenants] = useState<AdminTenantOverview[] | null>(null);
   const [liveFromDb, setLiveFromDb] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [localStatuses, setLocalStatuses] = useState<Record<string, 'ACTIVE' | 'SUSPEND'>>(
-    () => readLocalTenantStatuses()
-  );
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<'ALL' | 'ACTIVE' | 'SUSPEND'>('ALL');
   const [expandedPartnerKey, setExpandedPartnerKey] = useState<string | null>(null);
@@ -113,56 +92,24 @@ export const AdminPartnerGovernance: React.FC<AdminPartnerGovernanceProps> = ({
     void loadTenants();
   }, [loadTenants]);
 
-  const partnerRows = useMemo<MergedPartnerRow[]>(() => {
-    const dbByName = new Map<string, AdminTenantOverview>();
-    for (const t of dbTenants ?? []) {
-      dbByName.set(t.name.toLowerCase(), t);
-    }
-
-    const providersMap = new Map<string, VenueProviderInfo>();
-    for (const p of ALL_LESSOR_PROVIDERS) {
-      providersMap.set(p.providerId, p);
-    }
-    for (const l of listings) {
-      if (l.provider?.providerId && !providersMap.has(l.provider.providerId)) {
-        providersMap.set(l.provider.providerId, l.provider);
-      }
-    }
-
-    return Array.from(providersMap.values()).map((prov) => {
-      const ownedGroups = listings.filter((l) => l.provider?.providerId === prov.providerId);
-      const publishedCount = ownedGroups.filter((l) => l.published !== false).length;
-      const physicalCourts = ownedGroups.reduce(
-        (sum, l) => sum + (l.upcomingSlots[0]?.totalCapacity ?? 4),
-        0
-      );
-      const matchedDb = dbByName.get(prov.providerName.toLowerCase());
-      const overrideStatus = localStatuses[prov.providerId];
-      const status: 'ACTIVE' | 'SUSPEND' =
-        matchedDb?.status === 'SUSPEND'
-          ? 'SUSPEND'
-          : overrideStatus ?? 'ACTIVE';
-
-      return {
-        key: prov.providerId,
-        dbTenantId: matchedDb?.id,
-        providerId: prov.providerId,
-        name: prov.providerName,
-        legalEntityType: prov.legalEntityType ?? 'Đơn vị Vận hành Sân',
-        location: [prov.district, prov.city].filter(Boolean).join(', '),
-        city: prov.city,
-        badge: prov.badge,
-        verified: prov.verified,
-        yearsPartner: prov.yearsPartner,
-        responseRatePct: prov.responseRatePct,
-        commissionRatePct: matchedDb?.commissionRatePercent ?? prov.commissionRatePct,
-        status,
-        groups: ownedGroups,
-        publishedCount,
-        physicalCourts: Math.max(physicalCourts, prov.totalManagedCourts || 0),
-      };
-    });
-  }, [dbTenants, listings, localStatuses]);
+  const partnerRows = useMemo<MergedPartnerRow[]>(() => (dbTenants ?? []).map((tenant) => ({
+    key: tenant.id,
+    dbTenantId: tenant.id,
+    providerId: tenant.id,
+    name: tenant.name,
+    legalEntityType: 'Đối tác',
+    location: tenant.address,
+    city: '',
+    badge: tenant.code,
+    verified: false,
+    yearsPartner: 0,
+    responseRatePct: 0,
+    commissionRatePct: tenant.commissionRatePercent,
+    status: tenant.status === 'ACTIVE' ? 'ACTIVE' : 'SUSPEND',
+    groups: listings.filter((listing) => listing.tenantId === tenant.id),
+    publishedCount: tenant.publishedGroupCount,
+    physicalCourts: tenant.unitCount,
+  })), [dbTenants, listings]);
 
   const filteredPartners = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
@@ -186,7 +133,7 @@ export const AdminPartnerGovernance: React.FC<AdminPartnerGovernanceProps> = ({
         ? (
             partnerRows.reduce((sum, r) => sum + r.commissionRatePct, 0) / total
           ).toFixed(1)
-        : '10.0';
+        : '—';
     return { total, active, suspended, avgCommission };
   }, [partnerRows]);
 
@@ -194,32 +141,11 @@ export const AdminPartnerGovernance: React.FC<AdminPartnerGovernanceProps> = ({
     const nextStatus: 'ACTIVE' | 'SUSPEND' = row.status === 'ACTIVE' ? 'SUSPEND' : 'ACTIVE';
     setTogglingKey(row.key);
     try {
-      if (liveFromDb && row.dbTenantId) {
-        const updated = await marketplaceApi.updateAdminTenantStatusStrict(
-          row.dbTenantId,
-          nextStatus
-        );
-        setDbTenants((prev) =>
-          (prev ?? []).map((t) => (t.id === updated.id ? updated : t))
-        );
-      }
-      const nextLocal = { ...localStatuses, [row.providerId]: nextStatus };
-      setLocalStatuses(nextLocal);
-      writeLocalTenantStatuses(nextLocal);
-      onFlashToast(
-        nextStatus === 'SUSPEND'
-          ? `✓ Đã tạm đình chỉ trạng thái vận hành của đối tác "${row.name}".`
-          : `✓ Đã kích hoạt lại quyền hoạt động cho đối tác "${row.name}".`
-      );
-    } catch {
-      const nextLocal = { ...localStatuses, [row.providerId]: nextStatus };
-      setLocalStatuses(nextLocal);
-      writeLocalTenantStatuses(nextLocal);
-      onFlashToast(
-        nextStatus === 'SUSPEND'
-          ? `✓ Đã tạm đình chỉ đối tác "${row.name}" trên phiên hiện tại.`
-          : `✓ Đã mở khóa hoạt động cho đối tác "${row.name}".`
-      );
+      const updated = await marketplaceApi.updateAdminTenantStatusStrict(row.providerId, nextStatus);
+      setDbTenants((prev) => (prev ?? []).map((tenant) => tenant.id === updated.id ? updated : tenant));
+      onFlashToast(nextStatus === 'ACTIVE' ? 'Đã kích hoạt cơ sở.' : 'Đã tạm đình chỉ cơ sở.');
+    } catch (error) {
+      onFlashToast(error instanceof Error ? error.message : 'Chưa cập nhật được trạng thái cơ sở.');
     } finally {
       setTogglingKey(null);
     }

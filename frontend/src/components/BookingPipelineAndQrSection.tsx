@@ -251,13 +251,13 @@ export const BookingPipelineAndQrSection: React.FC<BookingPipelineAndQrSectionPr
     if (session?.email && !customerEmail) setCustomerEmail(session.email);
   }, [session, customerName, customerEmail]);
 
-  const basePrice = activeListing?.basePrice ?? 200_000;
+  const basePrice = activeListing?.basePrice ?? 0;
   const orderCancelled = Boolean(cancelResult || currentPayment?.reservationStatus === 'CANCELLED');
   const recordedPrice = currentPayment && !orderCancelled
     ? currentPayment.remainingAtVenue + (state === 'VERIFIED' ? currentPayment.paidAmount : 0) : null;
-  const lockedPrice = recordedPrice ?? matchingHold?.lockedPrice ?? activeQuote?.currentPrice ?? 193_000;
+  const lockedPrice = recordedPrice ?? matchingHold?.lockedPrice ?? activeQuote?.currentPrice ?? activeListing?.basePrice ?? 0;
   const dynamicDelta = lockedPrice - basePrice;
-  const depositPct = activeListing?.depositPercent ?? 35;
+  const depositPct = activeListing?.depositPercent ?? 0;
   const depositAmount = matchingHold?.depositAmount ?? Math.floor((lockedPrice * depositPct) / 100);
 
   const sportServices = getActiveLessorServices(activeListing);
@@ -1038,19 +1038,6 @@ export const BookingPipelineAndQrSection: React.FC<BookingPipelineAndQrSectionPr
                     amount={currentPayment.requestedAmount}
                     reference={currentPayment.providerReference}
                   />
-                  {trackedReservation && marketplaceApi.hasLocalSandboxSession(trackedReservation) && (
-                    <ActionButton
-                      variant="forest"
-                      size="md"
-                      fullWidth
-                      onClick={() => {
-                        marketplaceApi.simulateLocalSandboxSuccess(trackedReservation);
-                        setStatusRequest((v) => v + 1);
-                      }}
-                    >
-                      Mô phỏng Xác nhận Chuyển khoản / Cổng thành công
-                    </ActionButton>
-                  )}
                 </div>
               )}
 

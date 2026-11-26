@@ -49,8 +49,8 @@ interface MonteCarloAndRoleCenterSectionProps {
     patch: { basePrice: number; minPrice: number; maxPrice: number; depositPercent: number }
   ) => void;
   onToggleListingPublished?: (groupId: string) => void;
-  onUpdateListingSlots?: (groupId: string, nextSlots: SlotListingQuote[]) => void;
-  onCreateNewListing?: (newListing: PublishedListing) => void;
+  onCreateListingSlot?: (groupId: string, start: string, end: string) => Promise<void>;
+  onCreateNewListing?: (newListing: PublishedListing) => Promise<void>;
   onUpdateProviderProfile?: (
     providerId: string,
     patch: Partial<Pick<VenueProviderInfo, 'shopSlogan' | 'voucherLabel' | 'responseTimeLabel'>>
@@ -97,7 +97,7 @@ export const MonteCarloAndRoleCenterSection: React.FC<MonteCarloAndRoleCenterSec
   onUpdateListingServices,
   onUpdateListingPricing,
   onToggleListingPublished,
-  onUpdateListingSlots,
+  onCreateListingSlot,
   onCreateNewListing,
   onUpdateProviderProfile,
   onUploadCourtPhoto,
@@ -120,7 +120,7 @@ export const MonteCarloAndRoleCenterSection: React.FC<MonteCarloAndRoleCenterSec
   const canReviewKyc = activeRole === 'ADMIN' || activeRole === 'ACCOUNTANT';
 
   useEffect(() => {
-    if (!isInternalAuthorized) {
+    if (!isInternalAuthorized || !canReviewKyc) {
       setReconciliation(null);
       return;
     }
@@ -147,12 +147,12 @@ export const MonteCarloAndRoleCenterSection: React.FC<MonteCarloAndRoleCenterSec
       request.abort();
       window.clearInterval(timer);
     };
-  }, [isInternalAuthorized, session?.userId]);
+  }, [isInternalAuthorized, canReviewKyc, session?.userId]);
 
   useEffect(() => {
     if (!isInternalAuthorized) return;
     if (canReviewKyc) {
-      marketplaceApi.listLessorApplicationsInternal().then(setKycQueue);
+      marketplaceApi.listLessorApplicationsInternal().then(setKycQueue).catch(() => setKycQueue([]));
     }
   }, [isInternalAuthorized, canReviewKyc]);
 
@@ -181,7 +181,7 @@ export const MonteCarloAndRoleCenterSection: React.FC<MonteCarloAndRoleCenterSec
 
   const handleLoginSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const auth = await marketplaceApi.loginOrRegisterDemo(loginUsername, loginPassword, 'LOGIN');
+    const auth = await marketplaceApi.authenticate(loginUsername, loginPassword, 'LOGIN');
     onAuthenticated(auth);
     onCloseAuthModal();
   };
@@ -276,8 +276,14 @@ export const MonteCarloAndRoleCenterSection: React.FC<MonteCarloAndRoleCenterSec
             onUpdateListingPricing={(gid, patch) => onUpdateListingPricing?.(gid, patch)}
             onUpdateListingServices={(gid, srv) => onUpdateListingServices?.(gid, srv)}
             onToggleListingPublished={(gid) => onToggleListingPublished?.(gid)}
-            onUpdateListingSlots={(gid, slots) => onUpdateListingSlots?.(gid, slots)}
-            onCreateNewListing={(item) => onCreateNewListing?.(item)}
+            onCreateListingSlot={async (id, start, end) => {
+              if (!onCreateListingSlot) throw new Error('Tạo ca sân hiện chưa khả dụng.');
+              await onCreateListingSlot(id, start, end);
+            }}
+            onCreateNewListing={async (item) => {
+              if (!onCreateNewListing) throw new Error('Tạo cụm sân hiện chưa khả dụng.');
+              await onCreateNewListing(item);
+            }}
             onUpdateProviderProfile={(pid, patch) => onUpdateProviderProfile?.(pid, patch)}
             onUploadCourtPhoto={onUploadCourtPhoto}
             onLogout={onLogout}
@@ -304,7 +310,6 @@ export const MonteCarloAndRoleCenterSection: React.FC<MonteCarloAndRoleCenterSec
             onUpdateListingServices={onUpdateListingServices}
             onUpdateListingPricing={onUpdateListingPricing}
             onToggleListingPublished={onToggleListingPublished}
-            onUpdateListingSlots={onUpdateListingSlots}
             onCreateNewListing={onCreateNewListing}
             onUpdateProviderProfile={onUpdateProviderProfile}
             onUploadCourtPhoto={onUploadCourtPhoto}

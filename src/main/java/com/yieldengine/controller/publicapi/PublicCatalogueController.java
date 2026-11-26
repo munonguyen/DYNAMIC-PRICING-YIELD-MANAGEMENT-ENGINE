@@ -7,10 +7,12 @@ import com.yieldengine.record.marketplace.PublishedListingResponse;
 import com.yieldengine.service.InventoryService;
 import com.yieldengine.service.PricingEngineService;
 import com.yieldengine.service.SearchAndAnalyticsSyncService;
+import com.yieldengine.security.AuthContext;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
 import org.springframework.format.annotation.DateTimeFormat;
+import org.springframework.http.CacheControl;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
@@ -57,15 +59,17 @@ public class PublicCatalogueController {
 
     @Operation(
             summary = "[PUBLIC] Get dynamic price quote & stateless PriceLockToken",
-            description = "Served from Caffeine/Redis cache in < 1ms. Returns HMAC-SHA256 signed PriceLockToken."
+            description = "Returns a signed PriceLockToken scoped to the authenticated customer."
     )
     @GetMapping("/pricing/quote")
     public ResponseEntity<PriceQuoteResponse> getPriceQuote(
             @RequestParam UUID groupId,
-            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) Instant slotStart,
-            @RequestParam(defaultValue = "user_default") String userId
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) Instant slotStart
     ) {
-        return ResponseEntity.ok(pricingEngineService.getPriceQuote(groupId, slotStart, userId));
+        inventoryService.getVisibleResourceGroup(groupId);
+        String audience = AuthContext.current().map(actor -> actor.userId().toString()).orElse("ANONYMOUS");
+        return ResponseEntity.ok().cacheControl(CacheControl.noStore())
+                .body(pricingEngineService.getPriceQuote(groupId, slotStart, audience));
     }
 }
 

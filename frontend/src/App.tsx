@@ -1,4 +1,4 @@
-import React, { Suspense, lazy, useCallback, useEffect, useMemo, useState } from 'react';
+import React, { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AnimatePresence, MotionConfig, motion } from 'framer-motion';
 import {
   Award,
@@ -28,11 +28,8 @@ import type {
   VenueProviderInfo,
 } from './types/marketplace';
 import {
-  CURATED_SPORTS,
   applyGalleryMediaToListing,
-  createCuratedListings,
   marketplaceApi,
-  mergeOfflineMediaIntoListings,
   readSavedAuthSession,
   saveAuthSessionToStorage,
 } from './api/marketplaceApi';
@@ -81,8 +78,16 @@ const LoginPage = lazy(() =>
   import('./components/LoginPage').then((m) => ({ default: m.LoginPage }))
 );
 
+const ROLE_PORTAL_PATH: Partial<Record<RoleCode, string>> = {
+  MANAGER: '/portal/lessor',
+  STAFF: '/portal/staff',
+  ACCOUNTANT: '/portal/accountant',
+  ADMIN: '/portal/admin',
+};
+
 function resolvePageFromPath(pathname: string): AppPageId {
   if (pathname === '/login') return 'login';
+  if (Object.values(ROLE_PORTAL_PATH).includes(pathname)) return 'governance';
   if (pathname === '/lessors' || pathname.startsWith('/lessor/')) return 'lessors';
   const found = PAGE_NAV_ITEMS.find((p) => p.path === pathname);
   return found ? found.id : 'home';
@@ -96,74 +101,14 @@ function resolveProviderIdFromPath(pathname: string): string | null {
   return null;
 }
 
-const LESSOR_CUSTOM_LISTINGS_KEY = 'arenapulse_lessor_custom_listings_v1';
-const LESSOR_LISTING_OVERRIDES_KEY = 'arenapulse_lessor_listing_overrides_v1';
-const LESSOR_PROVIDER_OVERRIDES_KEY = 'arenapulse_lessor_provider_overrides_v1';
-
-interface PersistedListingOverride {
-  published?: boolean;
-  basePrice?: number;
-  minPrice?: number;
-  maxPrice?: number;
-  depositPercent?: number;
-  checkinMode?: PublishedListing['checkinMode'];
-  upcomingSlots?: SlotListingQuote[];
-}
-
-function readJsonStorage<T>(key: string, fallback: T): T {
-  if (typeof window === 'undefined') return fallback;
-  try {
-    const raw = window.localStorage.getItem(key);
-    return raw ? (JSON.parse(raw) as T) : fallback;
-  } catch {
-    return fallback;
-  }
-}
-
-function writeJsonStorage<T>(key: string, value: T): void {
-  if (typeof window === 'undefined') return;
-  try {
-    window.localStorage.setItem(key, JSON.stringify(value));
-  } catch {
-    // ignore storage quota errors
-  }
-}
-
-function hydrateAllLessorCustomizations(baseListings: PublishedListing[]): PublishedListing[] {
-  const customListings = readJsonStorage<PublishedListing[]>(LESSOR_CUSTOM_LISTINGS_KEY, []);
-  const listingOverrides = readJsonStorage<Record<string, PersistedListingOverride>>(
-    LESSOR_LISTING_OVERRIDES_KEY,
-    {}
-  );
-  const providerOverrides = readJsonStorage<
-    Record<string, Partial<VenueProviderInfo>>
-  >(LESSOR_PROVIDER_OVERRIDES_KEY, {});
-
-  const combined = [
-    ...customListings.filter((c) => !baseListings.some((b) => b.groupId === c.groupId)),
-    ...baseListings,
-  ];
-
-  return hydrateListingsWithLessorServices(combined).map((item) => {
-    const ov = listingOverrides[item.groupId];
-    const pOv = item.provider ? providerOverrides[item.provider.providerId] : undefined;
-    return {
-      ...item,
-      ...(ov ?? {}),
-      provider: item.provider && pOv ? { ...item.provider, ...pOv } : item.provider,
-    };
-  });
-}
-
 export function App() {
   const [currentPage, setCurrentPage] = useState<AppPageId>(() =>
     resolvePageFromPath(window.location.pathname)
   );
 
-  const [sports, setSports] = useState<SportTypeItem[]>(CURATED_SPORTS);
-  const [listings, setListings] = useState<PublishedListing[]>(() =>
-    hydrateAllLessorCustomizations(mergeOfflineMediaIntoListings(createCuratedListings()))
-  );
+  const [sports, setSports] = useState<SportTypeItem[]>([]);
+  const [listings, setListings] = useState<PublishedListing[]>([]);
+  const [operationNotice, setOperationNotice] = useState<string | null>(null);
 
   const publicListings = useMemo(
     () => listings.filter((l) => l.published !== false),
@@ -201,7 +146,7 @@ export function App() {
   });
   const [returnPageAfterLogin, setReturnPageAfterLogin] = useState<AppPageId>('home');
   const [chatOpen, setChatOpen] = useState<boolean>(false);
-  const [staffChatEnabled, setStaffChatEnabled] = useState<boolean>(true);
+
   const [selectedProviderId, setSelectedProviderId] = useState<string | null>(() =>
     resolveProviderIdFromPath(window.location.pathname)
   );
@@ -223,7 +168,7 @@ export function App() {
   const [adminTab, setAdminTab] = useState<AdminHeaderTabId>('OPERATIONS');
 
   const navigateTo = useCallback(
-    (page: AppPageId) => {
+    (page: AppPageId, portalRole: RoleCode = activeRole) => {
       if (page === 'login' && currentPage !== 'login') {
         setReturnPageAfterLogin(currentPage);
       }
@@ -234,13 +179,15 @@ export function App() {
             ? selectedProviderId
               ? `/lessor/${encodeURIComponent(selectedProviderId)}`
               : '/lessors'
-            : (PAGE_NAV_ITEMS.find((p) => p.id === page) ?? PAGE_NAV_ITEMS[0]).path;
+            : page === 'governance' && ROLE_PORTAL_PATH[portalRole]
+              ? ROLE_PORTAL_PATH[portalRole]!
+              : (PAGE_NAV_ITEMS.find((p) => p.id === page) ?? PAGE_NAV_ITEMS[0]).path;
       if (window.location.pathname !== targetPath) {
         window.history.pushState({}, '', targetPath);
       }
       setCurrentPage(page);
     },
-    [currentPage, selectedProviderId]
+    [activeRole, currentPage, selectedProviderId]
   );
 
   useEffect(() => {
@@ -253,40 +200,86 @@ export function App() {
     return () => window.removeEventListener('popstate', onPopState);
   }, []);
 
+  useEffect(() => {
+    const path = window.location.pathname;
+    if (!path.startsWith('/portal/')) return;
+    if (!session || !session.roles.some((grant) => grant.roleCode === activeRole)) {
+      navigateTo('login');
+    } else if (ROLE_PORTAL_PATH[activeRole] !== path) {
+      navigateTo(activeRole === 'USER' ? 'courts' : 'governance');
+    }
+  }, [activeRole, currentPage, navigateTo, session]);
+
+  const tenantId = session?.roles.find(grant => grant.roleCode === activeRole && grant.scope === 'TENANT')?.tenantId;
+  const currentQuoteRequest = useRef(0);
+  const quoteOwner = useRef<string | undefined>(undefined);
+
   const selectSlotAndQuote = useCallback(async (listing: PublishedListing, slotStart: string) => {
-    setActiveListing((prev) => {
-      if (prev && prev.groupId !== listing.groupId) {
-        setSelectedServiceQuantities({});
-      }
-      return listing;
-    });
+    const requestId = ++currentQuoteRequest.current;
+    setActiveListing(listing);
+    setSelectedServiceQuantities({});
     setActiveSlotStart(slotStart);
+    setActiveQuote(null);
     setQuoteLoading(true);
     setHoldResult(null);
     setCancelResult(null);
+    try {
+      const { quote } = await marketplaceApi.getPriceQuote(listing, slotStart);
+      if (currentQuoteRequest.current !== requestId) return;
+      quoteOwner.current = session?.userId;
+      setActiveQuote(quote);
+      setRemainingSeconds(Math.max(0, Math.ceil((Date.parse(quote.expiresAt) - Date.now()) / 1000)));
+      setOperationNotice(null);
+    } catch (error) {
+      if (currentQuoteRequest.current === requestId) {
+        setOperationNotice(error instanceof Error ? error.message : 'Chưa tải được giá sân.');
+      }
+    } finally {
+      if (currentQuoteRequest.current === requestId) setQuoteLoading(false);
+    }
+  }, [session?.userId]);
 
-    const { quote } = await marketplaceApi.getPriceQuote(listing, slotStart);
-    setActiveQuote(quote);
-    setRemainingSeconds(600);
-    setQuoteLoading(false);
-  }, []);
+  const refreshListings = useCallback(async () => {
+    const catalogue = await marketplaceApi.checkBackendAndLoadCatalogue();
+    if (!catalogue.live) throw new Error('Chưa tải được danh mục sân từ hệ thống.');
+    const managed = tenantId ? await marketplaceApi.getManagedListings(tenantId) : [];
+    const byId = new Map(catalogue.listings.map(item => [item.groupId, item]));
+    for (const item of managed) byId.set(item.groupId, item);
+    const current = [...byId.values()];
+    setSports(catalogue.sports);
+    setListings(current);
+    setActiveListing(listing => listing ? (byId.get(listing.groupId) ?? null) : null);
+    return current;
+  }, [tenantId]);
 
   useEffect(() => {
-    let mounted = true;
-    marketplaceApi.checkBackendAndLoadCatalogue().then(({ sports: sp, listings: ls }) => {
-      if (!mounted) return;
-      const hydrated = hydrateAllLessorCustomizations(ls);
-      setSports(sp);
-      setListings(hydrated);
-      const firstOpen = hydrated.find((l) => l.published !== false) ?? hydrated[0];
-      if (firstOpen && firstOpen.upcomingSlots.length > 0) {
-        selectSlotAndQuote(firstOpen, firstOpen.upcomingSlots[0].slotStart);
-      }
+    let active = true;
+    refreshListings().then(current => {
+      const suggested = current.find(item => item.published !== false && item.upcomingSlots.length > 0);
+      if (active && suggested && !activeListing) void selectSlotAndQuote(suggested, suggested.upcomingSlots[0].slotStart);
+    }).catch(error => {
+      if (active) setOperationNotice(error.message);
     });
-    return () => {
-      mounted = false;
-    };
-  }, [selectSlotAndQuote]);
+    return () => { active = false; };
+  }, [refreshListings, selectSlotAndQuote]);
+
+  useEffect(() => {
+    if (!session?.accessToken) return;
+    let active = true;
+    marketplaceApi.getCurrentProfile().then(profile => {
+      if (!active) return;
+      setSession(current => current?.userId === profile.id ? { ...current, roles: profile.roles } : null);
+      setActiveRole(current => current === 'USER' || profile.roles.some(grant => grant.roleCode === current)
+        ? current : profile.roles[0]?.roleCode ?? 'USER');
+    }).catch(() => {
+      if (!active) return;
+      marketplaceApi.setAccessToken(null);
+      saveAuthSessionToStorage(null, 'USER');
+      setSession(null);
+      setActiveRole('USER');
+    });
+    return () => { active = false; };
+  }, [session?.accessToken]);
 
   const shouldTickCountdown =
     (currentPage === 'checkout' || Boolean(holdResult)) &&
@@ -324,6 +317,10 @@ export function App() {
       return;
     }
     if (!activeListing || !activeQuote || remainingSeconds === 0) return;
+    if (quoteOwner.current !== session.userId && activeSlotStart) {
+      await selectSlotAndQuote(activeListing, activeSlotStart);
+      throw new Error('Giá đã được cập nhật theo phiên của bạn. Vui lòng kiểm tra lại rồi giữ sân.');
+    }
     setBusyStep('HOLD');
     try {
       const { hold } = await marketplaceApi.holdCourtSlot(activeListing, activeQuote, session.userId);
@@ -397,31 +394,21 @@ export function App() {
     });
   };
 
-  const handleUpdateListingServices = (
-    groupId: string,
-    nextServices: CourtServiceOption[]
-  ) => {
-    savePersistedLessorServicesForGroup(groupId, nextServices);
-    setListings((prev) =>
-      prev.map((item) =>
-        item.groupId === groupId ? { ...item, addOnServices: nextServices } : item
-      )
-    );
-    setActiveListing((prev) =>
-      prev && prev.groupId === groupId ? { ...prev, addOnServices: nextServices } : prev
-    );
-    if (activeListing?.groupId === groupId) {
-      const validIds = new Set(
-        nextServices.filter((s) => s.enabled !== false).map((s) => s.id)
-      );
-      setSelectedServiceQuantities((prev) => {
-        const cleaned: Record<string, number> = {};
-        for (const [k, v] of Object.entries(prev)) {
-          if (validIds.has(k)) cleaned[k] = v;
-        }
-        return cleaned;
-      });
+  const runVenueWrite = async (write: () => Promise<unknown>, success: string) => {
+    try {
+      await write();
+      setOperationNotice(success);
+    } catch (error) {
+      setOperationNotice(error instanceof Error ? error.message : 'Chưa ghi được dữ liệu.');
+      throw error;
     }
+  };
+
+  const handleUpdateListingServices = (groupId: string, services: CourtServiceOption[]) => {
+    void runVenueWrite(async () => {
+      await marketplaceApi.updateGroupSettings(groupId, { addOnServices: services });
+      await refreshListings();
+    }, 'Đã lưu dịch vụ vào hệ thống.').catch(() => {});
   };
 
   const handleClearServices = () => {
@@ -489,127 +476,49 @@ export function App() {
     navigateTo('courts');
   };
 
-  const persistListingOverride = (groupId: string, patch: PersistedListingOverride) => {
-    const existing = readJsonStorage<Record<string, PersistedListingOverride>>(
-      LESSOR_LISTING_OVERRIDES_KEY,
-      {}
-    );
-    writeJsonStorage(LESSOR_LISTING_OVERRIDES_KEY, {
-      ...existing,
-      [groupId]: { ...(existing[groupId] ?? {}), ...patch },
-    });
-  };
-
-  const handleUpdateListingPricing = (
-    groupId: string,
-    patch: {
-      basePrice: number;
-      minPrice: number;
-      maxPrice: number;
-      depositPercent: number;
-      checkinMode?: 'QR_STAFF' | 'PIN_COUNTER' | 'MANUAL';
-    }
-  ) => {
-    const applyPatch = (listing: PublishedListing): PublishedListing => {
-      if (listing.groupId !== groupId) return listing;
-      const clamp = (raw: number) =>
-        Math.min(patch.maxPrice, Math.max(patch.minPrice, Math.round(raw / 1000) * 1000));
-      const updatedUpcoming = listing.upcomingSlots.map((slot) => ({
-        ...slot,
-        currentDynamicPrice:
-          slot.timePeriod === 'MORNING'
-            ? clamp(patch.basePrice * 0.85)
-            : slot.timePeriod === 'EVENING'
-              ? clamp(patch.basePrice * 1.28)
-              : clamp(patch.basePrice),
-      }));
-      const nextCheckinMode = patch.checkinMode ?? listing.checkinMode;
-      persistListingOverride(groupId, {
-        basePrice: patch.basePrice,
-        minPrice: patch.minPrice,
-        maxPrice: patch.maxPrice,
-        depositPercent: patch.depositPercent,
-        checkinMode: nextCheckinMode,
-        upcomingSlots: updatedUpcoming,
-      });
-      return {
-        ...listing,
-        basePrice: patch.basePrice,
-        minPrice: patch.minPrice,
-        maxPrice: patch.maxPrice,
-        depositPercent: patch.depositPercent,
-        checkinMode: nextCheckinMode,
-        upcomingSlots: updatedUpcoming,
-      };
-    };
-
-    setListings((prev) => prev.map(applyPatch));
-    setActiveListing((prev) => {
-      if (!prev) return prev;
-      const next = applyPatch(prev);
-      if (next.groupId === groupId && activeSlotStart) {
-        selectSlotAndQuote(next, activeSlotStart);
-      }
-      return next;
-    });
+  const handleUpdateListingPricing = (groupId: string, patch: {
+    basePrice: number; minPrice: number; maxPrice: number; depositPercent: number;
+    checkinMode?: 'QR_STAFF' | 'PIN_COUNTER' | 'MANUAL';
+  }) => {
+    void runVenueWrite(async () => {
+      await marketplaceApi.updateGroupSettings(groupId, patch);
+      const fresh = await refreshListings();
+      const listing = fresh.find(item => item.groupId === groupId);
+      if (listing && activeListing?.groupId === groupId && activeSlotStart) void selectSlotAndQuote(listing, activeSlotStart);
+    }, 'Đã lưu cấu hình sân.').catch(() => {});
   };
 
   const handleToggleListingPublished = (groupId: string) => {
-    setListings((prev) =>
-      prev.map((item) => {
-        if (item.groupId !== groupId) return item;
-        const nextPublished = item.published === false ? true : false;
-        persistListingOverride(groupId, { published: nextPublished });
-        return { ...item, published: nextPublished };
-      })
-    );
+    const listing = listings.find(item => item.groupId === groupId);
+    if (!listing) return;
+    void runVenueWrite(async () => {
+      await marketplaceApi.publishGroup(groupId, listing.published === false);
+      await refreshListings();
+    }, 'Đã cập nhật trạng thái công bố.').catch(() => {});
   };
 
-  const handleUpdateListingSlots = (groupId: string, nextSlots: SlotListingQuote[]) => {
-    persistListingOverride(groupId, { upcomingSlots: nextSlots });
-    setListings((prev) =>
-      prev.map((item) =>
-        item.groupId === groupId ? { ...item, upcomingSlots: nextSlots } : item
-      )
-    );
-    setActiveListing((prev) =>
-      prev && prev.groupId === groupId ? { ...prev, upcomingSlots: nextSlots } : prev
-    );
-  };
+  const handleCreateListingSlot = (groupId: string, start: string, end: string) =>
+    runVenueWrite(async () => {
+      await marketplaceApi.createBusinessSlot(groupId, start, end);
+      await refreshListings();
+    }, 'Đã tạo ca sân.');
 
-  const handleCreateNewListing = (newListing: PublishedListing) => {
-    const savedCustom = readJsonStorage<PublishedListing[]>(LESSOR_CUSTOM_LISTINGS_KEY, []);
-    writeJsonStorage(LESSOR_CUSTOM_LISTINGS_KEY, [newListing, ...savedCustom]);
-    setListings((prev) => [newListing, ...prev]);
+  const handleCreateNewListing = async (listing: PublishedListing) => {
+    if (!listing.tenantId) throw new Error('Tài khoản cần quyền quản lý cơ sở.');
+    await runVenueWrite(async () => {
+      await marketplaceApi.createManagedCourt(listing, listing.tenantId);
+      await refreshListings();
+    }, 'Đã tạo cụm sân nháp. Hãy tạo ca trước khi công bố.');
   };
 
   const handleUpdateProviderProfile = (
-    providerId: string,
-    patch: Partial<Pick<VenueProviderInfo, 'shopSlogan' | 'voucherLabel' | 'responseTimeLabel'>>
+    _providerId: string, _patch: Partial<Pick<VenueProviderInfo, 'shopSlogan' | 'voucherLabel' | 'responseTimeLabel'>>
   ) => {
-    const savedProv = readJsonStorage<Record<string, Partial<VenueProviderInfo>>>(
-      LESSOR_PROVIDER_OVERRIDES_KEY,
-      {}
-    );
-    writeJsonStorage(LESSOR_PROVIDER_OVERRIDES_KEY, {
-      ...savedProv,
-      [providerId]: { ...(savedProv[providerId] ?? {}), ...patch },
-    });
-    setListings((prev) =>
-      prev.map((item) =>
-        item.provider?.providerId === providerId
-          ? { ...item, provider: { ...item.provider, ...patch } }
-          : item
-      )
-    );
-    setActiveListing((prev) =>
-      prev && prev.provider?.providerId === providerId
-        ? { ...prev, provider: { ...prev.provider, ...patch } }
-        : prev
-    );
+    setOperationNotice('Hệ thống chưa hỗ trợ lưu nội dung quảng bá gian hàng.');
   };
 
   const handleLogoutSession = () => {
+    void marketplaceApi.logout().catch(() => {});
     marketplaceApi.setAccessToken(null);
     saveAuthSessionToStorage(null, 'USER');
     setSession(null);
@@ -704,6 +613,12 @@ export function App() {
             </div>
           }
         >
+          {operationNotice && (
+            <div className="fixed bottom-5 left-5 right-5 z-[80] flex items-center justify-between gap-3 rounded-xl border border-neutral-300 bg-white p-3 text-sm shadow-lg sm:right-auto" role="status">
+              {operationNotice}
+              <button type="button" onClick={() => setOperationNotice(null)} aria-label="Đóng thông báo">×</button>
+            </div>
+          )}
           <AnimatePresence
             mode="wait"
             onExitComplete={() => {
@@ -949,8 +864,15 @@ export function App() {
                   }}
                   sports={sports}
                   onAddSportDemo={handleAddSportDemo}
-                  staffChatEnabled={staffChatEnabled}
-                  onToggleStaffChat={() => setStaffChatEnabled((v) => !v)}
+                  staffChatEnabled={listings.find((listing) => listing.tenantId === tenantId)?.staffChatEnabled ?? false}
+                  onToggleStaffChat={() => {
+                    if (!tenantId) return;
+                    const enabled = listings.find((listing) => listing.tenantId === tenantId)?.staffChatEnabled ?? false;
+                    void runVenueWrite(async () => {
+                      await marketplaceApi.updateVenue(tenantId, { isStaffChatEnabled: !enabled });
+                      await refreshListings();
+                    }, 'Đã lưu cài đặt chat cho cơ sở.').catch(() => {});
+                  }}
                   onOpenChatDrawer={() => setChatOpen(true)}
                   session={session}
                   authModalOpen={false}
@@ -973,7 +895,7 @@ export function App() {
                   onUpdateListingServices={handleUpdateListingServices}
                   onUpdateListingPricing={handleUpdateListingPricing}
                   onToggleListingPublished={handleToggleListingPublished}
-                  onUpdateListingSlots={handleUpdateListingSlots}
+                  onCreateListingSlot={handleCreateListingSlot}
                   onCreateNewListing={handleCreateNewListing}
                   onUpdateProviderProfile={handleUpdateProviderProfile}
                   onUploadCourtPhoto={handleUploadCourtPhoto}
@@ -1007,9 +929,9 @@ export function App() {
                       resolvedRole !== 'USER' &&
                       (returnPageAfterLogin === 'home' || returnPageAfterLogin === 'login')
                     ) {
-                      navigateTo('governance');
+                      navigateTo('governance', resolvedRole);
                     } else {
-                      navigateTo(returnPageAfterLogin);
+                      navigateTo(returnPageAfterLogin, resolvedRole);
                     }
                   }}
                   onLogout={handleLogoutSession}
@@ -1187,11 +1109,7 @@ export function App() {
           contextListing={chatContextListing ?? activeListing}
           listings={listings}
           activeRole={activeRole}
-          staffChatEnabled={staffChatEnabled}
           session={session}
-          onOpenLessorShop={handleOpenLessorShop}
-          onSelectCourtFromChat={(listing) => handleSelectCourtFromExternal(listing)}
-          onOpenSafetyPolicy={() => navigateTo('announcements')}
         />
       )}
     </div>

@@ -172,54 +172,25 @@ export const FairwayHeader: React.FC<FairwayHeaderProps> = ({
   const [accountTickets, setAccountTickets] = useState<MyTicketRecord[]>([]);
   const [expandedTicketId, setExpandedTicketId] = useState<string | null>(null);
 
-  const loadAccountPaymentHistory = () => {
-    if (!session?.userId) {
-      setAccountTickets([]);
-      return;
-    }
-    marketplaceApi
-      .getPaymentHistory()
-      .then((list) => setAccountTickets(list))
-      .catch(() => {
-        // Keep current cached history if request fails
+  useEffect(() => {
+    setAccountTickets([]);
+    setExpandedTicketId(null);
+    if (!session?.userId || !accountMenuOpen) return;
+    let active = true;
+    const loadPaymentHistory = () => {
+      marketplaceApi.getPaymentHistory().then(tickets => {
+        if (active) setAccountTickets(tickets);
+      }).catch(() => {
+        if (active) setAccountTickets([]);
       });
-  };
-
-  useEffect(() => {
-    loadAccountPaymentHistory();
+    };
+    loadPaymentHistory();
+    window.addEventListener('arenapulse:tickets-updated', loadPaymentHistory);
+    return () => {
+      active = false;
+      window.removeEventListener('arenapulse:tickets-updated', loadPaymentHistory);
+    };
   }, [session?.userId, accountMenuOpen]);
-
-  useEffect(() => {
-    const onTicketsUpdated = () => loadAccountPaymentHistory();
-    window.addEventListener('arenapulse:tickets-updated', onTicketsUpdated);
-    return () => window.removeEventListener('arenapulse:tickets-updated', onTicketsUpdated);
-  }, [session?.userId]);
-
-  const [accountTickets, setAccountTickets] = useState<MyTicketRecord[]>([]);
-  const [expandedTicketId, setExpandedTicketId] = useState<string | null>(null);
-
-  const loadAccountPaymentHistory = () => {
-    if (!session?.userId) {
-      setAccountTickets([]);
-      return;
-    }
-    marketplaceApi
-      .getPaymentHistory()
-      .then((list) => setAccountTickets(list))
-      .catch(() => {
-        // Keep current cached history if request fails
-      });
-  };
-
-  useEffect(() => {
-    loadAccountPaymentHistory();
-  }, [session?.userId, accountMenuOpen]);
-
-  useEffect(() => {
-    const onTicketsUpdated = () => loadAccountPaymentHistory();
-    window.addEventListener('arenapulse:tickets-updated', onTicketsUpdated);
-    return () => window.removeEventListener('arenapulse:tickets-updated', onTicketsUpdated);
-  }, [session?.userId]);
 
   const nativeRole: RoleCode = session?.roles?.[0]?.roleCode ?? 'USER';
   const isInternalWorkspaceMode = Boolean(session && activeRole !== 'USER');

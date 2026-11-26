@@ -1,7 +1,6 @@
 package com.yieldengine.service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.yieldengine.config.CacheConfig;
 import com.yieldengine.dto.PricingAuditDto;
 import com.yieldengine.dto.response.PriceQuoteResponse;
 import com.yieldengine.entity.*;
@@ -12,8 +11,6 @@ import com.yieldengine.utils.MoneyMathUtils;
 import com.yieldengine.utils.TimeAndRangeUtils;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.cache.annotation.CachePut;
-import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -42,7 +39,6 @@ public class PricingEngineService {
     private final ObjectMapper objectMapper;
 
     @Transactional(readOnly = true)
-    @Cacheable(value = CacheConfig.CACHE_SLOT_PRICES, key = "#groupId.toString() + '_' + #slotStart.toString()")
     public PriceQuoteResponse getPriceQuote(UUID groupId, Instant slotStart, String userId) {
         SlotId slotId = new SlotId(groupId, slotStart);
         TimeSlot timeSlot = timeSlotRepository.findById(slotId)
@@ -122,7 +118,6 @@ public class PricingEngineService {
     }
 
     @Transactional
-    @CachePut(value = CacheConfig.CACHE_SLOT_PRICES, key = "#timeSlot.groupId.toString() + '_' + #timeSlot.slotStart.toString()")
     public PriceQuoteResponse recalculateAndSnapshot(TimeSlot timeSlot) {
         Instant now = Instant.now();
         PricingAuditDto audit = calculatePrice(timeSlot, now);

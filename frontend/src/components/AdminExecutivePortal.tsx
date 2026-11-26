@@ -25,7 +25,7 @@ import type {
   SportTypeItem,
   VenueProviderInfo,
 } from '../types/marketplace';
-import { ALL_LESSOR_PROVIDERS, formatVnd, marketplaceApi } from '../api/marketplaceApi';
+import { formatVnd, marketplaceApi } from '../api/marketplaceApi';
 import { EXPO_EASE, ScrollReveal } from './motionPrimitives';
 import { ActionButton } from './FairwayControls';
 import { AdminPlatformDashboard } from './AdminPlatformDashboard';
@@ -186,6 +186,7 @@ export const AdminExecutivePortal: React.FC<AdminExecutivePortalProps> = ({
   const [platformDays, setPlatformDays] = useState<number>(7);
   const [platformAnalytics, setPlatformAnalytics] = useState<AnalyticsDashboardData | null>(null);
   const [reindexingEs, setReindexingEs] = useState<boolean>(false);
+  const [tenants, setTenants] = useState<import('../types/marketplace').AdminTenantOverview[]>([]);
   const [accounts, setAccounts] = useState<AdminUserAccount[]>([]);
   const [accountsLive, setAccountsLive] = useState<boolean>(false);
   const [accountsLoading, setAccountsLoading] = useState<boolean>(false);
@@ -196,6 +197,8 @@ export const AdminExecutivePortal: React.FC<AdminExecutivePortalProps> = ({
     try {
       const data = await marketplaceApi.fetchPlatformAnalytics(platformDays, listings);
       setPlatformAnalytics(data);
+    } catch {
+      setPlatformAnalytics(null);
     } finally {
       setReindexingEs(false);
     }
@@ -215,6 +218,9 @@ export const AdminExecutivePortal: React.FC<AdminExecutivePortalProps> = ({
             // Silently ignore if backend audit endpoint is unavailable
           });
       }
+    } catch {
+      setAccounts([]);
+      setAccountsLive(false);
     } finally {
       setAccountsLoading(false);
     }
@@ -224,6 +230,8 @@ export const AdminExecutivePortal: React.FC<AdminExecutivePortalProps> = ({
     let active = true;
     marketplaceApi.fetchPlatformAnalytics(platformDays, listings).then((data) => {
       if (active) setPlatformAnalytics(data);
+    }).catch(() => {
+      if (active) setPlatformAnalytics(null);
     });
     return () => {
       active = false;
@@ -266,25 +274,23 @@ export const AdminExecutivePortal: React.FC<AdminExecutivePortalProps> = ({
     };
   }, [accounts]);
 
-  const platformStats = useMemo(() => {
-    const providerIds = new Set(
-      listings.map((l) => l.provider?.providerId).filter(Boolean) as string[]
-    );
-    const totalProviders = Math.max(ALL_LESSOR_PROVIDERS.length, providerIds.size);
-    const publishedCount = listings.filter((l) => l.published !== false).length;
-    const pendingKycCount = kycQueue.filter((k) => k.status === 'PENDING_REVIEW').length;
-    const totalPhysicalCourts = listings.reduce(
-      (sum, l) => sum + (l.upcomingSlots[0]?.totalCapacity ?? 4),
-      0
-    );
-    return {
-      totalProviders,
-      publishedCount,
-      totalGroups: listings.length,
-      pendingKycCount,
-      totalPhysicalCourts,
-    };
-  }, [listings, kycQueue]);
+  useEffect(() => {
+    let active = true;
+    marketplaceApi.fetchAdminTenantsStrict().then((rows) => {
+      if (active) setTenants(rows);
+    }).catch(() => {
+      if (active) setTenants([]);
+    });
+    return () => { active = false; };
+  }, [activeRole]);
+
+  const platformStats = useMemo(() => ({
+    totalProviders: tenants.length,
+    publishedCount: tenants.reduce((total, tenant) => total + tenant.publishedGroupCount, 0),
+    totalGroups: tenants.reduce((total, tenant) => total + tenant.groupCount, 0),
+    pendingKycCount: kycQueue.filter((application) => application.status === 'PENDING_REVIEW').length,
+    totalPhysicalCourts: tenants.reduce((total, tenant) => total + tenant.unitCount, 0),
+  }), [tenants, kycQueue]);
 
   const navItems: {
     id: AdminHeaderTabId;
@@ -470,26 +476,11 @@ export const AdminExecutivePortal: React.FC<AdminExecutivePortalProps> = ({
                 <span className="font-bold text-[#0F172A]">Trạng thái Hệ thống Sàn</span>
                 <span className="inline-flex items-center gap-1 rounded-full bg-[#E6F1F8] px-2.5 py-0.5 text-[10px] font-bold text-[#0E4F7E]">
                   <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
-                  100%
+                  {platformAnalytics ? 'Có dữ liệu' : 'Đang tải'}
                 </span>
               </div>
 
               <div className="space-y-2">
-                <div className="flex items-center justify-between rounded-xl bg-[#F8FAFC] px-3 py-2 border border-neutral-200/60">
-                  <span className="text-neutral-600">Chat nhân viên tại sân</span>
-                  <button
-                    type="button"
-                    onClick={onToggleStaffChat}
-                    className={`rounded-full px-2.5 py-0.5 text-[10px] font-bold cursor-pointer ${
-                      staffChatEnabled
-                        ? 'bg-[#E6F1F8] text-[#0E4F7E]'
-                        : 'bg-rose-50 text-rose-700'
-                    }`}
-                  >
-                    {staffChatEnabled ? 'CHO PHÉP' : 'TẠM KHÓA'}
-                  </button>
-                </div>
-
                 <div className="flex items-center justify-between rounded-xl bg-[#F8FAFC] px-3 py-2 border border-neutral-200/60">
                   <span className="text-neutral-600">Sổ cái Kế toán Kép</span>
                   <span className="font-bold text-[#0F766E]">
@@ -782,7 +773,7 @@ export const AdminExecutivePortal: React.FC<AdminExecutivePortalProps> = ({
                     </h3>
                   </div>
                   <span className="rounded-full bg-teal-50 px-3 py-1 text-xs font-bold text-[#0F766E]">
-                    {reconciliation?.doubleEntryBalanced ?? true ? '✓ Cân bằng' : 'Cần kiểm tra'}
+                    {reconciliation ? (reconciliation.doubleEntryBalanced ? '✓ Cân bằng' : 'Cần kiểm tra') : 'Chưa tải được sổ cái'}
                   </span>
                 </div>
 
@@ -790,37 +781,37 @@ export const AdminExecutivePortal: React.FC<AdminExecutivePortalProps> = ({
                   <div className="rounded-2xl bg-[#F8F9FA] p-4 border border-neutral-200/60 flex justify-between items-center">
                     <span className="text-xs text-neutral-500">Tổng thu hộ ký quỹ</span>
                     <strong className="tabular-nums text-base text-[#0F172A]">
-                      {formatVnd(reconciliation?.totalEscrowCredits ?? 48_650_000)}
+                      {reconciliation ? formatVnd(reconciliation.totalEscrowCredits) : '—'}
                     </strong>
                   </div>
                   <div className="rounded-2xl bg-teal-50/70 p-4 border border-[#0F766E]/20 flex justify-between items-center">
                     <span className="text-xs text-[#0F766E] font-semibold">Hoa hồng sàn thu về</span>
                     <strong className="tabular-nums text-base text-[#0F766E]">
-                      {formatVnd(reconciliation?.totalPlatformCommission ?? 4_865_000)}
+                      {reconciliation ? formatVnd(reconciliation.totalPlatformCommission) : '—'}
                     </strong>
                   </div>
                   <div className="rounded-2xl bg-[#F4F8FB] p-4 border border-[#0E4F7E]/20 flex justify-between items-center">
                     <span className="text-xs text-[#0E4F7E] font-semibold">Công nợ trả chủ sân</span>
                     <strong className="tabular-nums text-base text-[#0E4F7E]">
-                      {formatVnd(reconciliation?.totalVenuePayable ?? 40_935_000)}
+                      {reconciliation ? formatVnd(reconciliation.totalVenuePayable) : '—'}
                     </strong>
                   </div>
                   <div className="rounded-2xl bg-[#F8F9FA] p-4 border border-neutral-200/60 flex justify-between items-center">
                     <span className="text-xs text-neutral-500">Đã hoàn trả khách hủy</span>
                     <strong className="tabular-nums text-sm text-[#0F766E]">
-                      {formatVnd(reconciliation?.totalCustomerRefunds ?? 2_850_000)}
+                      {reconciliation ? formatVnd(reconciliation.totalCustomerRefunds) : '—'}
                     </strong>
                   </div>
                   <div className="rounded-2xl bg-[#F8F9FA] p-4 border border-neutral-200/60 flex justify-between items-center">
                     <span className="text-xs text-neutral-500">Cọc khấu trừ bỏ lịch</span>
                     <strong className="tabular-nums text-sm text-neutral-800">
-                      {formatVnd(reconciliation?.totalForfeitedDeposits ?? 3_420_000)}
+                      {reconciliation ? formatVnd(reconciliation.totalForfeitedDeposits) : '—'}
                     </strong>
                   </div>
                   <div className="rounded-2xl bg-amber-50/70 p-4 border border-amber-200/80 flex justify-between items-center">
                     <span className="text-xs text-amber-900 font-semibold">Tiền còn phải hoàn</span>
                     <strong className="tabular-nums text-sm text-amber-900">
-                      {formatVnd(reconciliation?.totalCustomerRefundsPending ?? 0)}
+                      {reconciliation ? formatVnd(reconciliation.totalCustomerRefundsPending) : '—'}
                     </strong>
                   </div>
                 </div>
@@ -829,32 +820,32 @@ export const AdminExecutivePortal: React.FC<AdminExecutivePortalProps> = ({
               <div className="lg:col-span-7 overflow-hidden rounded-[26px] border border-neutral-200/90 bg-white shadow-xs">
                 <div className="border-b border-neutral-100 p-6">
                   <h4 className="text-base font-bold text-[#0F172A]">
-                    Biểu phí Hoa hồng Hợp đồng theo Đối tác Chủ sân ({ALL_LESSOR_PROVIDERS.length})
+                    Biểu phí Hoa hồng Hợp đồng theo Đối tác Chủ sân ({tenants.length})
                   </h4>
                   <p className="mt-0.5 text-xs text-neutral-500">
                     Khớp quy tắc không chồng chéo thời gian hiệu lực (`commission_rules`) trên cơ sở dữ liệu.
                   </p>
                 </div>
                 <div className="divide-y divide-neutral-100">
-                  {ALL_LESSOR_PROVIDERS.map((prov) => (
+                  {tenants.map((prov) => (
                     <div
-                      key={prov.providerId}
+                      key={prov.id}
                       className="flex flex-wrap items-center justify-between gap-3 px-6 py-4 text-xs hover:bg-[#F8FAFC]"
                     >
                       <div>
-                        <div className="font-bold text-[#0F172A]">{prov.providerName}</div>
+                        <div className="font-bold text-[#0F172A]">{prov.name}</div>
                         <div className="text-[11px] text-neutral-500">
-                          {prov.district}, {prov.city} • {prov.legalEntityType}
+                          {prov.address}
                         </div>
                       </div>
                       <div className="flex items-center gap-3">
                         <span className="rounded-full bg-[#E6F1F8] px-3 py-1 tabular-nums font-bold text-[#0E4F7E]">
-                          Hoa hồng: {prov.commissionRatePct}% / đơn
+                          Hoa hồng: {prov.commissionRatePercent}% / đơn
                         </span>
                         {onOpenPublicShop && (
                           <button
                             type="button"
-                            onClick={() => onOpenPublicShop(prov.providerId)}
+                            onClick={() => onOpenPublicShop(prov.id)}
                             className="font-semibold text-[#0E4F7E] hover:underline cursor-pointer"
                           >
                             Hồ sơ ↗

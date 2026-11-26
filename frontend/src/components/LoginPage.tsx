@@ -83,7 +83,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({
     setErrorMsg(null);
     setSubmitting(true);
     try {
-      const auth = await marketplaceApi.loginOrRegisterDemo(
+      const auth = await marketplaceApi.authenticate(
         username.trim(),
         password,
         authTab

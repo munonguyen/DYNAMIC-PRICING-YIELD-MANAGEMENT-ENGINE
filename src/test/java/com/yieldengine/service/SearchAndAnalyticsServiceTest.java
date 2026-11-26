@@ -131,7 +131,7 @@ class SearchAndAnalyticsServiceTest {
     }
 
     @Test
-    void testElasticsearchAnalyticsAggregationAndCourtSearch() {
+    void dashboardUsesPostgresEvenWhenCourtSearchUsesElasticsearch() {
         ElasticsearchProperties props = new ElasticsearchProperties();
         props.setEnabled(true);
         props.setUris("http://localhost:" + esPort);
@@ -142,13 +142,13 @@ class SearchAndAnalyticsServiceTest {
         UUID tenantId = UUID.fromString("00000000-0000-0000-0000-000000000001");
         AnalyticsDashboardResponse resp = syncService.getDashboardAnalytics("LESSOR", tenantId, 7);
 
-        assertEquals("ELASTICSEARCH_CQRS", resp.dataSource());
-        assertEquals(4_200_000L, resp.grossRevenue());
-        assertEquals(1_050_000L, resp.escrowHeld());
-        assertEquals(420_000L, resp.commissionAmount());
-        assertEquals(12, resp.totalBookings());
-        assertEquals(3, resp.pendingCheckins());
-        assertFalse(resp.channelBreakdown().isEmpty());
+        assertEquals("POSTGRESQL_DB", resp.dataSource());
+        assertEquals(0L, resp.grossRevenue());
+        assertEquals(0L, resp.escrowHeld());
+        assertEquals(0L, resp.commissionAmount());
+        assertEquals(0, resp.totalBookings());
+        assertEquals(0, resp.pendingCheckins());
+        assertEquals(0, resp.channelBreakdown().size());
 
         CourtSearchResponse searchResp = syncService.searchCourts("Pickleball", "PICKLEBALL", null);
         assertEquals("ELASTICSEARCH_CQRS", searchResp.dataSource());

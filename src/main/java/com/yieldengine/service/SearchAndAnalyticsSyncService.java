@@ -1,5 +1,7 @@
 package com.yieldengine.service;
 
+import com.yieldengine.utils.CommonTextAndPageUtils;
+
 import com.fasterxml.jackson.databind.JsonNode;
 import com.yieldengine.dto.SlotOccupancyChangedEvent;
 import com.yieldengine.record.analytics.IndexDoc;
@@ -110,15 +112,6 @@ public class SearchAndAnalyticsSyncService implements ApplicationRunner {
         int clampedDays = Math.min(30, Math.max(3, days));
         long t0 = System.currentTimeMillis();
 
-        // 1. Attempt Elasticsearch CQRS Aggregation Pipeline first
-        if (esGateway.isEnabled() && esGateway.isHealthy()) {
-            AnalyticsDashboardResponse esResp = queryAnalyticsFromElasticsearch(scope, tenantId, clampedDays, t0);
-            if (esResp != null) {
-                return esResp;
-            }
-        }
-
-        // 2. Real PostgreSQL Database Fallback (Zero synthetic data)
         return queryAnalyticsFromPostgres(scope, tenantId, clampedDays, t0);
     }
 
@@ -141,122 +134,6 @@ public class SearchAndAnalyticsSyncService implements ApplicationRunner {
     // ---------------------------------------------------------------------------------
     // ELASTICSEARCH AGGREGATION QUERIES
     // ---------------------------------------------------------------------------------
-    private AnalyticsDashboardResponse queryAnalyticsFromElasticsearch(
-            String scope, UUID tenantId, int days, long startMs
-    ) {
-        List<Map<String, Object>> filters = new ArrayList<>();
-        filters.add(Map.of("range", Map.of("slotStart", Map.of("gte", "now-" + days + "d/d"))));
-        if (tenantId != null) {
-            filters.add(Map.of("term", Map.of("tenantId", tenantId.toString())));
-        }
-
-        Map<String, Object> dsl = new LinkedHashMap<>();
-        dsl.put("size", 0);
-        dsl.put("query", Map.of("bool", Map.of("filter", filters)));
-
-        Map<String, Object> aggs = new LinkedHashMap<>();
-        aggs.put("gross_revenue", Map.of("sum", Map.of("field", "lockedPrice")));
-        aggs.put("commission_sum", Map.of("sum", Map.of("field", "commissionAmount")));
-        aggs.put("escrow_held", Map.of(
-                "filter", Map.of("term", Map.of("status", "CONFIRMED")),
-                "aggs", Map.of("amount", Map.of("sum", Map.of("field", "paidAmount")))
-        ));
-        aggs.put("pending_checkins", Map.of(
-                "filter", Map.of("term", Map.of("status", "CONFIRMED"))
-        ));
-        aggs.put("completed_revenue", Map.of(
-                "filter", Map.of("term", Map.of("status", "COMPLETED")),
-                "aggs", Map.of("amount", Map.of("sum", Map.of("field", "lockedPrice")))
-        ));
-        aggs.put("daily_revenue", Map.of(
-                "date_histogram", Map.of(
-                        "field", "slotStart",
-                        "calendar_interval", "day",
-                        "time_zone", "+07:00",
-                        "min_doc_count", 0
-                ),
-                "aggs", Map.of(
-                        "court_rev", Map.of("sum", Map.of("field", "lockedPrice"))
-                )
-        ));
-        aggs.put("hourly_curve", Map.of(
-                "terms", Map.of("field", "slotHour", "size", 24, "order", Map.of("_key", "asc")),
-                "aggs", Map.of("avg_price", Map.of("avg", Map.of("field", "lockedPrice")))
-        ));
-        aggs.put("payment_channels", Map.of(
-                "terms", Map.of("field", "paymentProvider", "size", 10),
-                "aggs", Map.of("channel_sum", Map.of("sum", Map.of("field", "paidAmount")))
-        ));
-        aggs.put("sport_breakdown", Map.of(
-                "terms", Map.of("field", "sportName", "size", 10),
-                "aggs", Map.of("sport_sum", Map.of("sum", Map.of("field", "lockedPrice")))
-        ));
-        aggs.put("court_breakdown", Map.of(
-                "terms", Map.of("field", "groupId", "size", 12),
-                "aggs", Map.of("group_rev", Map.of("sum", Map.of("field", "lockedPrice")))
-        ));
-        dsl.put("aggs", aggs);
-
-        JsonNode root = esGateway.searchIndex(esGateway.getProperties().getBookingsIndex(), dsl);
-        if (root == null || root.path("hits").isMissingNode()) return null;
-
-        long totalHits = root.path("hits").path("total").path("value").asLong(0);
-        JsonNode aggNode = root.path("aggregations");
-
-        long grossRevenue = (long) aggNode.path("gross_revenue").path("value").asDouble(0);
-        long escrowHeld = (long) aggNode.path("escrow_held").path("amount").path("value").asDouble(0);
-        long commission = (long) aggNode.path("commission_sum").path("value").asDouble(0);
-        long completedRev = (long) aggNode.path("completed_revenue").path("amount").path("value").asDouble(0);
-        int pendingCheckins = aggNode.path("pending_checkins").path("doc_count").asInt(0);
-
-        List<DailyRevenuePointDto> dailyList = parseDailyBuckets(aggNode.path("daily_revenue").path("buckets"), days);
-        List<HourlyOccupancyPointDto> hourlyList = parseHourlyBuckets(aggNode.path("hourly_curve").path("buckets"));
-
-        boolean isPlatform = "PLATFORM".equalsIgnoreCase(scope);
-        List<ChannelBreakdownDto> channels = parseBreakdownBuckets(
-                aggNode.path(isPlatform ? "sport_breakdown" : "payment_channels").path("buckets"),
-                isPlatform
-        );
-
-        Map<UUID, Long> revByGroup = new HashMap<>();
-        Map<UUID, Integer> countByGroup = new HashMap<>();
-        for (JsonNode b : aggNode.path("court_breakdown").path("buckets")) {
-            try {
-                UUID gid = UUID.fromString(b.path("key").asText());
-                revByGroup.put(gid, (long) b.path("group_rev").path("value").asDouble(0));
-                countByGroup.put(gid, b.path("doc_count").asInt(0));
-            } catch (IllegalArgumentException ignored) {}
-        }
-
-        List<CourtPerformanceDto> courtPerf = loadCourtPerformanceFromDb(tenantId, revByGroup, countByGroup);
-        List<LessorOrderSummaryDto> recentOrders = loadRecentOrdersFromDb(tenantId);
-
-        int avgOcc = hourlyList.isEmpty() ? 0 : (int) Math.round(
-                hourlyList.stream().mapToInt(HourlyOccupancyPointDto::occupancyPct).average().orElse(0)
-        );
-        long latencyMs = Math.max(1, System.currentTimeMillis() - startMs);
-
-        return new AnalyticsDashboardResponse(
-                scope,
-                tenantId,
-                "ELASTICSEARCH_CQRS",
-                latencyMs,
-                totalHits,
-                grossRevenue,
-                escrowHeld,
-                commission,
-                Math.max(0, completedRev - commission),
-                (int) totalHits,
-                pendingCheckins,
-                avgOcc,
-                dailyList,
-                hourlyList,
-                channels,
-                courtPerf,
-                recentOrders
-        );
-    }
-
     private CourtSearchResponse queryCourtsFromElasticsearch(
             String query, String sportCode, UUID tenantId, long startMs
     ) {
@@ -324,32 +201,37 @@ public class SearchAndAnalyticsSyncService implements ApplicationRunner {
     private AnalyticsDashboardResponse queryAnalyticsFromPostgres(
             String scope, UUID tenantId, int days, long startMs
     ) {
-        Instant cutoff = Instant.now().minusSeconds(days * 86_400L);
-        List<Object> params = new ArrayList<>();
-        params.add(Timestamp.from(cutoff));
+        LocalDate today = LocalDate.now(VN_ZONE);
+        Timestamp from = Timestamp.from(today.minusDays(days - 1).atStartOfDay(VN_ZONE).toInstant());
+        Timestamp until = Timestamp.from(today.plusDays(1).atStartOfDay(VN_ZONE).toInstant());
+        List<Object> params = new ArrayList<>(List.of(from, until));
         String tenantClause = tenantId != null ? " AND r.tenant_id = ? " : "";
         if (tenantId != null) params.add(tenantId);
 
         String sql = """
             SELECT
                 r.id, r.slot_start, r.tenant_id, r.group_id, r.status,
-                r.locked_price, r.deposit_amount,
+                r.locked_price,
                 COALESCE(p.provider, '—') AS payment_provider,
                 COALESCE(p.amount, 0) AS paid_amount,
                 st.name AS sport_name
             FROM reservations r
             JOIN resource_groups rg ON r.group_id = rg.id
             JOIN sport_types st ON rg.sport_type_id = st.id
-            LEFT JOIN payments p ON p.booking_id = r.booking_id AND p.status = 'SUCCESS'
-                AND p.gateway_verified_at IS NOT NULL AND p.payment_type IN ('DEPOSIT', 'FULL_SETTLEMENT')
-            WHERE r.slot_start >= ?
-            """ + tenantClause + " ORDER BY r.slot_start ASC";
+            LEFT JOIN LATERAL (
+                SELECT (array_agg(provider ORDER BY gateway_verified_at DESC))[1] AS provider, sum(amount) AS amount
+                FROM payments WHERE booking_id = r.booking_id AND status = 'SUCCESS'
+                    AND gateway_verified_at IS NOT NULL AND payment_type IN ('DEPOSIT', 'FULL_SETTLEMENT')
+            ) p ON true
+            WHERE r.slot_start >= ? AND r.slot_start < ?
+                AND r.status IN ('CONFIRMED', 'COMPLETED')
+                AND COALESCE(r.pricing_audit->>'source', '') <> 'SEED_V10'
+            """ + tenantClause;
 
         List<Map<String, Object>> rows = jdbcTemplate.queryForList(sql, params.toArray());
 
         long grossRevenue = 0;
         long escrowHeld = 0;
-        long completedRevenue = 0;
         int pendingCheckins = 0;
 
         Map<LocalDate, long[]> dailyAgg = new LinkedHashMap<>();
@@ -364,8 +246,6 @@ public class SearchAndAnalyticsSyncService implements ApplicationRunner {
 
         for (Map<String, Object> row : rows) {
             String status = String.valueOf(row.get("status"));
-            if ("CANCELLED".equals(status) || "EXPIRED".equals(status)) continue;
-
             long lockedPrice = ((Number) row.get("locked_price")).longValue();
             long paidAmt = ((Number) row.get("paid_amount")).longValue();
             Instant slotStart = ((Timestamp) row.get("slot_start")).toInstant();
@@ -377,8 +257,6 @@ public class SearchAndAnalyticsSyncService implements ApplicationRunner {
             if ("CONFIRMED".equals(status)) {
                 escrowHeld += paidAmt;
                 pendingCheckins++;
-            } else if ("COMPLETED".equals(status)) {
-                completedRevenue += lockedPrice;
             }
 
             LocalDate date = slotStart.atZone(VN_ZONE).toLocalDate();
@@ -390,19 +268,40 @@ public class SearchAndAnalyticsSyncService implements ApplicationRunner {
             int hour = slotStart.atZone(VN_ZONE).getHour();
             hourlyPrices.computeIfAbsent(hour, k -> new ArrayList<>()).add(lockedPrice);
 
-            channelSums.merge(formatChannelName(provider), paidAmt, Long::sum);
+            if (paidAmt > 0) channelSums.merge(formatChannelName(provider), paidAmt, Long::sum);
             sportSums.merge(sportName, lockedPrice, Long::sum);
             revByGroup.merge(groupId, lockedPrice, Long::sum);
             countByGroup.merge(groupId, 1, Integer::sum);
         }
 
+        Map<LocalDate, Capacity> capacityByDate = new HashMap<>();
+        Map<Integer, Capacity> capacityByHour = new TreeMap<>();
+        Map<UUID, Capacity> capacityByGroup = new HashMap<>();
+        String capacitySql = """
+            SELECT si.group_id, (si.slot_start AT TIME ZONE 'Asia/Ho_Chi_Minh')::date AS day,
+                   extract(hour FROM si.slot_start AT TIME ZONE 'Asia/Ho_Chi_Minh') AS hour,
+                   sum(si.total_capacity) AS capacity, sum(coalesce(usage.count, 0)) AS booked
+            FROM slot_inventory si
+            LEFT JOIN LATERAL (
+                SELECT count(*) AS count FROM reservations r
+                WHERE r.group_id = si.group_id AND r.slot_start = si.slot_start
+                    AND r.status IN ('CONFIRMED', 'COMPLETED')
+                    AND COALESCE(r.pricing_audit->>'source', '') <> 'SEED_V10'
+            ) usage ON true
+            WHERE si.slot_start >= ? AND si.slot_start < ?
+            """ + (tenantId == null ? "" : " AND si.tenant_id = ? ") + " GROUP BY 1, 2, 3";
+        jdbcTemplate.query(capacitySql, rs -> {
+            Capacity use = new Capacity(rs.getLong("booked"), rs.getLong("capacity"));
+            capacityByDate.merge(rs.getObject("day", LocalDate.class), use, Capacity::add);
+            capacityByHour.merge(rs.getInt("hour"), use, Capacity::add);
+            capacityByGroup.merge(rs.getObject("group_id", UUID.class), use, Capacity::add);
+        }, params.toArray());
         List<DailyRevenuePointDto> dailyList = new ArrayList<>();
-        LocalDate today = LocalDate.now(VN_ZONE);
         for (Map.Entry<LocalDate, long[]> e : dailyAgg.entrySet()) {
             LocalDate d = e.getKey();
             long rev = e.getValue()[0];
             int cnt = (int) e.getValue()[1];
-            int occ = Math.min(100, cnt * 18);
+            int occ = capacityByDate.getOrDefault(d, Capacity.EMPTY).percentage();
             String label = d.equals(today) ? "Hôm nay" : d.format(SHORT_DATE);
             dailyList.add(new DailyRevenuePointDto(
                     d.toString(), label, d.format(LABEL_DATE), rev, 0L, cnt, occ
@@ -410,24 +309,33 @@ public class SearchAndAnalyticsSyncService implements ApplicationRunner {
         }
 
         List<HourlyOccupancyPointDto> hourlyList = new ArrayList<>();
-        for (Map.Entry<Integer, List<Long>> e : hourlyPrices.entrySet()) {
-            int hr = e.getKey();
-            List<Long> prices = e.getValue();
-            long avgP = Math.round(prices.stream().mapToLong(Long::longValue).average().orElse(0));
+        for (var entry : capacityByHour.entrySet()) {
+            int hr = entry.getKey();
+            long avgP = Math.round(hourlyPrices.getOrDefault(hr, List.of()).stream()
+                    .mapToLong(Long::longValue).average().orElse(0));
             String tier = hr >= 17 && hr <= 21 ? "GIỜ VÀNG" : hr < 12 ? "THẤP ĐIỂM" : "TIÊU CHUẨN";
-            int occ = Math.min(98, prices.size() * 14 + (hr >= 18 ? 35 : 18));
-            hourlyList.add(new HourlyOccupancyPointDto(String.format("%02dh", hr), occ, avgP, tier));
+            hourlyList.add(new HourlyOccupancyPointDto(
+                    String.format("%02dh", hr), entry.getValue().percentage(), avgP, tier));
         }
 
         boolean isPlatform = "PLATFORM".equalsIgnoreCase(scope);
         List<ChannelBreakdownDto> breakdown = toBreakdownDtos(isPlatform ? sportSums : channelSums);
-        List<CourtPerformanceDto> courtPerf = loadCourtPerformanceFromDb(tenantId, revByGroup, countByGroup);
-        List<LessorOrderSummaryDto> recentOrders = loadRecentOrdersFromDb(tenantId);
+        List<CourtPerformanceDto> courtPerf = loadCourtPerformanceFromDb(tenantId, revByGroup, countByGroup, capacityByGroup);
+        List<LessorOrderSummaryDto> recentOrders = tenantId == null ? List.of() : loadRecentOrdersFromDb(tenantId, 0, 25);
 
-        long commission = Math.round(grossRevenue * 0.10);
-        int avgOcc = hourlyList.isEmpty() ? 0 : (int) Math.round(
-                hourlyList.stream().mapToInt(HourlyOccupancyPointDto::occupancyPct).average().orElse(0)
-        );
+        String ledgerSql = """
+            SELECT le.account_code, sum(CASE le.direction WHEN 'CREDIT' THEN le.amount ELSE -le.amount END) AS balance
+            FROM ledger_entries le JOIN ledger_journals lj ON lj.id = le.journal_id
+            WHERE le.occurred_at >= ? AND le.occurred_at < ?
+                AND left(lj.idempotency_key, 13) <> 'SEED_V10_JRN_'
+                AND le.account_code IN ('PLATFORM_COMMISSION_REVENUE', 'VENUE_PAYABLE')
+            """ + (tenantId == null ? "" : " AND le.tenant_id = ? ") + " GROUP BY le.account_code";
+        Map<String, Long> bookedLedger = new HashMap<>();
+        jdbcTemplate.query(ledgerSql, rs -> {
+            bookedLedger.put(rs.getString("account_code"), rs.getLong("balance"));
+        }, params.toArray());
+        long commission = bookedLedger.getOrDefault("PLATFORM_COMMISSION_REVENUE", 0L);
+        int avgOcc = capacityByHour.values().stream().reduce(Capacity.EMPTY, Capacity::add).percentage();
 
         return new AnalyticsDashboardResponse(
                 scope,
@@ -438,7 +346,7 @@ public class SearchAndAnalyticsSyncService implements ApplicationRunner {
                 grossRevenue,
                 escrowHeld,
                 commission,
-                Math.max(0, completedRevenue - Math.round(completedRevenue * 0.10)),
+                Math.max(0, bookedLedger.getOrDefault("VENUE_PAYABLE", 0L)),
                 rows.size(),
                 pendingCheckins,
                 avgOcc,
@@ -448,6 +356,18 @@ public class SearchAndAnalyticsSyncService implements ApplicationRunner {
                 courtPerf,
                 recentOrders
         );
+    }
+
+    private record Capacity(long booked, long total) {
+        private static final Capacity EMPTY = new Capacity(0, 0);
+
+        Capacity add(Capacity other) {
+            return new Capacity(booked + other.booked, total + other.total);
+        }
+
+        int percentage() {
+            return total == 0 ? 0 : Math.min(100, (int) Math.round(100.0 * booked / total));
+        }
     }
 
     private CourtSearchResponse queryCourtsFromPostgres(
@@ -576,23 +496,20 @@ public class SearchAndAnalyticsSyncService implements ApplicationRunner {
             doc.put("lockedPrice", lockedPrice);
             doc.put("depositAmount", rs.getLong("deposit_amount"));
             doc.put("paidAmount", paidAmt);
-            doc.put("commissionAmount", Math.round(lockedPrice * 0.10));
             return new IndexDoc(id, doc);
         });
     }
 
     private List<CourtPerformanceDto> loadCourtPerformanceFromDb(
-            UUID tenantId, Map<UUID, Long> revByGroup, Map<UUID, Integer> countByGroup
+            UUID tenantId, Map<UUID, Long> revByGroup, Map<UUID, Integer> countByGroup,
+            Map<UUID, Capacity> capacityByGroup
     ) {
         String sql = """
-            SELECT rg.id, rg.name, st.code AS sport_code, st.name AS sport_name, rg.base_price,
-                   COUNT(u.id) AS unit_count
+            SELECT rg.id, rg.name, st.code AS sport_code, st.name AS sport_name, rg.base_price
             FROM resource_groups rg
             JOIN sport_types st ON rg.sport_type_id = st.id
-            LEFT JOIN units u ON u.group_id = rg.id
             WHERE rg.status = 'ACTIVE'
             """ + (tenantId != null ? " AND rg.tenant_id = ? " : "") + """
-            GROUP BY rg.id, rg.name, st.code, st.name, rg.base_price
             ORDER BY rg.name ASC
             """;
 
@@ -600,8 +517,7 @@ public class SearchAndAnalyticsSyncService implements ApplicationRunner {
         return jdbcTemplate.query(sql, (rs, idx) -> {
             UUID gid = UUID.fromString(rs.getString("id"));
             int bookingsCount = countByGroup.getOrDefault(gid, 0);
-            int unitCount = Math.max(1, rs.getInt("unit_count"));
-            int occPct = Math.min(98, bookingsCount == 0 ? 15 : Math.max(25, (bookingsCount * 100) / (unitCount * 2)));
+            int occPct = capacityByGroup.getOrDefault(gid, Capacity.EMPTY).percentage();
             return new CourtPerformanceDto(
                     gid,
                     rs.getString("name"),
@@ -615,13 +531,15 @@ public class SearchAndAnalyticsSyncService implements ApplicationRunner {
         }, args);
     }
 
-    private List<LessorOrderSummaryDto> loadRecentOrdersFromDb(UUID tenantId) {
+    @Transactional(readOnly = true)
+    public List<LessorOrderSummaryDto> loadRecentOrdersFromDb(UUID tenantId, int page, int size) {
+        var bounds = CommonTextAndPageUtils.boundedPageable(page, size, 100);
         String sql = """
             SELECT r.id AS res_id, r.group_id, rg.name AS group_name, t.name AS venue_name,
-                   st.name AS sport_name, u.unit_number, r.slot_start, r.status,
+                   st.name AS sport_name, u.unit_number, r.slot_start, ts.slot_end, r.status, r.created_at,
                    r.locked_price, r.deposit_amount,
                    COALESCE(b.contact_name, 'Khách đặt sân') AS customer_name,
-                   COALESCE(b.contact_phone, '0988 776 655') AS customer_phone,
+                   COALESCE(b.contact_phone, '') AS customer_phone,
                    COALESCE(p.provider, '—') AS payment_provider,
                    COALESCE(p.amount, 0) AS paid_amt
             FROM reservations r
@@ -629,15 +547,19 @@ public class SearchAndAnalyticsSyncService implements ApplicationRunner {
             JOIN tenants t ON r.tenant_id = t.id
             JOIN sport_types st ON rg.sport_type_id = st.id
             JOIN units u ON r.unit_id = u.id
+            LEFT JOIN time_slots ts ON ts.group_id = r.group_id AND ts.slot_start = r.slot_start
             LEFT JOIN bookings b ON r.booking_id = b.id
-            LEFT JOIN payments p ON p.booking_id = r.booking_id AND p.status = 'SUCCESS'
-                AND p.gateway_verified_at IS NOT NULL AND p.payment_type IN ('DEPOSIT', 'FULL_SETTLEMENT')
-            """ + (tenantId != null ? " WHERE r.tenant_id = ? " : "") + """
-            ORDER BY r.slot_start DESC
-            LIMIT 25
+            LEFT JOIN LATERAL (
+                SELECT (array_agg(provider ORDER BY gateway_verified_at DESC))[1] AS provider, sum(amount) AS amount
+                FROM payments WHERE booking_id = r.booking_id AND status = 'SUCCESS'
+                    AND gateway_verified_at IS NOT NULL AND payment_type IN ('DEPOSIT', 'FULL_SETTLEMENT')
+            ) p ON true
+            WHERE r.tenant_id = ? AND COALESCE(r.pricing_audit->>'source', '') <> 'SEED_V10'
+            ORDER BY r.slot_start DESC, r.id DESC
+            LIMIT ? OFFSET ?
             """;
 
-        Object[] args = tenantId != null ? new Object[]{tenantId} : new Object[]{};
+        Object[] args = {tenantId, bounds.getPageSize(), bounds.getOffset()};
         return jdbcTemplate.query(sql, (rs, i) -> {
             UUID resId = UUID.fromString(rs.getString("res_id"));
             long lockedPrice = rs.getLong("locked_price");
@@ -661,63 +583,10 @@ public class SearchAndAnalyticsSyncService implements ApplicationRunner {
                     Math.max(0L, lockedPrice - paidAmt),
                     formatChannelName(rs.getString("payment_provider")),
                     rs.getString("status"),
-                    "Đồng bộ DB"
+                    rs.getTimestamp("created_at").toInstant().atZone(VN_ZONE).format(DateTimeFormatter.ofPattern("dd/MM HH:mm")),
+                    slotStart, rs.getTimestamp("slot_end") == null ? null : rs.getTimestamp("slot_end").toInstant()
             );
         }, args);
-    }
-
-    private List<DailyRevenuePointDto> parseDailyBuckets(JsonNode buckets, int days) {
-        Map<LocalDate, DailyRevenuePointDto> map = new LinkedHashMap<>();
-        LocalDate today = LocalDate.now(VN_ZONE);
-        for (int i = days - 1; i >= 0; i--) {
-            LocalDate d = today.minusDays(i);
-            String label = d.equals(today) ? "Hôm nay" : d.format(SHORT_DATE);
-            map.put(d, new DailyRevenuePointDto(d.toString(), label, d.format(LABEL_DATE), 0L, 0L, 0, 0));
-        }
-
-        if (buckets != null && buckets.isArray()) {
-            for (JsonNode b : buckets) {
-                Instant ts = Instant.ofEpochMilli(b.path("key").asLong());
-                LocalDate d = ts.atZone(VN_ZONE).toLocalDate();
-                long rev = (long) b.path("court_rev").path("value").asDouble(0);
-                int cnt = b.path("doc_count").asInt(0);
-                int occ = Math.min(100, cnt * 18);
-                if (map.containsKey(d)) {
-                    String label = d.equals(today) ? "Hôm nay" : d.format(SHORT_DATE);
-                    map.put(d, new DailyRevenuePointDto(d.toString(), label, d.format(LABEL_DATE), rev, 0L, cnt, occ));
-                }
-            }
-        }
-        return new ArrayList<>(map.values());
-    }
-
-    private List<HourlyOccupancyPointDto> parseHourlyBuckets(JsonNode buckets) {
-        List<HourlyOccupancyPointDto> list = new ArrayList<>();
-        if (buckets == null || !buckets.isArray()) return list;
-        for (JsonNode b : buckets) {
-            int hr = b.path("key").asInt();
-            int cnt = b.path("doc_count").asInt(0);
-            long avgP = (long) b.path("avg_price").path("value").asDouble(0);
-            String tier = hr >= 17 && hr <= 21 ? "GIỜ VÀNG" : hr < 12 ? "THẤP ĐIỂM" : "TIÊU CHUẨN";
-            int occ = Math.min(98, cnt * 14 + (hr >= 18 ? 35 : 18));
-            list.add(new HourlyOccupancyPointDto(String.format("%02dh", hr), occ, avgP, tier));
-        }
-        return list;
-    }
-
-    private List<ChannelBreakdownDto> parseBreakdownBuckets(JsonNode buckets, boolean isPlatform) {
-        Map<String, Long> totals = new LinkedHashMap<>();
-        if (buckets != null && buckets.isArray()) {
-            for (JsonNode b : buckets) {
-                String rawKey = b.path("key").asText();
-                String label = isPlatform ? rawKey : formatChannelName(rawKey);
-                long amount = (long) b.path(isPlatform ? "sport_sum" : "channel_sum").path("value").asDouble(0);
-                if (amount > 0) {
-                    totals.merge(label, amount, Long::sum);
-                }
-            }
-        }
-        return toBreakdownDtos(totals);
     }
 
     private List<ChannelBreakdownDto> toBreakdownDtos(Map<String, Long> totals) {

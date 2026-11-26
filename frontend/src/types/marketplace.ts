@@ -87,6 +87,8 @@ export interface CourtMediaItem {
 export type CheckinVerificationMode = 'QR_STAFF' | 'PIN_COUNTER' | 'MANUAL';
 
 export interface PublishedListing {
+  totalUnits?: number;
+  staffChatEnabled?: boolean;
   groupId: string;
   groupCode: string;
   groupName: string;
