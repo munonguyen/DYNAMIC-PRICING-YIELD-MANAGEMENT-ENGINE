@@ -1,0 +1,37 @@
+{
+  "branch": "service/customer/checkout",
+  "title": "Thanh toán đơn sân",
+  "scope": "Chọn cổng thanh toán và theo dõi trạng thái tiền trên đơn.",
+  "operations": [
+    {
+      "method": "GET",
+      "path": "/api/v1/payments/providers",
+      "operationId": "paymentProviders"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/bookings/{reservationId}/payment-status",
+      "operationId": "paymentStatus"
+    }
+  ],
+  "source": [
+    {
+      "file": "src/main/java/com/yieldengine/controller/customer/CustomerPaymentController.java",
+      "anchors": [
+        "paymentProviders("
+      ]
+    },
+    {
+      "file": "src/main/java/com/yieldengine/controller/customer/CustomerBookingController.java",
+      "anchors": [
+        "paymentStatus("
+      ]
+    },
+    {
+      "file": "frontend/src/components/BookingPipelineAndQrSection.tsx",
+      "anchors": [
+        "validateAndSubmitPayment"
+      ]
+    }
+  ]
+}
