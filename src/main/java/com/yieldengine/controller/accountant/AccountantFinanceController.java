@@ -85,7 +85,7 @@ public class AccountantFinanceController {
         return ResponseEntity.ok(financeLedgerService.reconcile(tenantId, from, to));
     }
 
-    @Operation(summary = "[ACCOUNTANT / MANAGER / STAFF / ADMIN] Query VNPAY transaction status via merchant_webapi")
+    @Operation(summary = "[ACCOUNTANT / ADMIN] Query VNPAY transaction status via merchant_webapi")
     @PostMapping("/payments/vnpay/querydr")
     public ResponseEntity<VnPayQueryDrResponse> queryVnPayTransaction(
             @Valid @RequestBody VnPayQueryDrRequest request,
@@ -93,14 +93,12 @@ public class AccountantFinanceController {
     ) {
         rbacGuard.requirePlatformRole(
                 RoleCode.ADMIN.name(),
-                RoleCode.MANAGER.name(),
-                RoleCode.STAFF.name(),
                 RoleCode.ACCOUNTANT.name()
         );
         return ResponseEntity.ok(vnPayPaymentService.queryTransactionStatus(request, resolveClientIp(httpRequest)));
     }
 
-    @Operation(summary = "[ACCOUNTANT / MANAGER / ADMIN] Execute VNPAY full/partial refund via merchant_webapi")
+    @Operation(summary = "[ACCOUNTANT / ADMIN] Execute VNPAY full/partial refund via merchant_webapi")
     @PostMapping("/payments/vnpay/refund")
     public ResponseEntity<VnPayRefundResponse> refundVnPayTransaction(
             @Valid @RequestBody VnPayRefundRequest request,
@@ -108,7 +106,6 @@ public class AccountantFinanceController {
     ) {
         rbacGuard.requirePlatformRole(
                 RoleCode.ADMIN.name(),
-                RoleCode.MANAGER.name(),
                 RoleCode.ACCOUNTANT.name()
         );
         return ResponseEntity.ok(vnPayPaymentService.refundTransaction(request, resolveClientIp(httpRequest)));
