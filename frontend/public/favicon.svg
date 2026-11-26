@@ -1,0 +1,37 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none">
+  <defs>
+    <linearGradient id="ap-bg" x1="4" y1="2" x2="60" y2="62" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#1E5D3F" />
+      <stop offset="55%" stop-color="#16422C" />
+      <stop offset="100%" stop-color="#091D13" />
+    </linearGradient>
+    <linearGradient id="ap-pulse" x1="12" y1="36" x2="52" y2="24" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#E7F7D4" />
+      <stop offset="55%" stop-color="#86EFAC" />
+      <stop offset="100%" stop-color="#4ADE80" />
+    </linearGradient>
+    <linearGradient id="ap-ring" x1="14" y1="12" x2="50" y2="52" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#FFFFFF" stop-opacity="0.34" />
+      <stop offset="100%" stop-color="#E7F7D4" stop-opacity="0.08" />
+    </linearGradient>
+  </defs>
+  <rect x="2" y="2" width="60" height="60" rx="16" fill="url(#ap-bg)" />
+  <rect x="2.75" y="2.75" width="58.5" height="58.5" rx="15.25" stroke="#E7F7D4" stroke-opacity="0.24" stroke-width="1.5" />
+  <rect x="12" y="13" width="40" height="38" rx="19" stroke="url(#ap-ring)" stroke-width="1.6" />
+  <path
+    d="M20 45L30.4 18.6C31.05 16.95 32.95 16.95 33.6 18.6L44 45"
+    stroke="#FFFFFF"
+    stroke-width="3.5"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+  />
+  <path
+    d="M12.5 34.5H23.5L28 26.5L34.5 40.5L40 29L43.5 34.5H51.5"
+    stroke="url(#ap-pulse)"
+    stroke-width="3.3"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+  />
+  <circle cx="51.5" cy="34.5" r="3" fill="#E7F7D4" />
+  <circle cx="51.5" cy="34.5" r="5.5" stroke="#86EFAC" stroke-opacity="0.35" stroke-width="1.2" />
+</svg>
