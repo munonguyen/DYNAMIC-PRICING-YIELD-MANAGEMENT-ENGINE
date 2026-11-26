@@ -32,8 +32,9 @@ public class VenueChatController {
 
     @Operation(summary = "[USER / STAFF / MANAGER] List conversations for current user or venue")
     @GetMapping
-    public ResponseEntity<List<Conversation>> listConversations(@RequestParam(required = false) UUID tenantId) {
-        return ResponseEntity.ok(chatService.listMyConversations(tenantId));
+    public ResponseEntity<List<Conversation>> listConversations(@RequestParam(required = false) UUID tenantId,
+            @RequestParam(defaultValue = "0") int page, @RequestParam(defaultValue = "30") int size) {
+        return ResponseEntity.ok(chatService.listMyConversations(tenantId, page, size));
     }
 
     @Operation(summary = "[USER / STAFF / MANAGER] Send immutable message in conversation (UC-18)")
