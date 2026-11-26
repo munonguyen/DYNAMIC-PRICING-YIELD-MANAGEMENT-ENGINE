@@ -18,10 +18,12 @@ import {
   ALL_LESSOR_PROVIDERS,
   CUSTOM_STAFF_STORAGE_KEY,
   buildFreshListingSlots,
+  ensureSeededOperationalOrdersMap,
   formatSlotWindow,
   formatVnd,
   getStoredTicketsForLessor,
   marketplaceApi,
+  writePersistedOperationalOrdersMap,
 } from '../api/marketplaceApi';
 import {
   AnimatedCounter,
@@ -223,7 +225,7 @@ export const LessorPartnerPortal: React.FC<LessorPartnerPortalProps> = ({
 
   // --- BOOKING ORDERS & QR CHECK-IN STATE (REAL STORED TICKETS + DB/ES ORDERS) ---
   const [ordersByProvider, setOrdersByProvider] = useState<Record<string, LessorBookingOrder[]>>(
-    () => readPersistedOrders()
+    () => ensureSeededOperationalOrdersMap(listings)
   );
   const [orderFilter, setOrderFilter] = useState<
     'ALL' | 'CONFIRMED' | 'COMPLETED' | 'NO_SHOW'
@@ -334,7 +336,7 @@ export const LessorPartnerPortal: React.FC<LessorPartnerPortalProps> = ({
     );
     const nextMap = { ...ordersByProvider, [activeProvider.providerId]: updatedList };
     setOrdersByProvider(nextMap);
-    writePersistedOrders(nextMap);
+    writePersistedOperationalOrdersMap(nextMap);
   };
 
   const handleManualQrVerify = (e: React.FormEvent) => {

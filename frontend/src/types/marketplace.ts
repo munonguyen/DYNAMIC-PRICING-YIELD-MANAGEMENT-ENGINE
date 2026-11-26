@@ -341,6 +341,8 @@ export interface LessorBookingOrder {
   qrCode: string;
   status: 'CONFIRMED' | 'HELD' | 'COMPLETED' | 'NO_SHOW' | 'CANCELLED';
   createdAtLabel: string;
+  dateIso?: string;
+  slotHour?: number;
 }
 
 export interface LessorStaffMember {
