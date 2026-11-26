@@ -1,0 +1,26 @@
+{
+  "branch": "service/accountant/vnpay-transaction-query",
+  "title": "Tra cứu giao dịch VNPAY",
+  "scope": "Tra cứu trạng thái giao dịch VNPAY qua QueryDR.",
+  "operations": [
+    {
+      "method": "POST",
+      "path": "/api/v1/payments/vnpay/querydr",
+      "operationId": "queryVnPayTransaction"
+    }
+  ],
+  "source": [
+    {
+      "file": "src/main/java/com/yieldengine/controller/accountant/AccountantFinanceController.java",
+      "anchors": [
+        "queryVnPayTransaction("
+      ]
+    },
+    {
+      "file": "src/main/java/com/yieldengine/service/VnPayPaymentService.java",
+      "anchors": [
+        "queryTransactionStatus("
+      ]
+    }
+  ]
+}
