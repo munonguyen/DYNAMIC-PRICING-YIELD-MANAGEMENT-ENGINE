@@ -1,0 +1,44 @@
+{
+  "branch": "service/staff/venue-chat",
+  "title": "Chat hỗ trợ khách",
+  "scope": "Xem trao đổi theo cơ sở và gửi tin nhắn hỗ trợ.",
+  "operations": [
+    {
+      "method": "GET",
+      "path": "/api/v1/conversations",
+      "operationId": "listConversations"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/conversations",
+      "operationId": "openConversation"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/conversations/{id}/messages",
+      "operationId": "getMessages"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/conversations/{id}/messages",
+      "operationId": "sendMessage"
+    }
+  ],
+  "source": [
+    {
+      "file": "src/main/java/com/yieldengine/controller/staff/VenueChatController.java",
+      "anchors": [
+        "listConversations(",
+        "openConversation(",
+        "getMessages(",
+        "sendMessage("
+      ]
+    },
+    {
+      "file": "frontend/src/components/FloatingChatWidget.tsx",
+      "anchors": [
+        "listMessages("
+      ]
+    }
+  ]
+}
