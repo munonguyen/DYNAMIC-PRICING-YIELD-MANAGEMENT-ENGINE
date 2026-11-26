@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.yieldengine.dto.SlotOccupancyChangedEvent;
 import com.yieldengine.dto.ops.BookingOpsDtos.CancelBookingResponse;
 import com.yieldengine.dto.ops.BookingOpsDtos.PaymentWebhookRequest;
+import com.yieldengine.dto.ops.TicketPassSnapshot;
 import com.yieldengine.dto.request.HoldSlotRequest;
 import com.yieldengine.dto.response.HoldSlotResponse;
 import com.yieldengine.entity.*;
@@ -602,7 +603,7 @@ public class BookingOrchestratorService {
     public java.util.List<com.yieldengine.dto.ops.BookingOpsDtos.MyTicketResponse> listMyTickets(UUID userId) {
         return reservationRepository.findByUserIdOrderBySlotStartDesc(userId).stream()
                 .map(res -> {
-                    TicketPassService.TicketPassSnapshot pass = ticketPassService.buildPassSnapshot(res);
+                    TicketPassSnapshot pass = ticketPassService.buildPassSnapshot(res);
                     boolean activePass = "CONFIRMED".equals(res.getStatus());
                     String qrToken = activePass && res.getQrJti() != null ? pass.qrToken() : null;
                     String pinCode = activePass && res.getQrJti() != null && res.getPinConsumedAt() == null

@@ -1,6 +1,7 @@
 package com.yieldengine.service;
 
 import com.yieldengine.dto.marketplace.MarketplaceDtos.CourtMediaDto;
+import com.yieldengine.dto.marketplace.MediaBinaryPayload;
 import com.yieldengine.entity.ResourceGroup;
 import com.yieldengine.entity.ResourceGroupMedia;
 import com.yieldengine.exception.BusinessConflictException;
@@ -55,14 +56,6 @@ public class CourtMediaStorageService {
         this.auditLogService = auditLogService;
         this.storageRootDir = Paths.get(mediaBaseDir).toAbsolutePath().normalize();
         this.maxFilesPerGroup = Math.max(1, maxFilesPerGroup);
-    }
-
-    public record MediaBinaryPayload(
-            Resource resource,
-            String contentType,
-            String fileName,
-            long fileSizeBytes
-    ) {
     }
 
     @Transactional(readOnly = true)

@@ -3,6 +3,7 @@ package com.yieldengine.service;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.yieldengine.config.ElasticsearchProperties;
+import com.yieldengine.dto.analytics.IndexDoc;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
@@ -21,8 +22,6 @@ import java.util.*;
 @Slf4j
 @Service
 public class ElasticsearchGatewayService {
-
-    public record IndexDoc(String id, Map<String, Object> source) {}
 
     private final ElasticsearchProperties properties;
     private final ObjectMapper objectMapper;

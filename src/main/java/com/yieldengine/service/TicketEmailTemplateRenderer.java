@@ -1,5 +1,6 @@
 package com.yieldengine.service;
 
+import com.yieldengine.dto.ops.TicketPassSnapshot;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.stereotype.Component;
 import org.springframework.web.util.HtmlUtils;
@@ -29,13 +30,13 @@ public class TicketEmailTemplateRenderer {
         this.cachedTemplate = loadTemplate(TEMPLATE_PATH);
     }
 
-    public boolean isPinOnlyMode(TicketPassService.TicketPassSnapshot pass) {
+    public boolean isPinOnlyMode(TicketPassSnapshot pass) {
         return "PIN_COUNTER".equalsIgnoreCase(pass.checkinMode())
                 || "MANUAL".equalsIgnoreCase(pass.checkinMode());
     }
 
     public String renderBookingTicketHtml(
-            TicketPassService.TicketPassSnapshot pass,
+            TicketPassSnapshot pass,
             String recipientName
     ) {
         boolean pinOnly = isPinOnlyMode(pass);

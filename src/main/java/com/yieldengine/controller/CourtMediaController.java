@@ -2,6 +2,7 @@ package com.yieldengine.controller;
 
 import com.yieldengine.constant.SystemConstant;
 import com.yieldengine.dto.marketplace.MarketplaceDtos.CourtMediaDto;
+import com.yieldengine.dto.marketplace.MediaBinaryPayload;
 import com.yieldengine.entity.ResourceGroup;
 import com.yieldengine.security.RbacGuard;
 import com.yieldengine.security.SessionPrincipal;
@@ -89,7 +90,7 @@ public class CourtMediaController {
     @Operation(summary = "Serve stored court photo binary bytes (Public)")
     @GetMapping("/media/{mediaId}/content")
     public ResponseEntity<Resource> serveMediaContent(@PathVariable UUID mediaId) {
-        CourtMediaStorageService.MediaBinaryPayload payload = courtMediaStorageService.loadMediaContent(mediaId);
+        MediaBinaryPayload payload = courtMediaStorageService.loadMediaContent(mediaId);
         return ResponseEntity.ok()
                 .contentType(MediaType.parseMediaType(payload.contentType()))
                 .cacheControl(CacheControl.maxAge(Duration.ofDays(1)).cachePublic())

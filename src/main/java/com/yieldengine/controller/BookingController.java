@@ -3,6 +3,7 @@ package com.yieldengine.controller;
 import com.yieldengine.constant.SystemConstant;
 import com.yieldengine.dto.momo.MoMoGatewayDtos.MoMoPaymentInitResult;
 import com.yieldengine.dto.ops.BookingOpsDtos.*;
+import com.yieldengine.dto.ops.EmailDispatchResult;
 import com.yieldengine.dto.request.HoldSlotRequest;
 import com.yieldengine.dto.response.HoldSlotResponse;
 import com.yieldengine.entity.Reservation;
@@ -138,7 +139,7 @@ public class BookingController {
 
     @Operation(summary = "Send or resend signed PNG QR E-Ticket directly to recipient Gmail/Email")
     @PostMapping("/bookings/{reservationId}/resend-qr-email")
-    public ResponseEntity<QrTicketEmailService.EmailDispatchResult> resendQrEmail(
+    public ResponseEntity<EmailDispatchResult> resendQrEmail(
             @PathVariable UUID reservationId,
             @Valid @RequestBody ResendQrEmailRequest request
     ) {

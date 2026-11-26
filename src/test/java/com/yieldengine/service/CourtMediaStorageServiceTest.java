@@ -1,6 +1,7 @@
 package com.yieldengine.service;
 
 import com.yieldengine.dto.marketplace.MarketplaceDtos.CourtMediaDto;
+import com.yieldengine.dto.marketplace.MediaBinaryPayload;
 import com.yieldengine.entity.ResourceGroup;
 import com.yieldengine.entity.ResourceGroupMedia;
 import com.yieldengine.entity.Tenant;
@@ -115,7 +116,7 @@ class CourtMediaStorageServiceTest {
         assertArrayEquals(validJpeg, Files.readAllBytes(writtenPath));
 
         when(mediaRepository.findById(savedMediaId)).thenReturn(Optional.of(persisted));
-        CourtMediaStorageService.MediaBinaryPayload payload = service.loadMediaContent(savedMediaId);
+        MediaBinaryPayload payload = service.loadMediaContent(savedMediaId);
         assertEquals("image/jpeg", payload.contentType());
         assertTrue(payload.resource().exists());
     }

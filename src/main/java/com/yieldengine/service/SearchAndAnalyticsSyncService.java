@@ -2,8 +2,8 @@ package com.yieldengine.service;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.yieldengine.dto.SlotOccupancyChangedEvent;
+import com.yieldengine.dto.analytics.IndexDoc;
 import com.yieldengine.dto.analytics.SearchAndAnalyticsDtos.*;
-import com.yieldengine.service.ElasticsearchGatewayService.IndexDoc;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.ApplicationArguments;

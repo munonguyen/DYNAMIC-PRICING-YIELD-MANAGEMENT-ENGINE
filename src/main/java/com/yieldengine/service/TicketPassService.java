@@ -1,5 +1,6 @@
 package com.yieldengine.service;
 
+import com.yieldengine.dto.ops.TicketPassSnapshot;
 import com.yieldengine.entity.Booking;
 import com.yieldengine.entity.Reservation;
 import com.yieldengine.entity.ResourceGroup;
@@ -29,29 +30,6 @@ public class TicketPassService {
     private final PaymentRepository paymentRepository;
     private final PriceLockTokenService priceLockTokenService;
     private final PricingEngineService pricingEngineService;
-
-    public record TicketPassSnapshot(
-            UUID reservationId,
-            UUID qrJti,
-            String qrToken,
-            String checkinPinCode,
-            String checkinMode,
-            String venueName,
-            String venueAddress,
-            String groupName,
-            String unitNumber,
-            Instant slotStart,
-            Instant slotEnd,
-            Instant qrExpiresAt,
-            long lockedPrice,
-            long paidAmount,
-            long remainingAtVenue,
-            String customerName,
-            String customerPhoneMasked,
-            String customerPhoneLast4,
-            String customerEmail
-    ) {
-    }
 
     /**
      * Attaches single-use qrJti and salted SHA-256 PIN credentials when confirming a reservation.

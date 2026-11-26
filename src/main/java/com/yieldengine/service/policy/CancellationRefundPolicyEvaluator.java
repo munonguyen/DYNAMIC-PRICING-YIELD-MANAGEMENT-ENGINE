@@ -1,5 +1,6 @@
 package com.yieldengine.service.policy;
 
+import com.yieldengine.dto.ops.RefundEvaluation;
 import com.yieldengine.entity.CancellationPolicy;
 import com.yieldengine.entity.CancellationPolicyTier;
 import com.yieldengine.utils.MoneyMathUtils;
@@ -15,15 +16,6 @@ import java.util.*;
  */
 @Component
 public class CancellationRefundPolicyEvaluator {
-
-    public record RefundEvaluation(
-            long refundAmount,
-            long forfeitedAmount,
-            int appliedRefundPercent,
-            double hoursBeforeStart,
-            String reasonCode
-    ) {
-    }
 
     public long calculateDepositAmount(long lockedPrice, short depositPercent) {
         return MoneyMathUtils.floorPercentageAmount(lockedPrice, depositPercent);

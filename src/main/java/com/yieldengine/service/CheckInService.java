@@ -3,6 +3,7 @@ package com.yieldengine.service;
 import com.yieldengine.dto.ops.BookingOpsDtos.CheckInResponse;
 import com.yieldengine.dto.ops.BookingOpsDtos.QrCodeResponse;
 import com.yieldengine.dto.ops.BookingOpsDtos.QrInspectResponse;
+import com.yieldengine.dto.ops.TicketPassSnapshot;
 import com.yieldengine.entity.CheckIn;
 import com.yieldengine.entity.Reservation;
 import com.yieldengine.entity.ResourceGroup;
@@ -63,7 +64,7 @@ public class CheckInService {
         ticketPassService.attachSecurityCredentials(reservation);
         reservationRepository.save(reservation);
 
-        TicketPassService.TicketPassSnapshot pass = ticketPassService.buildPassSnapshot(reservation);
+        TicketPassSnapshot pass = ticketPassService.buildPassSnapshot(reservation);
         return new QrCodeResponse(reservationId, pass.qrJti(), pass.qrToken(), pass.qrExpiresAt());
     }
 
@@ -232,7 +233,7 @@ public class CheckInService {
         boolean alreadyUsed = existingCheckIn != null || checkInRepository.existsByQrJti(qrJti);
         boolean unused = !alreadyUsed && !ReservationStatus.COMPLETED.name().equals(reservation.getStatus());
 
-        TicketPassService.TicketPassSnapshot pass = ticketPassService.buildPassSnapshot(reservation);
+        TicketPassSnapshot pass = ticketPassService.buildPassSnapshot(reservation);
         Instant previousScannedAt = existingCheckIn != null
                 ? existingCheckIn.getScannedAt()
                 : reservation.getCheckedInAt();
@@ -259,7 +260,7 @@ public class CheckInService {
     }
 
     private QrInspectResponse inspectFromSnapshot(
-            TicketPassService.TicketPassSnapshot pass,
+            TicketPassSnapshot pass,
             UUID qrJti,
             boolean valid,
             String verdictCode,

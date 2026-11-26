@@ -2,6 +2,7 @@ package com.yieldengine.service;
 
 import com.yieldengine.dto.finance.FinanceDtos.CreateCommissionRuleRequest;
 import com.yieldengine.dto.finance.FinanceDtos.ReconciliationReportResponse;
+import com.yieldengine.dto.finance.JournalLeg;
 import com.yieldengine.entity.CommissionRule;
 import com.yieldengine.entity.LedgerEntry;
 import com.yieldengine.entity.LedgerEntryId;
@@ -43,9 +44,6 @@ public class FinanceLedgerService {
     private final LedgerEntryRepository ledgerEntryRepository;
     private final AuditLogService auditLogService;
     private final FinanceValidator financeValidator;
-
-    public record JournalLeg(String accountCode, String entryType, String direction, long amount) {
-    }
 
     @Transactional
     public CommissionRule createCommissionRule(CreateCommissionRuleRequest request, UUID actorUserId) {

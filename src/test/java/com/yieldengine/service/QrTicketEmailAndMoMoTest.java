@@ -2,6 +2,7 @@ package com.yieldengine.service;
 
 import com.icegreen.greenmail.util.GreenMail;
 import com.icegreen.greenmail.util.ServerSetupTest;
+import com.yieldengine.dto.ops.EmailDispatchResult;
 import com.yieldengine.entity.*;
 import com.yieldengine.repository.*;
 import jakarta.mail.internet.MimeMessage;
@@ -115,7 +116,7 @@ class QrTicketEmailAndMoMoTest {
                 .thenReturn("eyJwbGFjZWhvbGRlciI6InFyIn0.SIGNATURE_HMAC");
         when(priceLockTokenService.deriveCheckInPin(reservationId, qrJti)).thenReturn("482913");
 
-        QrTicketEmailService.EmailDispatchResult result =
+        EmailDispatchResult result =
                 emailService.sendQrTicketEmailForReservation(reservationId, "munonguyen2005@gmail.com", "Nguyễn Muno");
 
         assertTrue(result.sentOverSmtp());
@@ -168,7 +169,7 @@ class QrTicketEmailAndMoMoTest {
         when(paymentRepository.sumSuccessfulPaidByBookingId(bookingId)).thenReturn(60_000L);
         when(priceLockTokenService.deriveCheckInPin(reservationId, qrJti)).thenReturn("651905");
 
-        QrTicketEmailService.EmailDispatchResult result =
+        EmailDispatchResult result =
                 emailService.sendQrTicketEmailForReservation(reservationId, "bach@gmail.com", "Trần Hoàng Bách");
 
         assertTrue(result.sentOverSmtp());

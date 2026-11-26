@@ -1,5 +1,7 @@
 package com.yieldengine.service;
 
+import com.yieldengine.dto.ops.EmailDispatchResult;
+import com.yieldengine.dto.ops.TicketPassSnapshot;
 import com.yieldengine.entity.Reservation;
 import com.yieldengine.exception.ResourceNotFoundException;
 import com.yieldengine.repository.ReservationRepository;
@@ -52,15 +54,6 @@ public class QrTicketEmailService {
                 || (StringUtils.hasText(senderEmail) && StringUtils.hasText(mailPassword));
     }
 
-    public record EmailDispatchResult(
-            boolean sentOverSmtp,
-            String recipientEmail,
-            UUID reservationId,
-            int qrPngBytes,
-            String detailMessage
-    ) {
-    }
-
     @Transactional(readOnly = true)
     public EmailDispatchResult sendQrTicketEmailForReservation(
             UUID reservationId,
@@ -74,7 +67,7 @@ public class QrTicketEmailService {
             throw new IllegalStateException("Chỉ gửi phiếu nhận sân cho đơn đã thanh toán CONFIRMED.");
         }
 
-        TicketPassService.TicketPassSnapshot pass = ticketPassService.buildPassSnapshot(reservation);
+        TicketPassSnapshot pass = ticketPassService.buildPassSnapshot(reservation);
         String recipientEmail = StringUtils.hasText(explicitRecipientEmail)
                 ? explicitRecipientEmail.trim()
                 : pass.customerEmail();
