@@ -37,6 +37,8 @@ target/
 ### Frontend ###
 frontend/node_modules/
 frontend/dist/
+*.tsbuildinfo
+frontend/.vite/
 
 ### Mobile (React Native / Expo) ###
 mobile/node_modules/

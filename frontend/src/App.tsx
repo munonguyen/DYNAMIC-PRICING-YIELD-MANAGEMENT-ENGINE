@@ -287,12 +287,19 @@ export function App() {
     };
   }, [selectSlotAndQuote]);
 
+  const shouldTickCountdown =
+    (currentPage === 'checkout' || Boolean(holdResult)) &&
+    !qrTicket &&
+    !cancelResult &&
+    remainingSeconds > 0;
+
   useEffect(() => {
+    if (!shouldTickCountdown) return;
     const timer = window.setInterval(() => {
       setRemainingSeconds((prev) => (prev > 0 ? prev - 1 : 0));
     }, 1000);
     return () => window.clearInterval(timer);
-  }, []);
+  }, [shouldTickCountdown]);
 
   const mm = String(Math.floor(remainingSeconds / 60)).padStart(2, '0');
   const ss = String(remainingSeconds % 60).padStart(2, '0');
