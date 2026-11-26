@@ -1,0 +1,32 @@
+{
+  "branch": "service/lessor/staff-accounts",
+  "title": "Cấp tài khoản nhân viên",
+  "scope": "Cấp và xem tài khoản nhân viên theo cơ sở.",
+  "operations": [
+    {
+      "method": "GET",
+      "path": "/api/v1/tenants/{id}/staff",
+      "operationId": "listVenueStaff"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/tenants/{id}/staff",
+      "operationId": "createVenueStaff"
+    }
+  ],
+  "source": [
+    {
+      "file": "src/main/java/com/yieldengine/controller/lessor/LessorVenueSettingsController.java",
+      "anchors": [
+        "listVenueStaff(",
+        "createVenueStaff("
+      ]
+    },
+    {
+      "file": "frontend/src/components/LessorPartnerPortal.tsx",
+      "anchors": [
+        "handleCreateStaffAccount"
+      ]
+    }
+  ]
+}
