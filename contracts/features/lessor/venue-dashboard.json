@@ -1,0 +1,26 @@
+{
+  "branch": "service/lessor/venue-dashboard",
+  "title": "Dashboard cơ sở",
+  "scope": "Báo cáo sức chứa, đơn hàng và doanh thu theo cơ sở.",
+  "operations": [
+    {
+      "method": "GET",
+      "path": "/api/v1/analytics/lessor",
+      "operationId": "getLessorAnalytics"
+    }
+  ],
+  "source": [
+    {
+      "file": "src/main/java/com/yieldengine/controller/lessor/LessorAnalyticsController.java",
+      "anchors": [
+        "getLessorAnalytics("
+      ]
+    },
+    {
+      "file": "frontend/src/components/LessorAnalyticsDashboard.tsx",
+      "anchors": [
+        "LessorAnalyticsDashboard"
+      ]
+    }
+  ]
+}
