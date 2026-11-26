@@ -1,0 +1,27 @@
+{
+  "branch": "service/lessor/court-pricing",
+  "title": "Cấu hình giá và cọc",
+  "scope": "Cập nhật giá gốc, khoảng giá và tỷ lệ cọc của cụm sân.",
+  "operations": [
+    {
+      "method": "PATCH",
+      "path": "/api/v1/inventory/groups/{id}/settings",
+      "operationId": "updateGroup"
+    }
+  ],
+  "source": [
+    {
+      "file": "src/main/java/com/yieldengine/controller/lessor/LessorInventoryController.java",
+      "anchors": [
+        "updateGroup("
+      ]
+    },
+    {
+      "file": "src/main/java/com/yieldengine/service/InventoryService.java",
+      "anchors": [
+        "request.basePrice()",
+        "request.depositPercent()"
+      ]
+    }
+  ]
+}
