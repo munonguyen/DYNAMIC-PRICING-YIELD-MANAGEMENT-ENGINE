@@ -5,6 +5,7 @@ import {
   ChevronRight,
   ExternalLink,
   KeyRound,
+  MessageSquare,
   Package,
   PauseCircle,
   PlayCircle,
@@ -13,6 +14,8 @@ import {
   Search,
   SlidersHorizontal,
   Sparkles,
+  Sun,
+  Zap,
 } from 'lucide-react';
 import type {
   AnalyticsDashboardData,
@@ -1022,9 +1025,10 @@ export const LessorPartnerPortal: React.FC<LessorPartnerPortalProps> = ({
                 <button
                   type="button"
                   onClick={onOpenChatDrawer}
-                  className="rounded-xl bg-[#0F172A] py-2 text-[11px] font-semibold text-white hover:bg-[#16422C]"
+                  className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-[#0F172A] py-2 text-[11px] font-semibold text-white hover:bg-[#16422C]"
                 >
-                  💬 Mở Hộp Chat
+                  <MessageSquare className="h-3.5 w-3.5" />
+                  Mở Hộp Chat
                 </button>
                 {!isStaffOnly && (
                   <button
@@ -2357,9 +2361,10 @@ export const LessorPartnerPortal: React.FC<LessorPartnerPortalProps> = ({
                                 });
                                 flashToast(`✓ Đã kích hoạt gói Kích cầu Ca Sáng (Sàn ${formatVnd(minP)})!`);
                               }}
-                              className="rounded-full border border-neutral-200 bg-[#F8FAFC] px-3 py-1.5 font-semibold text-neutral-700 hover:border-[#16422C]"
+                              className="inline-flex items-center gap-1.5 rounded-full border border-neutral-200 bg-[#F8FAFC] px-3 py-1.5 font-semibold text-neutral-700 hover:border-[#16422C]"
                             >
-                              ☀ Kích cầu Ca Sáng (-35% sàn)
+                              <Sun className="h-3.5 w-3.5 text-amber-500" />
+                              Kích cầu Ca Sáng (-35% sàn)
                             </button>
                             <button
                               type="button"
@@ -2375,9 +2380,10 @@ export const LessorPartnerPortal: React.FC<LessorPartnerPortalProps> = ({
                                   `✓ Đã áp dụng tối ưu Giờ Vàng 18h–21h (Trần ${formatVnd(maxP)}, cọc ≥40%)!`
                                 );
                               }}
-                              className="rounded-full bg-[#F4F8F4] border border-[#16422C]/25 px-3 py-1.5 font-semibold text-[#16422C] hover:bg-[#E7F7D4]"
+                              className="inline-flex items-center gap-1.5 rounded-full bg-[#F4F8F4] border border-[#16422C]/25 px-3 py-1.5 font-semibold text-[#16422C] hover:bg-[#E7F7D4]"
                             >
-                              ⚡ Tối ưu Biên Giờ Vàng (+45% trần)
+                              <Zap className="h-3.5 w-3.5" />
+                              Tối ưu Biên Giờ Vàng (+45% trần)
                             </button>
                           </div>
                         </div>

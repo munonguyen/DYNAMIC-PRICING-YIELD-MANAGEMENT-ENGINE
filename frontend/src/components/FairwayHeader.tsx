@@ -1,5 +1,17 @@
 import React, { useEffect, useRef, useState } from 'react';
 import {
+  ArrowRightLeft,
+  BarChart3,
+  Building2,
+  CheckCircle2,
+  MessageSquare,
+  Scale,
+  ShieldCheck,
+  Store,
+  Ticket,
+  Zap,
+} from 'lucide-react';
+import {
   AnimatePresence,
   motion,
   useMotionValueEvent,
@@ -544,7 +556,10 @@ export const FairwayHeader: React.FC<FairwayHeaderProps> = ({
                                 onClick={handleSwitchToCustomerMode}
                                 className="flex w-full items-center justify-between rounded-xl bg-white border border-neutral-200 px-3 py-2 font-semibold text-[#0F172A] hover:border-[#16422C] transition"
                               >
-                                <span>⇄ Switch sang Cổng Khách (USER)</span>
+                                <span className="inline-flex items-center gap-2">
+                                  <ArrowRightLeft className="h-3.5 w-3.5 text-neutral-500" />
+                                  Switch sang Cổng Khách (USER)
+                                </span>
                                 <span className="text-[10px] text-neutral-400">Xem &amp; Đặt</span>
                               </button>
                             ) : (
@@ -553,7 +568,10 @@ export const FairwayHeader: React.FC<FairwayHeaderProps> = ({
                                 onClick={handleSwitchBackToInternalMode}
                                 className="flex w-full items-center justify-between rounded-xl bg-[#16422C] px-3 py-2 font-bold text-white hover:bg-[#0F172A] transition"
                               >
-                                <span>⚡ Vào Hệ thống Nội bộ ({nativeRole})</span>
+                                <span className="inline-flex items-center gap-2">
+                                  <Zap className="h-3.5 w-3.5 text-[#E7F7D4]" />
+                                  Vào Hệ thống Nội bộ ({nativeRole})
+                                </span>
                                 <span className="text-[10px] text-[#E7F7D4]">Quản lý</span>
                               </button>
                             )}
@@ -575,7 +593,10 @@ export const FairwayHeader: React.FC<FairwayHeaderProps> = ({
                                     }}
                                     className="flex w-full items-center justify-between rounded-xl px-3 py-2 text-left font-medium hover:bg-[#F8FAFC]"
                                   >
-                                    <span>📊 Dashboard Doanh thu &amp; Soát QR</span>
+                                    <span className="inline-flex items-center gap-2.5">
+                                      <BarChart3 className="h-4 w-4 text-[#16422C]" />
+                                      Dashboard Doanh thu &amp; Soát QR
+                                    </span>
                                   </button>
                                   <button
                                     type="button"
@@ -586,7 +607,10 @@ export const FairwayHeader: React.FC<FairwayHeaderProps> = ({
                                     }}
                                     className="flex w-full items-center justify-between rounded-xl px-3 py-2 text-left font-medium hover:bg-[#F8FAFC]"
                                   >
-                                    <span>🏟 Quản lý Cụm Sân &amp; Đăng Sân</span>
+                                    <span className="inline-flex items-center gap-2.5">
+                                      <Building2 className="h-4 w-4 text-[#16422C]" />
+                                      Quản lý Cụm Sân &amp; Đăng Sân
+                                    </span>
                                   </button>
                                   {session.managedProviderId && onOpenPublicShop && (
                                     <button
@@ -597,7 +621,10 @@ export const FairwayHeader: React.FC<FairwayHeaderProps> = ({
                                       }}
                                       className="flex w-full items-center justify-between rounded-xl px-3 py-2 text-left font-medium hover:bg-[#F8FAFC]"
                                     >
-                                      <span>🏪 Xem Hồ sơ Gian hàng Công khai</span>
+                                      <span className="inline-flex items-center gap-2.5">
+                                        <Store className="h-4 w-4 text-[#0E4F7E]" />
+                                        Xem Hồ sơ Gian hàng Công khai
+                                      </span>
                                       <span className="text-neutral-400">↗</span>
                                     </button>
                                   )}
@@ -614,7 +641,10 @@ export const FairwayHeader: React.FC<FairwayHeaderProps> = ({
                                     }}
                                     className="flex w-full items-center justify-between rounded-xl px-3 py-2 text-left font-medium hover:bg-[#F8FAFC]"
                                   >
-                                    <span>📊 Tổng quan &amp; Biểu đồ Toàn Sàn</span>
+                                    <span className="inline-flex items-center gap-2.5">
+                                      <BarChart3 className="h-4 w-4 text-[#16422C]" />
+                                      Tổng quan &amp; Biểu đồ Toàn Sàn
+                                    </span>
                                   </button>
                                   {activeRole === 'ADMIN' && (
                                     <button
@@ -626,7 +656,10 @@ export const FairwayHeader: React.FC<FairwayHeaderProps> = ({
                                       }}
                                       className="flex w-full items-center justify-between rounded-xl px-3 py-2 text-left font-medium hover:bg-[#F8FAFC]"
                                     >
-                                      <span>🏢 Giám sát Đối tác Cho thuê</span>
+                                      <span className="inline-flex items-center gap-2.5">
+                                        <ShieldCheck className="h-4 w-4 text-[#0E4F7E]" />
+                                        Giám sát Đối tác Cho thuê
+                                      </span>
                                     </button>
                                   )}
                                   <button
@@ -638,7 +671,10 @@ export const FairwayHeader: React.FC<FairwayHeaderProps> = ({
                                     }}
                                     className="flex w-full items-center justify-between rounded-xl px-3 py-2 text-left font-medium hover:bg-[#F8FAFC]"
                                   >
-                                    <span>✅ Hàng đợi Duyệt Hồ sơ KYC</span>
+                                    <span className="inline-flex items-center gap-2.5">
+                                      <CheckCircle2 className="h-4 w-4 text-[#16422C]" />
+                                      Hàng đợi Duyệt Hồ sơ KYC
+                                    </span>
                                   </button>
                                   <button
                                     type="button"
@@ -649,7 +685,10 @@ export const FairwayHeader: React.FC<FairwayHeaderProps> = ({
                                     }}
                                     className="flex w-full items-center justify-between rounded-xl px-3 py-2 text-left font-medium hover:bg-[#F8FAFC]"
                                   >
-                                    <span>⚖ Sổ cái Kép &amp; Đối soát</span>
+                                    <span className="inline-flex items-center gap-2.5">
+                                      <Scale className="h-4 w-4 text-[#0F172A]" />
+                                      Sổ cái Kép &amp; Đối soát
+                                    </span>
                                   </button>
                                 </>
                               )}
@@ -662,7 +701,10 @@ export const FairwayHeader: React.FC<FairwayHeaderProps> = ({
                                   }}
                                   className="flex w-full items-center justify-between rounded-xl px-3 py-2 text-left font-medium hover:bg-[#F8FAFC]"
                                 >
-                                  <span>💬 Hộp Chat Hỗ trợ Khách hàng</span>
+                                  <span className="inline-flex items-center gap-2.5">
+                                    <MessageSquare className="h-4 w-4 text-neutral-600" />
+                                    Hộp Chat Hỗ trợ Khách hàng
+                                  </span>
                                 </button>
                               )}
                             </>
@@ -676,7 +718,10 @@ export const FairwayHeader: React.FC<FairwayHeaderProps> = ({
                                 }}
                                 className="flex w-full items-center justify-between rounded-xl px-3 py-2 text-left font-medium hover:bg-[#F8FAFC]"
                               >
-                                <span>🎟 Vé QR &amp; Thanh toán của tôi</span>
+                                <span className="inline-flex items-center gap-2.5">
+                                  <Ticket className="h-4 w-4 text-[#16422C]" />
+                                  Vé QR &amp; Thanh toán của tôi
+                                </span>
                               </button>
                               {nativeRole === 'USER' && (
                                 <button
@@ -687,7 +732,10 @@ export const FairwayHeader: React.FC<FairwayHeaderProps> = ({
                                   }}
                                   className="flex w-full items-center justify-between rounded-xl px-3 py-2 text-left font-medium hover:bg-[#F8FAFC]"
                                 >
-                                  <span>🏟 Đăng ký làm Chủ cụm sân (KYC)</span>
+                                  <span className="inline-flex items-center gap-2.5">
+                                    <Building2 className="h-4 w-4 text-[#0E4F7E]" />
+                                    Đăng ký làm Chủ cụm sân (KYC)
+                                  </span>
                                 </button>
                               )}
                             </>

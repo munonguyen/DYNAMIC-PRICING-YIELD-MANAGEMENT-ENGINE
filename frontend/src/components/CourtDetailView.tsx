@@ -1,5 +1,6 @@
 import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { motion } from 'framer-motion';
+import { Lock, MessageSquare, Settings } from 'lucide-react';
 import type {
   CourtMediaItem,
   CourtServiceCategory,
@@ -642,9 +643,12 @@ export const CourtDetailView: React.FC<CourtDetailViewProps> = ({
           <div className="space-y-2.5 border-t border-neutral-100 pt-4">
             {!isAuthenticated && hasAnyAvailable && (
               <div className="flex items-center justify-between gap-2 rounded-xl border border-amber-200/90 bg-amber-50/75 px-3.5 py-2 text-xs text-amber-950">
-                <span>
-                  🔒 <strong>Yêu cầu đăng nhập:</strong> Khách hàng cần đăng nhập tài khoản để giữ
-                  sân, thanh toán ký quỹ và nhận vé QR định danh.
+                <span className="inline-flex items-start gap-2">
+                  <Lock className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                  <span>
+                    <strong>Yêu cầu đăng nhập:</strong> Khách hàng cần đăng nhập tài khoản để giữ
+                    sân, thanh toán ký quỹ và nhận vé QR định danh.
+                  </span>
                 </span>
               </div>
             )}
@@ -691,9 +695,10 @@ export const CourtDetailView: React.FC<CourtDetailViewProps> = ({
                   <button
                     type="button"
                     onClick={onOpenManageServicesInternal}
-                    className="rounded-full border border-[#16422C]/30 bg-[#F4F8F4] px-2.5 py-0.5 text-[10px] font-bold normal-case tracking-normal text-[#16422C] hover:bg-[#16422C] hover:text-[#E7F7D4]"
+                    className="inline-flex items-center gap-1 rounded-full border border-[#16422C]/30 bg-[#F4F8F4] px-2.5 py-0.5 text-[10px] font-bold normal-case tracking-normal text-[#16422C] hover:bg-[#16422C] hover:text-[#E7F7D4]"
                   >
-                    ⚙ Chỉnh sửa danh mục trong Nội bộ →
+                    <Settings className="h-3 w-3" />
+                    Chỉnh sửa danh mục trong Nội bộ →
                   </button>
                 )}
             </div>
@@ -1029,7 +1034,8 @@ export const CourtDetailView: React.FC<CourtDetailViewProps> = ({
                 size="sm"
                 onClick={() => onOpenVenueChat(listing)}
               >
-                💬 Chat Ngay
+                <MessageSquare className="mr-1.5 h-3.5 w-3.5" />
+                Chat Ngay
               </ActionButton>
               <ActionButton
                 variant="ink"

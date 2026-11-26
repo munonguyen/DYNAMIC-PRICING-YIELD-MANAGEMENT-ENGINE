@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
+import { Building2, Smile } from 'lucide-react';
 import type {
   AuthSession,
   ChatAttachedCourtCard,
@@ -762,13 +763,14 @@ export const FloatingChatWidget: React.FC<FloatingChatWidgetProps> = ({
                           setShowCourtPicker(false);
                         }}
                         title="Chèn biểu tượng cảm xúc"
-                        className={`rounded-md px-2 py-1 text-xs transition-colors ${
+                        className={`inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs transition-colors ${
                           showEmojiPicker
                             ? 'bg-[#E7F7D4] text-[#16422C]'
                             : 'text-neutral-500 hover:bg-neutral-100'
                         }`}
                       >
-                        😊 Emoji
+                        <Smile className="h-3.5 w-3.5" />
+                        Emoji
                       </button>
 
                       <button
@@ -778,13 +780,14 @@ export const FloatingChatWidget: React.FC<FloatingChatWidgetProps> = ({
                           setShowEmojiPicker(false);
                         }}
                         title="Đính kèm thẻ cụm sân"
-                        className={`rounded-md px-2 py-1 text-xs transition-colors ${
+                        className={`inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs transition-colors ${
                           showCourtPicker
                             ? 'bg-[#E7F7D4] text-[#16422C]'
                             : 'text-neutral-500 hover:bg-neutral-100'
                         }`}
                       >
-                        🏟️ Gửi thẻ sân
+                        <Building2 className="h-3.5 w-3.5" />
+                        Gửi thẻ sân
                       </button>
                     </div>
 

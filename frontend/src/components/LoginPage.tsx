@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { motion, useReducedMotion } from 'framer-motion';
+import { Lock } from 'lucide-react';
 import type { AuthSession, RoleCode } from '../types/marketplace';
 import { marketplaceApi } from '../api/marketplaceApi';
 import { ArenaPulseLogo } from './ArenaPulseLogo';
@@ -242,7 +243,10 @@ export const LoginPage: React.FC<LoginPageProps> = ({
               <>
                 {bookingPendingCourtName && (
                   <div className="mb-4 rounded-2xl border border-[#16422C]/25 bg-[#F4F8F4] px-3.5 py-2.5 text-xs text-[#16422C]">
-                    <div className="font-bold">🔒 Yêu cầu đăng nhập để đặt sân</div>
+                    <div className="inline-flex items-center gap-1.5 font-bold">
+                      <Lock className="h-3.5 w-3.5" />
+                      Yêu cầu đăng nhập để đặt sân
+                    </div>
                     <p className="mt-0.5 text-[11px] leading-relaxed text-neutral-600">
                       Đã giữ sẵn lựa chọn tại <strong>{bookingPendingCourtName}</strong>. Vui lòng
                       đăng nhập hoặc tạo tài khoản mới để tiếp tục đặt cọc &amp; nhận vé QR.

@@ -1,5 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { motion } from 'framer-motion';
+import { MessageSquare } from 'lucide-react';
 import type {
   PublishedListing,
   VenueProviderInfo,
@@ -572,7 +573,8 @@ export const LessorShopView: React.FC<LessorShopViewProps> = ({
                   onOpenLessorChat(activeProvider.providerId, representativeListing)
                 }
               >
-                💬 Nhắn tin trực tiếp với Chủ sân
+                <MessageSquare className="mr-1.5 h-3.5 w-3.5" />
+                Nhắn tin trực tiếp với Chủ sân
               </ActionButton>
             </ScrollReveal>
           </div>
@@ -753,9 +755,10 @@ export const LessorShopView: React.FC<LessorShopViewProps> = ({
                         <button
                           type="button"
                           onClick={() => onOpenLessorChat(activeProvider.providerId, listing)}
-                          className="border-r border-neutral-100 py-3 text-neutral-600 hover:bg-white hover:text-[#16422C] transition-colors"
+                          className="inline-flex items-center justify-center gap-1.5 border-r border-neutral-100 py-3 text-neutral-600 hover:bg-white hover:text-[#16422C] transition-colors"
                         >
-                          💬 Hỏi ca này
+                          <MessageSquare className="h-3.5 w-3.5" />
+                          Hỏi ca này
                         </button>
                         <button
                           type="button"

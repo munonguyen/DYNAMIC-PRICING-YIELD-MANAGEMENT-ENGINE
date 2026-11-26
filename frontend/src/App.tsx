@@ -1,5 +1,17 @@
 import React, { Suspense, lazy, useCallback, useEffect, useMemo, useState } from 'react';
 import { AnimatePresence, MotionConfig, motion } from 'framer-motion';
+import {
+  Award,
+  BarChart3,
+  Bell,
+  Building2,
+  Coffee,
+  Compass,
+  Home,
+  Settings,
+  Wallet,
+  Zap,
+} from 'lucide-react';
 import type {
   AppPageId,
   AuthSession,
@@ -1167,7 +1179,7 @@ export function App() {
                 {
                   key: 'm-overview',
                   label: 'Biểu đồ',
-                  icon: '📊',
+                  icon: <BarChart3 className="h-3.5 w-3.5" />,
                   active: currentPage === 'governance' && (activeRole === 'MANAGER' ? lessorTab === 'OVERVIEW' : adminTab === 'OPERATIONS'),
                   onClick: () => {
                     if (activeRole === 'MANAGER' || activeRole === 'STAFF') setLessorTab('OVERVIEW');
@@ -1178,7 +1190,7 @@ export function App() {
                 {
                   key: 'm-courts',
                   label: activeRole === 'ADMIN' ? 'Cho thuê' : 'Cụm sân',
-                  icon: '🏟',
+                  icon: <Building2 className="h-3.5 w-3.5" />,
                   active: currentPage === 'governance' && (activeRole === 'MANAGER' ? lessorTab === 'COURTS_INVENTORY' : adminTab === 'LESSOR_INSPECTOR'),
                   onClick: () => {
                     if (activeRole === 'MANAGER' || activeRole === 'STAFF') setLessorTab('COURTS_INVENTORY');
@@ -1189,7 +1201,7 @@ export function App() {
                 {
                   key: 'm-addons',
                   label: activeRole === 'ADMIN' ? 'Duyệt KYC' : 'Dịch vụ',
-                  icon: '🥤',
+                  icon: <Coffee className="h-3.5 w-3.5" />,
                   active: currentPage === 'governance' && (activeRole === 'MANAGER' ? lessorTab === 'ADDON_PRODUCTS' : adminTab === 'ADMIN_KYC'),
                   onClick: () => {
                     if (activeRole === 'MANAGER') setLessorTab('ADDON_PRODUCTS');
@@ -1200,14 +1212,14 @@ export function App() {
                 {
                   key: 'm-pricing',
                   label: 'Định giá',
-                  icon: '⚡',
+                  icon: <Zap className="h-3.5 w-3.5" />,
                   active: currentPage === 'pricing',
                   onClick: () => navigateTo('pricing'),
                 },
                 {
                   key: 'm-wallet',
                   label: 'Ví tiền',
-                  icon: '💳',
+                  icon: <Wallet className="h-3.5 w-3.5" />,
                   active: currentPage === 'governance' && (activeRole === 'MANAGER' ? lessorTab === 'ESCROW_WALLET' : adminTab === 'FINANCE_LEDGER'),
                   onClick: () => {
                     if (activeRole === 'MANAGER') setLessorTab('ESCROW_WALLET');
@@ -1239,11 +1251,11 @@ export function App() {
                 </button>
               ))
             : [
-                { id: 'home' as AppPageId, label: 'Trang chủ', icon: '⌂' },
-                { id: 'courts' as AppPageId, label: 'Thuê sân', icon: '◫' },
-                { id: 'announcements' as AppPageId, label: 'Thông báo', icon: '✦' },
-                { id: 'rankings' as AppPageId, label: 'Xếp hạng', icon: '★' },
-                { id: 'governance' as AppPageId, label: 'Chủ sân', icon: '⚙' },
+                { id: 'home' as AppPageId, label: 'Trang chủ', icon: <Home className="h-3.5 w-3.5" /> },
+                { id: 'courts' as AppPageId, label: 'Thuê sân', icon: <Compass className="h-3.5 w-3.5" /> },
+                { id: 'announcements' as AppPageId, label: 'Thông báo', icon: <Bell className="h-3.5 w-3.5" /> },
+                { id: 'rankings' as AppPageId, label: 'Xếp hạng', icon: <Award className="h-3.5 w-3.5" /> },
+                { id: 'governance' as AppPageId, label: 'Chủ sân', icon: <Settings className="h-3.5 w-3.5" /> },
               ].map((tab) => {
                 const active = currentPage === tab.id;
                 return (

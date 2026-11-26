@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
 import { QRCodeSVG } from 'qrcode.react';
-import { KeyRound, QrCode, ShieldCheck } from 'lucide-react';
+import { KeyRound, Lock, QrCode, ShieldCheck } from 'lucide-react';
 import type {
   AuthSession,
   CancelBookingResult,
@@ -525,8 +525,9 @@ export const BookingPipelineAndQrSection: React.FC<BookingPipelineAndQrSectionPr
               <span className="text-xs font-bold uppercase tracking-[0.12em] text-[#16422C]">
                 Bắt buộc Xác thực Khách hàng • ArenaPulse
               </span>
-              <span className="rounded-full bg-amber-50 border border-amber-200 px-3 py-1 text-[11px] font-semibold text-amber-900">
-                🔒 Chưa đăng nhập tài khoản
+              <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-50 border border-amber-200 px-3 py-1 text-[11px] font-semibold text-amber-900">
+                <Lock className="h-3 w-3" />
+                Chưa đăng nhập tài khoản
               </span>
             </div>
 

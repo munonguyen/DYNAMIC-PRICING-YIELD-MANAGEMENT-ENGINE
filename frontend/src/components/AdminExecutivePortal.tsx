@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
+import { FileEdit, Megaphone, MessageSquare } from 'lucide-react';
 import type {
   AnalyticsDashboardData,
   AppPageId,
@@ -334,16 +335,18 @@ export const AdminExecutivePortal: React.FC<AdminExecutivePortalProps> = ({
                   <button
                     type="button"
                     onClick={() => onNavigate('announcements')}
-                    className="rounded-full bg-[#E7F7D4] px-4 py-2 text-xs font-bold text-[#16422C] transition hover:bg-white"
+                    className="inline-flex items-center gap-1.5 rounded-full bg-[#E7F7D4] px-4 py-2 text-xs font-bold text-[#16422C] transition hover:bg-white"
                   >
-                    📢 Phát Thông báo Hệ thống
+                    <Megaphone className="h-3.5 w-3.5" />
+                    Phát Thông báo Hệ thống
                   </button>
                   <button
                     type="button"
                     onClick={() => onNavigate('news')}
-                    className="rounded-full border border-white/25 bg-white/10 px-3.5 py-2 text-xs font-semibold text-white hover:bg-white/20"
+                    className="inline-flex items-center gap-1.5 rounded-full border border-white/25 bg-white/10 px-3.5 py-2 text-xs font-semibold text-white hover:bg-white/20"
                   >
-                    ✍ Xuất bản Bài báo
+                    <FileEdit className="h-3.5 w-3.5" />
+                    Xuất bản Bài báo
                   </button>
                 </>
               )}
@@ -457,9 +460,10 @@ export const AdminExecutivePortal: React.FC<AdminExecutivePortalProps> = ({
               <button
                 type="button"
                 onClick={onOpenChatDrawer}
-                className="w-full rounded-xl bg-[#0F172A] py-2 text-[11px] font-semibold text-white hover:bg-[#16422C] transition"
+                className="inline-flex w-full items-center justify-center gap-1.5 rounded-xl bg-[#0F172A] py-2 text-[11px] font-semibold text-white hover:bg-[#16422C] transition"
               >
-                💬 Mở Kênh Điều phối Hỗ trợ
+                <MessageSquare className="h-3.5 w-3.5" />
+                Mở Kênh Điều phối Hỗ trợ
               </button>
             </div>
           </aside>
