@@ -1,0 +1,39 @@
+{
+  "branch": "service/lessor/rented-courts",
+  "title": "Danh sách sân đã thuê",
+  "scope": "Cổng chủ sân lọc các ca đã nhận sân (COMPLETED) trong danh sách đơn của cơ sở.",
+  "operations": [
+    {
+      "method": "GET",
+      "path": "/api/v1/checkins/orders",
+      "operationId": "venueOrders"
+    }
+  ],
+  "source": [
+    {
+      "file": "frontend/src/components/LessorPartnerPortal.tsx",
+      "anchors": [
+        "Đã nhận sân",
+        "id: 'COMPLETED'"
+      ]
+    },
+    {
+      "file": "frontend/src/api/marketplaceApi.ts",
+      "anchors": [
+        "getVenueOrders("
+      ]
+    },
+    {
+      "file": "src/main/java/com/yieldengine/controller/staff/StaffCheckInController.java",
+      "anchors": [
+        "venueOrders("
+      ]
+    },
+    {
+      "file": "src/main/java/com/yieldengine/service/SearchAndAnalyticsSyncService.java",
+      "anchors": [
+        "loadRecentOrdersFromDb("
+      ]
+    }
+  ]
+}
