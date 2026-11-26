@@ -1,0 +1,31 @@
+{
+  "branch": "service/admin/role-assignment",
+  "title": "Phân quyền tài khoản",
+  "scope": "Đọc ma trận quyền và cấp vai trò theo nền tảng hoặc cơ sở.",
+  "operations": [
+    {
+      "method": "GET",
+      "path": "/api/v1/admin/rbac-matrix",
+      "operationId": "getRbacMatrix"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/admin/users/{id}/roles",
+      "operationId": "assignRole"
+    }
+  ],
+  "source": [
+    {
+      "file": "src/main/java/com/yieldengine/controller/admin/AdminPlatformController.java",
+      "anchors": [
+        "getRbacMatrix("
+      ]
+    },
+    {
+      "file": "src/main/java/com/yieldengine/controller/admin/AdminIdentityRbacController.java",
+      "anchors": [
+        "assignRole("
+      ]
+    }
+  ]
+}
