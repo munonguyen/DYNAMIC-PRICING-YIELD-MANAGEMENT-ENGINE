@@ -51,7 +51,7 @@ import { LessorAnalyticsDashboard } from './LessorAnalyticsDashboard';
 import { QrCheckInScannerModal, type QrModalTabId } from './QrCheckInScannerModal';
 import { CreateCourtGroupModal } from './CreateCourtGroupModal';
 import { BookingOrderDetailModal } from './BookingOrderDetailModal';
-import { getActiveLessorServices } from '../data/courtServicesData';
+import { getActiveLessorServices, resolveCourtThumbnail } from '../data/courtServicesData';
 
 export type LessorPortalTabId =
   | 'OVERVIEW'
@@ -1352,12 +1352,18 @@ export const LessorPartnerPortal: React.FC<LessorPartnerPortalProps> = ({
                     <div className="divide-y divide-neutral-100">
                       {paginatedOrders.map((order) => {
                         const matchedListing =
-                          myListings.find((l) => l.groupId === order.groupId) ?? null;
+                          myListings.find((l) => l.groupId === order.groupId) ??
+                          listings.find((l) => l.groupId === order.groupId) ??
+                          null;
                         const orderListingMode =
                           matchedListing?.checkinMode ?? order.checkinMode ?? 'QR_STAFF';
                         const usesPinCounter =
                           orderListingMode === 'PIN_COUNTER' || orderListingMode === 'MANUAL';
                         const courtServiceCount = getActiveLessorServices(matchedListing).length;
+                        const courtThumbUrl = resolveCourtThumbnail(
+                          matchedListing?.imageUrl,
+                          order.sportName
+                        );
                         const maskedPhone =
                           order.customerPhone.replace(/\s+/g, '').length >= 4
                             ? `${order.customerPhone.replace(/\s+/g, '').slice(0, 4)} ••• •••`
@@ -1370,60 +1376,73 @@ export const LessorPartnerPortal: React.FC<LessorPartnerPortalProps> = ({
                             className="group cursor-pointer p-4 sm:px-6 sm:py-4 transition hover:bg-[#F8FAFC]"
                           >
                             <div className="grid grid-cols-1 gap-4 lg:grid-cols-12 lg:items-center">
-                              {/* COL 1 (5/12): ORDER ID + STATUS + COURT & SLOT */}
-                              <div className="lg:col-span-5 min-w-0 space-y-1.5">
-                                <div className="flex flex-wrap items-center gap-2">
-                                  <span className="tabular-nums rounded-lg bg-[#0F172A] px-2.5 py-0.5 text-[11px] font-bold text-white">
-                                    {order.orderId}
+                              {/* COL 1 (5/12): COURT IMAGE + ORDER ID + STATUS + COURT & SLOT */}
+                              <div className="lg:col-span-5 flex items-start gap-3.5 min-w-0">
+                                <div className="relative h-16 w-20 sm:h-[72px] sm:w-24 shrink-0 overflow-hidden rounded-2xl border border-neutral-200/80 bg-neutral-100">
+                                  <img
+                                    src={courtThumbUrl}
+                                    alt={order.groupName}
+                                    className="h-full w-full object-cover transition duration-300 group-hover:scale-105"
+                                  />
+                                  <span className="absolute bottom-1 left-1 rounded-md bg-slate-950/75 px-1.5 py-0.5 text-[9.5px] font-bold text-white backdrop-blur-xs">
+                                    {order.unitNumber}
                                   </span>
-                                  <span
-                                    className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[10.5px] font-bold ${
-                                      order.status === 'CONFIRMED'
-                                        ? 'bg-amber-100 text-amber-900'
+                                </div>
+
+                                <div className="min-w-0 flex-1 space-y-1.5">
+                                  <div className="flex flex-wrap items-center gap-1.5">
+                                    <span className="tabular-nums rounded-lg bg-[#0F172A] px-2 py-0.5 text-[11px] font-bold text-white">
+                                      {order.orderId}
+                                    </span>
+                                    <span
+                                      className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10.5px] font-bold ${
+                                        order.status === 'CONFIRMED'
+                                          ? 'bg-amber-100 text-amber-900'
+                                          : order.status === 'COMPLETED'
+                                            ? 'bg-emerald-100 text-emerald-900'
+                                            : 'bg-rose-100 text-rose-800'
+                                      }`}
+                                    >
+                                      {order.status === 'CONFIRMED'
+                                        ? usesPinCounter
+                                          ? 'Chờ đối chiếu PIN'
+                                          : 'Chờ quét QR'
                                         : order.status === 'COMPLETED'
-                                          ? 'bg-emerald-100 text-emerald-900'
-                                          : 'bg-rose-100 text-rose-800'
-                                    }`}
-                                  >
-                                    {order.status === 'CONFIRMED'
-                                      ? usesPinCounter
-                                        ? 'Chờ đối chiếu PIN'
-                                        : 'Chờ quét QR'
-                                      : order.status === 'COMPLETED'
-                                        ? 'Đã nhận sân'
-                                        : 'Bỏ lịch'}
-                                  </span>
-                                  <span
-                                    className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10.5px] font-semibold ${
-                                      usesPinCounter
-                                        ? 'bg-[#E6F1F8] text-[#0E4F7E]'
-                                        : 'bg-[#F4F8F4] text-[#16422C]'
-                                    }`}
-                                  >
-                                    {usesPinCounter ? (
-                                      <>
-                                        <KeyRound className="h-3 w-3" /> PIN 6 số
-                                      </>
-                                    ) : (
-                                      <>
-                                        <QrCode className="h-3 w-3" /> Quét QR
-                                      </>
-                                    )}
-                                  </span>
-                                </div>
+                                          ? 'Đã nhận sân'
+                                          : 'Bỏ lịch'}
+                                    </span>
+                                    <span
+                                      className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10.5px] font-semibold ${
+                                        usesPinCounter
+                                          ? 'bg-[#E6F1F8] text-[#0E4F7E]'
+                                          : 'bg-[#F4F8F4] text-[#16422C]'
+                                      }`}
+                                    >
+                                      {usesPinCounter ? (
+                                        <>
+                                          <KeyRound className="h-3 w-3" /> PIN 6 số
+                                        </>
+                                      ) : (
+                                        <>
+                                          <QrCode className="h-3 w-3" /> Quét QR
+                                        </>
+                                      )}
+                                    </span>
+                                  </div>
 
-                                <div className="truncate text-sm font-bold text-[#0F172A] group-hover:text-[#16422C]">
-                                  {order.groupName}
-                                </div>
+                                  <div className="truncate text-sm font-bold text-[#0F172A] group-hover:text-[#16422C]">
+                                    {order.groupName}
+                                  </div>
 
-                                <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-neutral-500">
-                                  <span className="font-semibold text-[#16422C]">
-                                    {order.unitNumber} • {order.sportName}
-                                  </span>
-                                  <span>·</span>
-                                  <span className="font-medium text-neutral-700">
-                                    {order.slotLabel}
-                                  </span>
+                                  <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-neutral-500">
+                                    <span className="font-semibold text-[#16422C]">
+                                      {order.sportName}
+                                    </span>
+                                    <span>·</span>
+                                    <span className="font-medium text-neutral-700">
+                                      {order.slotLabel}
+                                    </span>
+                                  </div>
                                 </div>
                               </div>
 

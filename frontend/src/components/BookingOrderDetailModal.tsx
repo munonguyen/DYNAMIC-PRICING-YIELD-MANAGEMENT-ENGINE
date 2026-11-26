@@ -22,7 +22,7 @@ import type {
   PublishedListing,
 } from '../types/marketplace';
 import { formatVnd } from '../api/marketplaceApi';
-import { getActiveLessorServices } from '../data/courtServicesData';
+import { getActiveLessorServices, resolveCourtThumbnail } from '../data/courtServicesData';
 import { ActionButton } from './FairwayControls';
 import { EXPO_EASE } from './motionPrimitives';
 
@@ -164,52 +164,61 @@ export const BookingOrderDetailModal: React.FC<BookingOrderDetailModalProps> = (
         >
           {/* STICKY MODAL HEADER */}
           <div className="flex items-start justify-between gap-4 border-b border-neutral-100 bg-white px-6 py-4">
-            <div className="space-y-1">
-              <div className="flex flex-wrap items-center gap-2">
-                <span className="tabular-nums rounded-lg bg-[#0F172A] px-2.5 py-0.5 text-xs font-bold text-white">
-                  {order.orderId}
-                </span>
-                <span
-                  className={`rounded-full px-2.5 py-0.5 text-[11px] font-bold ${
-                    order.status === 'CONFIRMED'
-                      ? 'bg-amber-100 text-amber-900'
-                      : order.status === 'COMPLETED'
-                        ? 'bg-emerald-100 text-emerald-900'
-                        : 'bg-rose-100 text-rose-800'
-                  }`}
-                >
-                  {order.status === 'CONFIRMED'
-                    ? usesPinCounter
-                      ? 'Chờ đối chiếu PIN'
-                      : 'Chờ quét QR'
-                    : order.status === 'COMPLETED'
-                      ? 'Đã nhận sân'
-                      : 'Khách bỏ lịch'}
-                </span>
-                <span
-                  className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[11px] font-semibold ${
-                    usesPinCounter
-                      ? 'bg-[#E6F1F8] text-[#0E4F7E]'
-                      : 'bg-[#F4F8F4] text-[#16422C]'
-                  }`}
-                >
-                  {usesPinCounter ? (
-                    <>
-                      <KeyRound className="h-3 w-3" /> PIN 6 số
-                    </>
-                  ) : (
-                    <>
-                      <QrCode className="h-3 w-3" /> Quét QR tại quầy
-                    </>
-                  )}
-                </span>
+            <div className="flex items-start gap-3.5 min-w-0">
+              <div className="h-14 w-16 sm:h-16 sm:w-20 shrink-0 overflow-hidden rounded-2xl border border-neutral-200 bg-neutral-100">
+                <img
+                  src={resolveCourtThumbnail(courtListing?.imageUrl, order.sportName)}
+                  alt={order.groupName}
+                  className="h-full w-full object-cover"
+                />
               </div>
-              <h3 id="order-detail-modal-title" className="text-lg font-bold text-[#0F172A]">
-                Chi tiết Đơn Đặt Sân — {order.groupName}
-              </h3>
-              <p className="text-xs text-neutral-500">
-                {order.unitNumber} • {order.sportName} · {order.slotLabel}
-              </p>
+              <div className="min-w-0 space-y-1">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="tabular-nums rounded-lg bg-[#0F172A] px-2.5 py-0.5 text-xs font-bold text-white">
+                    {order.orderId}
+                  </span>
+                  <span
+                    className={`rounded-full px-2.5 py-0.5 text-[11px] font-bold ${
+                      order.status === 'CONFIRMED'
+                        ? 'bg-amber-100 text-amber-900'
+                        : order.status === 'COMPLETED'
+                          ? 'bg-emerald-100 text-emerald-900'
+                          : 'bg-rose-100 text-rose-800'
+                    }`}
+                  >
+                    {order.status === 'CONFIRMED'
+                      ? usesPinCounter
+                        ? 'Chờ đối chiếu PIN'
+                        : 'Chờ quét QR'
+                      : order.status === 'COMPLETED'
+                        ? 'Đã nhận sân'
+                        : 'Khách bỏ lịch'}
+                  </span>
+                  <span
+                    className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[11px] font-semibold ${
+                      usesPinCounter
+                        ? 'bg-[#E6F1F8] text-[#0E4F7E]'
+                        : 'bg-[#F4F8F4] text-[#16422C]'
+                    }`}
+                  >
+                    {usesPinCounter ? (
+                      <>
+                        <KeyRound className="h-3 w-3" /> PIN 6 số
+                      </>
+                    ) : (
+                      <>
+                        <QrCode className="h-3 w-3" /> Quét QR tại quầy
+                      </>
+                    )}
+                  </span>
+                </div>
+                <h3 id="order-detail-modal-title" className="truncate text-lg font-bold text-[#0F172A]">
+                  Chi tiết Đơn Đặt Sân — {order.groupName}
+                </h3>
+                <p className="text-xs text-neutral-500">
+                  {order.unitNumber} • {order.sportName} · {order.slotLabel}
+                </p>
+              </div>
             </div>
 
             <button

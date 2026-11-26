@@ -553,3 +553,30 @@ export function hydrateListingsWithLessorServices(
     };
   });
 }
+
+const SPORT_FALLBACK_IMAGES: Array<[string, string]> = [
+  ['BÓNG ĐÁ', '/images/court-football-night.jpg'],
+  ['FOOTBALL', '/images/court-football-night.jpg'],
+  ['CẦU LÔNG', '/images/court-badminton-arena.jpg'],
+  ['BADMINTON', '/images/court-badminton-arena.jpg'],
+  ['TENNIS', '/images/court-tennis-pro.jpg'],
+  ['QUẦN VỢT', '/images/court-tennis-pro.jpg'],
+  ['BÓNG RỔ', '/images/court-basketball-fiba.jpg'],
+  ['BASKETBALL', '/images/court-basketball-fiba.jpg'],
+];
+
+/**
+ * Resolves a court listing thumbnail with a sport-matched fallback image for booking orders.
+ */
+export function resolveCourtThumbnail(imageUrl?: string, sportHint?: string): string {
+  if (imageUrl && imageUrl.trim()) {
+    return imageUrl;
+  }
+  const upper = (sportHint ?? '').toUpperCase();
+  for (const [keyword, url] of SPORT_FALLBACK_IMAGES) {
+    if (upper.includes(keyword)) {
+      return url;
+    }
+  }
+  return '/images/court-pickleball-dome.jpg';
+}
