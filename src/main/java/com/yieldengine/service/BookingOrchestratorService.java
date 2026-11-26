@@ -53,6 +53,7 @@ public class BookingOrchestratorService {
     private final IdempotencyKeyRepository idempotencyKeyRepository;
     private final OutboxEventRepository outboxEventRepository;
     private final PriceLockTokenService priceLockTokenService;
+    private final TicketPassService ticketPassService;
     private final PricingEngineService pricingEngineService;
     private final CancellationRefundPolicyEvaluator policyEvaluator;
     private final FinanceLedgerService financeLedgerService;
@@ -470,12 +471,7 @@ public class BookingOrchestratorService {
         reservation.setStatus(ReservationStatus.CONFIRMED.name());
         reservation.setConfirmedAt(now);
         reservation.setHoldExpiresAt(null);
-        if (reservation.getQrJti() == null) {
-            reservation.setQrJti(UUID.randomUUID());
-        }
-        String derivedPin = priceLockTokenService.deriveCheckInPin(reservation.getReservationId(), reservation.getQrJti());
-        reservation.setCheckinPinHash(priceLockTokenService.hashCheckInPin(reservation.getReservationId(), derivedPin));
-        reservation.setCheckinPinHint(priceLockTokenService.maskPinHint(derivedPin));
+        ticketPassService.attachSecurityCredentials(reservation);
         reservationRepository.save(reservation);
 
         booking.setStatus("CONFIRMED");
@@ -516,9 +512,7 @@ public class BookingOrchestratorService {
             reservation.setStatus(ReservationStatus.CONFIRMED.name());
             reservation.setConfirmedAt(now);
             reservation.setHoldExpiresAt(null);
-            if (reservation.getQrJti() == null) {
-                reservation.setQrJti(UUID.randomUUID());
-            }
+            ticketPassService.attachSecurityCredentials(reservation);
             reservationRepository.save(reservation);
             return true;
         } catch (DataIntegrityViolationException ex) {
@@ -608,49 +602,30 @@ public class BookingOrchestratorService {
     public java.util.List<com.yieldengine.dto.ops.BookingOpsDtos.MyTicketResponse> listMyTickets(UUID userId) {
         return reservationRepository.findByUserIdOrderBySlotStartDesc(userId).stream()
                 .map(res -> {
-                    ResourceGroup group = resourceGroupRepository.findById(res.getGroupId()).orElse(null);
-                    Booking booking = res.getBookingId() != null
-                            ? bookingRepository.findById(res.getBookingId()).orElse(null)
-                            : null;
-                    long paid = resolveCollectedOnlineAmount(res);
-                    int grace = group != null && group.getNoshowGraceMinutes() != null ? group.getNoshowGraceMinutes() : 15;
-                    int duration = group != null && group.getSlotMinutes() != null ? group.getSlotMinutes() : 60;
-                    Instant slotEnd = res.getSlotStart().plus(Duration.ofMinutes(duration));
-                    Instant qrExpiry = slotEnd.plus(Duration.ofMinutes(grace));
-                    String qrToken = ("CONFIRMED".equals(res.getStatus()) && res.getQrJti() != null)
-                            ? priceLockTokenService.generateQrToken(
-                                    pricingEngineService.getActiveQrKeyId(),
-                                    res.getQrJti(),
-                                    res.getTenantId(),
-                                    res.getReservationId(),
-                                    res.getSlotStart(),
-                                    qrExpiry
-                            )
-                            : null;
-                    String effectiveCheckinMode = group != null && group.getCheckinMode() != null
-                            ? group.getCheckinMode()
-                            : (group != null && group.getTenant() != null ? group.getTenant().getCheckinMode() : "QR_STAFF");
-                    String pinCode = ("CONFIRMED".equals(res.getStatus()) && res.getQrJti() != null && res.getPinConsumedAt() == null)
-                            ? priceLockTokenService.deriveCheckInPin(res.getReservationId(), res.getQrJti())
+                    TicketPassService.TicketPassSnapshot pass = ticketPassService.buildPassSnapshot(res);
+                    boolean activePass = "CONFIRMED".equals(res.getStatus());
+                    String qrToken = activePass && res.getQrJti() != null ? pass.qrToken() : null;
+                    String pinCode = activePass && res.getQrJti() != null && res.getPinConsumedAt() == null
+                            ? pass.checkinPinCode()
                             : null;
                     return new com.yieldengine.dto.ops.BookingOpsDtos.MyTicketResponse(
                             res.getReservationId(),
-                            group != null && group.getTenant() != null ? group.getTenant().getName() : "ArenaPulse Complex",
-                            group != null && group.getTenant() != null ? group.getTenant().getAddress() : "",
-                            group != null ? group.getName() : "Cụm sân",
-                            res.getUnit() != null ? res.getUnit().getUnitNumber() : "SAN_01",
-                            res.getSlotStart(),
-                            slotEnd,
+                            pass.venueName(),
+                            pass.venueAddress(),
+                            pass.groupName(),
+                            pass.unitNumber(),
+                            pass.slotStart(),
+                            pass.slotEnd(),
                             res.getStatus(),
-                            res.getLockedPrice(),
+                            pass.lockedPrice(),
                             res.getDepositAmount(),
-                            paid,
-                            Math.max(0L, res.getLockedPrice() - paid),
-                            booking != null ? booking.getContactEmail() : null,
+                            pass.paidAmount(),
+                            pass.remainingAtVenue(),
+                            pass.customerEmail(),
                             res.getQrJti(),
                             qrToken,
-                            qrExpiry,
-                            effectiveCheckinMode,
+                            pass.qrExpiresAt(),
+                            pass.checkinMode(),
                             pinCode
                     );
                 })
@@ -668,14 +643,7 @@ public class BookingOrchestratorService {
     }
 
     private long resolveCollectedOnlineAmount(Reservation reservation) {
-        if (reservation.getBookingId() == null) {
-            return reservation.getDepositAmount();
-        }
-        return paymentRepository.findByBookingIdOrderByCreatedAtAsc(reservation.getBookingId()).stream()
-                .filter(p -> "SUCCESS".equals(p.getStatus())
-                        && ("DEPOSIT".equals(p.getPaymentType()) || "FULL_SETTLEMENT".equals(p.getPaymentType())))
-                .mapToLong(Payment::getAmount)
-                .sum();
+        return ticketPassService.resolveEscrowSettlementAmount(reservation);
     }
 
     private Payment savePaymentRecord(

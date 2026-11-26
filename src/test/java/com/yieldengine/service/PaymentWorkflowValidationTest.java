@@ -66,12 +66,16 @@ class PaymentWorkflowValidationTest {
 
     @BeforeEach
     void setUp() {
+        TicketPassService ticketPassService = new TicketPassService(
+                resourceGroupRepository, bookingRepository, paymentRepository,
+                priceLockTokenService, pricingEngineService
+        );
         orchestrator = new BookingOrchestratorService(
                 resourceGroupRepository, timeSlotRepository, slotInventoryRepository,
                 unitRepository, unitTimeLockRepository, bookingRepository,
                 reservationRepository, paymentRepository, consumedTokenRepository,
                 idempotencyKeyRepository, outboxEventRepository, priceLockTokenService,
-                pricingEngineService, new CancellationRefundPolicyEvaluator(),
+                ticketPassService, pricingEngineService, new CancellationRefundPolicyEvaluator(),
                 financeLedgerService, auditLogService, bookingValidator,
                 bookingMapper, eventPublisher, jdbcTemplate, new ObjectMapper()
         );
@@ -170,7 +174,7 @@ class PaymentWorkflowValidationTest {
 
         // Now simulate cancellation 5h before play -> 50% tier applies ONLY to 70,000đ deposit (35,000đ forfeit),
         // while 130,000đ pre-paid balance is refunded 100% -> total refund = 165,000đ
-        when(paymentRepository.findByBookingIdOrderByCreatedAtAsc(bookingId)).thenReturn(List.of(payCaptor.getValue()));
+        when(paymentRepository.sumSuccessfulEscrowByBookingId(bookingId)).thenReturn(200_000L);
         when(reservationRepository.findByReservationId(reservationId)).thenReturn(Optional.of(confirmed));
         when(paymentRepository.findFirstByBookingIdAndPaymentTypeAndStatusOrderByCreatedAtDesc(
                 eq(bookingId), eq("DEPOSIT"), eq("SUCCESS"))).thenReturn(Optional.empty());

@@ -1,0 +1,184 @@
+package com.yieldengine.service;
+
+import com.yieldengine.entity.Booking;
+import com.yieldengine.entity.Reservation;
+import com.yieldengine.entity.ResourceGroup;
+import com.yieldengine.entity.Tenant;
+import com.yieldengine.repository.BookingRepository;
+import com.yieldengine.repository.PaymentRepository;
+import com.yieldengine.repository.ResourceGroupRepository;
+import lombok.RequiredArgsConstructor;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+import org.springframework.util.StringUtils;
+
+import java.time.Duration;
+import java.time.Instant;
+import java.util.UUID;
+
+/**
+ * Centralized domain service for assembling customer pass snapshots (QR token, single-use PIN,
+ * Spring Data JPA payment aggregates) and attaching security credentials cleanly across workflows.
+ */
+@Service
+@RequiredArgsConstructor
+public class TicketPassService {
+
+    private final ResourceGroupRepository resourceGroupRepository;
+    private final BookingRepository bookingRepository;
+    private final PaymentRepository paymentRepository;
+    private final PriceLockTokenService priceLockTokenService;
+    private final PricingEngineService pricingEngineService;
+
+    public record TicketPassSnapshot(
+            UUID reservationId,
+            UUID qrJti,
+            String qrToken,
+            String checkinPinCode,
+            String checkinMode,
+            String venueName,
+            String venueAddress,
+            String groupName,
+            String unitNumber,
+            Instant slotStart,
+            Instant slotEnd,
+            Instant qrExpiresAt,
+            long lockedPrice,
+            long paidAmount,
+            long remainingAtVenue,
+            String customerName,
+            String customerPhoneMasked,
+            String customerPhoneLast4,
+            String customerEmail
+    ) {
+    }
+
+    /**
+     * Attaches single-use qrJti and salted SHA-256 PIN credentials when confirming a reservation.
+     */
+    public void attachSecurityCredentials(Reservation reservation) {
+        if (reservation.getQrJti() == null) {
+            reservation.setQrJti(UUID.randomUUID());
+        }
+        String derivedPin = priceLockTokenService.deriveCheckInPin(
+                reservation.getReservationId(), reservation.getQrJti()
+        );
+        reservation.setCheckinPinHash(
+                priceLockTokenService.hashCheckInPin(reservation.getReservationId(), derivedPin)
+        );
+        reservation.setCheckinPinHint(priceLockTokenService.maskPinHint(derivedPin));
+    }
+
+    @Transactional(readOnly = true)
+    public TicketPassSnapshot buildPassSnapshot(Reservation reservation) {
+        ResourceGroup group = resourceGroupRepository.findById(reservation.getGroupId()).orElse(null);
+        Booking booking = reservation.getBookingId() != null
+                ? bookingRepository.findById(reservation.getBookingId()).orElse(null)
+                : null;
+
+        Tenant tenant = group != null ? group.getTenant() : null;
+        String venueName = tenant != null ? tenant.getName() : "ArenaPulse Sports Complex";
+        String venueAddress = tenant != null ? tenant.getAddress() : "";
+        String groupName = group != null ? group.getName() : "Cụm sân thể thao";
+        String unitNumber = reservation.getUnit() != null ? reservation.getUnit().getUnitNumber() : "SAN_01";
+        String effectiveMode = group != null ? group.resolveEffectiveCheckinMode() : "QR_STAFF";
+
+        int slotMinutes = group != null && group.getSlotMinutes() != null ? group.getSlotMinutes() : 60;
+        int graceMinutes = group != null && group.getNoshowGraceMinutes() != null ? group.getNoshowGraceMinutes() : 15;
+        Instant slotEnd = reservation.getSlotStart().plus(Duration.ofMinutes(slotMinutes));
+        Instant qrExpiresAt = slotEnd.plus(Duration.ofMinutes(graceMinutes));
+
+        UUID qrJti = reservation.getQrJti() != null ? reservation.getQrJti() : UUID.randomUUID();
+        String qrToken = priceLockTokenService.generateQrToken(
+                pricingEngineService.getActiveQrKeyId(),
+                qrJti,
+                reservation.getTenantId(),
+                reservation.getReservationId(),
+                reservation.getSlotStart(),
+                qrExpiresAt
+        );
+        String pinCode = priceLockTokenService.deriveCheckInPin(reservation.getReservationId(), qrJti);
+
+        long paidAmount = resolveTotalPaidAmount(reservation);
+        long remainingAtVenue = Math.max(0L, reservation.getLockedPrice() - paidAmount);
+
+        String customerName = booking != null && StringUtils.hasText(booking.getContactName())
+                ? booking.getContactName().trim()
+                : "Khách đã xác thực tài khoản";
+        String rawPhone = booking != null && booking.getContactPhone() != null
+                ? booking.getContactPhone().trim()
+                : "";
+        String customerEmail = booking != null ? booking.getContactEmail() : null;
+
+        return new TicketPassSnapshot(
+                reservation.getReservationId(),
+                qrJti,
+                qrToken,
+                pinCode,
+                effectiveMode,
+                venueName,
+                venueAddress,
+                groupName,
+                unitNumber,
+                reservation.getSlotStart(),
+                slotEnd,
+                qrExpiresAt,
+                reservation.getLockedPrice(),
+                paidAmount,
+                remainingAtVenue,
+                customerName,
+                maskPhone(rawPhone),
+                extractPhoneLast4(rawPhone),
+                customerEmail
+        );
+    }
+
+    @Transactional(readOnly = true)
+    public String resolveCustomerPhoneLast4(Reservation reservation) {
+        if (reservation.getBookingId() == null) {
+            return "";
+        }
+        return bookingRepository.findById(reservation.getBookingId())
+                .map(b -> extractPhoneLast4(b.getContactPhone()))
+                .orElse("");
+    }
+
+    @Transactional(readOnly = true)
+    public long resolveTotalPaidAmount(Reservation reservation) {
+        if (reservation.getBookingId() == null) {
+            return reservation.getDepositAmount();
+        }
+        long sum = paymentRepository.sumSuccessfulPaidByBookingId(reservation.getBookingId());
+        return sum > 0 ? sum : reservation.getDepositAmount();
+    }
+
+    @Transactional(readOnly = true)
+    public long resolveEscrowSettlementAmount(Reservation reservation) {
+        if (reservation.getBookingId() == null) {
+            return reservation.getDepositAmount();
+        }
+        return Math.max(
+                reservation.getDepositAmount(),
+                paymentRepository.sumSuccessfulEscrowByBookingId(reservation.getBookingId())
+        );
+    }
+
+    public static String extractPhoneLast4(String rawPhone) {
+        if (!StringUtils.hasText(rawPhone)) {
+            return "";
+        }
+        String digits = rawPhone.replaceAll("\\D", "");
+        return digits.length() >= 4 ? digits.substring(digits.length() - 4) : digits;
+    }
+
+    public static String maskPhone(String rawPhone) {
+        if (!StringUtils.hasText(rawPhone)) {
+            return "Chưa cập nhật";
+        }
+        String clean = rawPhone.replaceAll("\\s+", "");
+        if (clean.length() < 7) {
+            return clean;
+        }
+        return clean.substring(0, 4) + " ••• " + extractPhoneLast4(clean);
+    }
+}

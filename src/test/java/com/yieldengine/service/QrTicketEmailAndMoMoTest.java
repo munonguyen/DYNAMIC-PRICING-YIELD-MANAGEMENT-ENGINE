@@ -48,14 +48,18 @@ class QrTicketEmailAndMoMoTest {
         sender.setHost("localhost");
         sender.setPort(greenMail.getSmtp().getPort());
 
-        emailService = new QrTicketEmailService(
-                sender,
-                reservationRepository,
+        TicketPassService ticketPassService = new TicketPassService(
                 resourceGroupRepository,
                 bookingRepository,
                 paymentRepository,
                 priceLockTokenService,
-                pricingEngineService,
+                pricingEngineService
+        );
+        emailService = new QrTicketEmailService(
+                sender,
+                reservationRepository,
+                ticketPassService,
+                new TicketEmailTemplateRenderer(),
                 "arenapulse-tickets@arenapulse.vn",
                 "",
                 true
@@ -105,10 +109,11 @@ class QrTicketEmailAndMoMoTest {
         when(reservationRepository.findByReservationId(reservationId)).thenReturn(Optional.of(res));
         when(bookingRepository.findById(bookingId)).thenReturn(Optional.of(booking));
         when(resourceGroupRepository.findById(groupId)).thenReturn(Optional.of(group));
-        when(paymentRepository.findByBookingIdOrderByCreatedAtAsc(bookingId)).thenReturn(List.of(deposit));
+        when(paymentRepository.sumSuccessfulPaidByBookingId(bookingId)).thenReturn(70_000L);
         when(pricingEngineService.getActiveQrKeyId()).thenReturn("QR_KEY_2026_V1");
         when(priceLockTokenService.generateQrToken(any(), any(), any(), any(), any(), any()))
                 .thenReturn("eyJwbGFjZWhvbGRlciI6InFyIn0.SIGNATURE_HMAC");
+        when(priceLockTokenService.deriveCheckInPin(reservationId, qrJti)).thenReturn("482913");
 
         QrTicketEmailService.EmailDispatchResult result =
                 emailService.sendQrTicketEmailForReservation(reservationId, "munonguyen2005@gmail.com", "Nguyễn Muno");

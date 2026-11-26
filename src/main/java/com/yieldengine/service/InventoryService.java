@@ -234,7 +234,7 @@ public class InventoryService {
                     group.getMaxPrice(),
                     group.getDepositPercent(),
                     group.getSlotMinutes(),
-                    group.getCheckinMode() != null ? group.getCheckinMode() : group.getTenant().getCheckinMode(),
+                    group.resolveEffectiveCheckinMode(),
                     coverUrl,
                     gallery,
                     slotDtos

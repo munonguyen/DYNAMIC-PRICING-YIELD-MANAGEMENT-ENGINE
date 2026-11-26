@@ -61,18 +61,22 @@ class CheckInPinSecurityTest {
         PricingProperties props = new PricingProperties();
         props.getToken().setSecretKey("test-price-lock-secret-32-chars!!");
         props.getToken().setQrSecretKey("test-qr-secret-key-32-chars-min!!");
-        tokenService = new PriceLockTokenService(props, new ObjectMapper());
+        tokenService = new PriceLockTokenService(props, new ObjectMapper().findAndRegisterModules());
 
+        TicketPassService ticketPassService = new TicketPassService(
+                resourceGroupRepository,
+                bookingRepository,
+                paymentRepository,
+                tokenService,
+                pricingEngineService
+        );
         BookingAndOpsValidator validator = new BookingAndOpsValidator(mock(ConsumedTokenRepository.class), checkInRepository);
         checkInService = new CheckInService(
                 reservationRepository,
                 resourceGroupRepository,
-                timeSlotRepository,
                 checkInRepository,
-                bookingRepository,
-                paymentRepository,
                 tokenService,
-                pricingEngineService,
+                ticketPassService,
                 financeLedgerService,
                 auditLogService,
                 rbacGuard,
@@ -149,7 +153,7 @@ class CheckInPinSecurityTest {
         String validPin = tokenService.deriveCheckInPin(reservationId, qrJti);
         when(bookingRepository.findById(reservation.getBookingId())).thenReturn(Optional.of(booking));
         when(resourceGroupRepository.findById(groupId)).thenReturn(Optional.of(group));
-        when(paymentRepository.findByBookingIdOrderByCreatedAtAsc(any())).thenReturn(List.of());
+        when(paymentRepository.sumSuccessfulEscrowByBookingId(any())).thenReturn(70_000L);
         when(checkInRepository.save(any(CheckIn.class))).thenAnswer(inv -> {
             CheckIn ci = inv.getArgument(0);
             ci.setId(UUID.randomUUID());

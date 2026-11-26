@@ -94,4 +94,16 @@ public class ResourceGroup extends BaseEntity {
 
     @Column(name = "deleted_at")
     private Instant deletedAt;
+
+    /**
+     * Resolves the effective venue check-in mode for this court group, inheriting from tenant when unset.
+     */
+    public String resolveEffectiveCheckinMode() {
+        if (checkinMode != null && !checkinMode.isBlank()) {
+            return checkinMode;
+        }
+        return tenant != null && tenant.getCheckinMode() != null
+                ? tenant.getCheckinMode()
+                : "QR_STAFF";
+    }
 }
