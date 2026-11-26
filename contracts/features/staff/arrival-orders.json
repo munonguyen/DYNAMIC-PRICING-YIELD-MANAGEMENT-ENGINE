@@ -1,0 +1,27 @@
+{
+  "branch": "service/staff/arrival-orders",
+  "title": "Danh sách đơn tại quầy",
+  "scope": "Nhân viên đọc đơn của cơ sở được phân công để chuẩn bị nhận sân.",
+  "operations": [
+    {
+      "method": "GET",
+      "path": "/api/v1/checkins/orders",
+      "operationId": "venueOrders"
+    }
+  ],
+  "source": [
+    {
+      "file": "src/main/java/com/yieldengine/controller/staff/StaffCheckInController.java",
+      "anchors": [
+        "venueOrders(",
+        "\"STAFF\", \"MANAGER\""
+      ]
+    },
+    {
+      "file": "frontend/src/components/LessorPartnerPortal.tsx",
+      "anchors": [
+        "ORDERS_CHECKIN"
+      ]
+    }
+  ]
+}
