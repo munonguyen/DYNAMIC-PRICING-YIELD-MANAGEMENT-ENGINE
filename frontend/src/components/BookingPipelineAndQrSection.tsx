@@ -1644,6 +1644,30 @@ export const BookingPipelineAndQrSection: React.FC<BookingPipelineAndQrSectionPr
                       : 'Mã QR chính thức sẽ tự động kích hoạt ngay sau khi xác nhận thanh toán'}
                 </div>
 
+                {qrTicket && !cancelResult && (
+                  <div className="mt-3 rounded-2xl border border-[#16422C]/25 bg-[#F4F8F4] px-3.5 py-2.5">
+                    <div className="text-[10px] font-bold uppercase tracking-wider text-[#16422C]">
+                      {activeListing?.checkinMode === 'PIN_COUNTER' ||
+                      activeListing?.checkinMode === 'MANUAL'
+                        ? 'Mã PIN 6 số Nhận sân (Cơ sở không máy quét)'
+                        : 'Mã PIN 6 số dự phòng tại quầy'}
+                    </div>
+                    <div className="mt-0.5 font-mono text-xl font-extrabold tracking-[0.28em] text-[#0F172A]">
+                      {(() => {
+                        const seed = `${holdResult?.reservationId ?? ''}:${qrTicket.qrJti}`;
+                        let h = 0x811c9dc5;
+                        for (let i = 0; i < seed.length; i++) {
+                          h = Math.imul(h ^ seed.charCodeAt(i), 0x01000193) >>> 0;
+                        }
+                        return String((h % 900_000) + 100_000);
+                      })()}
+                    </div>
+                    <div className="text-[10.5px] text-neutral-500">
+                      Đọc mã này + 4 số cuối SĐT cho nhân viên nếu sân không quét QR (tự khóa sau 1 lần dùng).
+                    </div>
+                  </div>
+                )}
+
                 {qrTicket && holdResult && !cancelResult && (
                   <div className="mt-4 space-y-2 border-t border-neutral-100 pt-3.5 text-left">
                     <ActionButton

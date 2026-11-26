@@ -484,7 +484,9 @@ export const CourtDetailView: React.FC<CourtDetailViewProps> = ({
 
             <p className="mt-1.5 text-xs sm:text-sm text-neutral-500">
               Địa điểm: <strong className="text-[#0F172A]">{listing.venueAddress}</strong> •{' '}
-              {listing.checkinMode === 'QR_STAFF' ? 'Nhân viên quét vé QR 1 lần' : 'Tự check-in tại cổng'}
+              {listing.checkinMode === 'QR_STAFF'
+                ? 'Nhân viên quét vé QR 1 lần'
+                : 'Xác thực Mã PIN 6 số qua Email (Không cần quét QR)'}
             </p>
 
             {/* Shopee-style Price Box (Court + Add-on Services Live Total) */}

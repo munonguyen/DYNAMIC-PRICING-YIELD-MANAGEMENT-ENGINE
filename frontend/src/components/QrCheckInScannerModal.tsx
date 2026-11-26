@@ -3,13 +3,15 @@ import { AnimatePresence, motion } from 'framer-motion';
 import { QRCodeSVG } from 'qrcode.react';
 import jsQR from 'jsqr';
 import type { LessorBookingOrder, QrInspectResult } from '../types/marketplace';
-import { formatVnd, marketplaceApi } from '../api/marketplaceApi';
+import { deriveDeterministicPin, formatVnd, marketplaceApi } from '../api/marketplaceApi';
 import { ActionButton } from './FairwayControls';
 import { EXPO_EASE } from './motionPrimitives';
 
+export type QrModalTabId = 'SCANNER' | 'PIN_VERIFY' | 'TICKET_PREVIEW';
+
 interface QrCheckInScannerModalProps {
   open: boolean;
-  initialTab?: 'SCANNER' | 'TICKET_PREVIEW';
+  initialTab?: QrModalTabId;
   initialOrder?: LessorBookingOrder | null;
   initialQuery?: string;
   providerOrders: LessorBookingOrder[];
@@ -17,7 +19,8 @@ interface QrCheckInScannerModalProps {
   activeProviderId: string;
   activeVenueName: string;
   onClose: () => void;
-  onConfirmCheckIn: (orderId: string) => void;
+  onConfirmCheckIn: (orderId: string, method?: 'QR_SCAN' | 'PIN_COUNTER') => void;
+  onPinFailedAttempt?: (orderId: string) => void;
 }
 
 export const QrCheckInScannerModal: React.FC<QrCheckInScannerModalProps> = ({
@@ -31,8 +34,9 @@ export const QrCheckInScannerModal: React.FC<QrCheckInScannerModalProps> = ({
   activeVenueName,
   onClose,
   onConfirmCheckIn,
+  onPinFailedAttempt,
 }) => {
-  const [tab, setTab] = useState<'SCANNER' | 'TICKET_PREVIEW'>(initialTab);
+  const [tab, setTab] = useState<QrModalTabId>(initialTab);
   const [previewOrder, setPreviewOrder] = useState<LessorBookingOrder | null>(initialOrder);
   const [tokenInput, setTokenInput] = useState<string>(initialQuery);
   const [inspectResult, setInspectResult] = useState<QrInspectResult | null>(null);
@@ -41,6 +45,18 @@ export const QrCheckInScannerModal: React.FC<QrCheckInScannerModalProps> = ({
   const [cameraError, setCameraError] = useState<string | null>(null);
   const [phoneLast4Check, setPhoneLast4Check] = useState<string>('');
   const [statusNotice, setStatusNotice] = useState<string | null>(null);
+
+  // Option 2 (PIN_COUNTER - no scanner required) state
+  const pendingOrders = providerOrders.filter((o) => o.status === 'CONFIRMED');
+  const [pinTargetOrderId, setPinTargetOrderId] = useState<string>('');
+  const [pinCodeInput, setPinCodeInput] = useState<string>('');
+  const [pinPhoneLast4Input, setPinPhoneLast4Input] = useState<string>('');
+  const [pinVerifying, setPinVerifying] = useState<boolean>(false);
+  const [pinFeedback, setPinFeedback] = useState<{
+    ok: boolean;
+    message: string;
+    locked?: boolean;
+  } | null>(null);
 
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -65,7 +81,15 @@ export const QrCheckInScannerModal: React.FC<QrCheckInScannerModalProps> = ({
     setPreviewOrder(initialOrder);
     setPhoneLast4Check('');
     setStatusNotice(null);
-    if (initialQuery.trim()) {
+    setPinCodeInput('');
+    setPinPhoneLast4Input('');
+    setPinFeedback(null);
+
+    const defaultPinTarget =
+      initialOrder?.orderId ?? pendingOrders[0]?.orderId ?? providerOrders[0]?.orderId ?? '';
+    setPinTargetOrderId(defaultPinTarget);
+
+    if (initialTab === 'SCANNER' && initialQuery.trim()) {
       setTokenInput(initialQuery.trim());
       void runInspect(initialQuery.trim());
     } else if (initialTab === 'SCANNER') {
@@ -141,7 +165,9 @@ export const QrCheckInScannerModal: React.FC<QrCheckInScannerModalProps> = ({
     setCameraError(null);
     setStatusNotice(null);
     if (!navigator.mediaDevices?.getUserMedia) {
-      setCameraError('Trình duyệt chưa hỗ trợ truy cập Camera hoặc đang chặn quyền Camera. Hãy dùng nút Tải ảnh QR bên cạnh.');
+      setCameraError(
+        'Trình duyệt chưa hỗ trợ truy cập Camera. Hãy dùng nút Tải ảnh QR hoặc chuyển sang tab Xác thực PIN 6 số.'
+      );
       return;
     }
     try {
@@ -158,7 +184,9 @@ export const QrCheckInScannerModal: React.FC<QrCheckInScannerModalProps> = ({
         }
       }, 60);
     } catch {
-      setCameraError('Không mở được Camera (có thể chưa cấp quyền). Bạn vẫn có thể tải trực tiếp ảnh vé QR từ Email để kiểm tra.');
+      setCameraError(
+        'Không mở được Camera. Nếu quầy không có thiết bị quét, chọn tab "PIN 6 số (Không máy quét)" ở góc trên.'
+      );
     }
   };
 
@@ -183,7 +211,7 @@ export const QrCheckInScannerModal: React.FC<QrCheckInScannerModalProps> = ({
         const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
         const decoded = jsQR(imageData.data, imageData.width, imageData.height);
         if (!decoded?.data) {
-          setCameraError('Không tìm thấy mã QR hợp lệ trong ảnh tải lên. Hãy chọn ảnh rõ nét chứa mã QR vé.');
+          setCameraError('Không tìm thấy mã QR hợp lệ trong ảnh tải lên.');
           return;
         }
         setStatusNotice(`✓ Đã giải mã QR từ ảnh "${file.name}".`);
@@ -226,9 +254,44 @@ export const QrCheckInScannerModal: React.FC<QrCheckInScannerModalProps> = ({
     img.src = url;
   };
 
-  const firstPendingOrder = providerOrders.find((o) => o.status === 'CONFIRMED') ?? null;
+  const selectedPinOrder =
+    providerOrders.find((o) => o.orderId === pinTargetOrderId) ??
+    pendingOrders[0] ??
+    providerOrders[0] ??
+    null;
+
+  const handleSubmitPinVerify = async (overridePin?: string) => {
+    if (!selectedPinOrder) return;
+    const rawPin = overridePin ?? pinCodeInput;
+    setPinVerifying(true);
+    try {
+      const res = await marketplaceApi.verifyPinAtVenue(
+        selectedPinOrder,
+        rawPin,
+        pinPhoneLast4Input
+      );
+      setPinFeedback({
+        ok: res.ok,
+        message: res.message,
+        locked: res.locked,
+      });
+      if (res.ok) {
+        onConfirmCheckIn(selectedPinOrder.orderId, 'PIN_COUNTER');
+      } else if (res.remainingAttempts !== undefined) {
+        onPinFailedAttempt?.(selectedPinOrder.orderId);
+      }
+    } finally {
+      setPinVerifying(false);
+    }
+  };
+
+  const firstPendingOrder = pendingOrders[0] ?? null;
   const firstCompletedOrder = providerOrders.find((o) => o.status === 'COMPLETED') ?? null;
   const effectivePreview = previewOrder ?? firstPendingOrder ?? providerOrders[0] ?? null;
+  const effectivePreviewPin = effectivePreview
+    ? effectivePreview.checkinPin ||
+      deriveDeterministicPin(`${effectivePreview.reservationId}:${effectivePreview.qrJti ?? effectivePreview.qrCode}`)
+    : '';
 
   const phoneMatchStatus =
     inspectResult?.customerPhoneLast4 && phoneLast4Check.trim().length === 4
@@ -253,25 +316,39 @@ export const QrCheckInScannerModal: React.FC<QrCheckInScannerModalProps> = ({
           <div className="flex flex-wrap items-start justify-between gap-3 border-b border-neutral-100 pb-4">
             <div>
               <span className="inline-flex items-center gap-1.5 rounded-full bg-[#E7F7D4] px-3 py-0.5 text-[10.5px] font-bold text-[#16422C]">
-                Hệ thống Soát Vé &amp; Chống Giả Mạo Tại Quầy
+                Soát Vé Chống Giả Mạo Tại Quầy (Hỗ trợ cả Có &amp; Không Máy Quét)
               </span>
               <h3 className="mt-1.5 text-lg sm:text-xl font-bold text-[#0F172A]">
                 {tab === 'SCANNER'
                   ? `Quét Mã QR & Đối Chiếu Chủ Vé — ${activeVenueName}`
-                  : `Mẫu Email Vé QR Ký Số Đã Gửi Khách`}
+                  : tab === 'PIN_VERIFY'
+                    ? `Xác Thực Bằng Mã PIN 6 Số (Không Cần Máy Quét) — ${activeVenueName}`
+                    : `Mẫu Email Vé QR & PIN 6 Số Đã Gửi Khách`}
               </h3>
             </div>
 
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               <div className="inline-flex rounded-full border border-neutral-200 bg-[#F8FAFC] p-1 text-xs">
                 <button
                   type="button"
                   onClick={() => setTab('SCANNER')}
-                  className={`rounded-full px-3.5 py-1.5 font-bold transition cursor-pointer ${
+                  className={`rounded-full px-3 py-1.5 font-bold transition cursor-pointer ${
                     tab === 'SCANNER' ? 'bg-[#16422C] text-white' : 'text-neutral-600'
                   }`}
                 >
-                  Máy quét Staff
+                  📷 Quét QR
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    stopCamera();
+                    setTab('PIN_VERIFY');
+                  }}
+                  className={`rounded-full px-3 py-1.5 font-bold transition cursor-pointer ${
+                    tab === 'PIN_VERIFY' ? 'bg-[#16422C] text-white' : 'text-neutral-600'
+                  }`}
+                >
+                  🔢 PIN 6 số
                 </button>
                 <button
                   type="button"
@@ -279,11 +356,11 @@ export const QrCheckInScannerModal: React.FC<QrCheckInScannerModalProps> = ({
                     stopCamera();
                     setTab('TICKET_PREVIEW');
                   }}
-                  className={`rounded-full px-3.5 py-1.5 font-bold transition cursor-pointer ${
+                  className={`rounded-full px-3 py-1.5 font-bold transition cursor-pointer ${
                     tab === 'TICKET_PREVIEW' ? 'bg-[#16422C] text-white' : 'text-neutral-600'
                   }`}
                 >
-                  Vé Email Khách
+                  ✉ Vé Email
                 </button>
               </div>
               <button
@@ -324,7 +401,8 @@ export const QrCheckInScannerModal: React.FC<QrCheckInScannerModalProps> = ({
                           Đưa mã QR trên Email khách vào Camera
                         </p>
                         <p className="text-[11px] text-neutral-500">
-                          Hoặc tải file ảnh PNG/JPG vé QR khách đưa để kiểm tra chữ ký HMAC-SHA256.
+                          Hoặc tải ảnh PNG/JPG vé QR. Nếu quầy không có máy quét, chuyển qua tab{' '}
+                          <strong>🔢 PIN 6 số</strong>.
                         </p>
                       </div>
                     )}
@@ -418,7 +496,9 @@ export const QrCheckInScannerModal: React.FC<QrCheckInScannerModalProps> = ({
                       <button
                         type="button"
                         onClick={() =>
-                          void runInspect('eyJwdXJwb3NlIjoiUVJfQ0hFQ0tJTiIsImZha2UiOnRydWV9.FAKE_SIG_TAMPERED')
+                          void runInspect(
+                            'eyJwdXJwb3NlIjoiUVJfQ0hFQ0tJTiIsImZha2UiOnRydWV9.FAKE_SIG_TAMPERED'
+                          )
                         }
                         className="rounded-full bg-rose-100 px-3 py-1 text-[11px] font-bold text-rose-800 hover:brightness-95 cursor-pointer"
                       >
@@ -595,7 +675,7 @@ export const QrCheckInScannerModal: React.FC<QrCheckInScannerModalProps> = ({
                         size="md"
                         onClick={() => {
                           const targetOrderId = inspectResult.orderId!;
-                          onConfirmCheckIn(targetOrderId);
+                          onConfirmCheckIn(targetOrderId, 'QR_SCAN');
                           setInspectResult({
                             ...inspectResult,
                             valid: false,
@@ -613,6 +693,163 @@ export const QrCheckInScannerModal: React.FC<QrCheckInScannerModalProps> = ({
                 </motion.div>
               )}
             </div>
+          ) : tab === 'PIN_VERIFY' ? (
+            /* OPTION 2: NO SCANNER REQUIRED — 6-DIGIT EMAIL PIN VERIFICATION */
+            <div className="mt-5 space-y-5">
+              <div className="rounded-2xl border border-[#16422C]/20 bg-[#F4F8F4] p-4 text-xs text-neutral-700 space-y-1">
+                <div className="font-bold text-[#16422C]">
+                  Chế độ Option 2: Không cần máy quét / Camera — Xác thực bằng Mã PIN 6 số bí mật
+                </div>
+                <p>
+                  Trên bảng của quầy chỉ hiện gợi ý <code className="font-mono font-bold">••••XX</code>. Khách đọc <strong>Mã PIN 6 số trong Email</strong> kèm <strong>4 số cuối SĐT</strong> để mở sân 1 lần duy nhất (tự khóa nếu nhập sai quá 5 lần).
+                </p>
+              </div>
+
+              {selectedPinOrder ? (
+                <div className="grid grid-cols-1 gap-5 md:grid-cols-12">
+                  <div className="md:col-span-6 space-y-3 rounded-2xl border border-neutral-200 bg-white p-4 text-xs">
+                    <div>
+                      <label className="mb-1.5 block text-[11px] font-bold uppercase tracking-wider text-neutral-500">
+                        Chọn đơn đặt sân khách đang đứng tại quầy
+                      </label>
+                      <select
+                        value={selectedPinOrder.orderId}
+                        onChange={(e) => {
+                          setPinTargetOrderId(e.target.value);
+                          setPinCodeInput('');
+                          setPinPhoneLast4Input('');
+                          setPinFeedback(null);
+                        }}
+                        className="w-full rounded-xl border border-neutral-300 bg-[#F8FAFC] px-3 py-2 text-xs font-semibold text-[#0F172A] focus:border-[#16422C] focus:outline-none"
+                      >
+                        {providerOrders.slice(0, 20).map((o) => (
+                          <option key={o.orderId} value={o.orderId}>
+                            {o.orderId} • {o.customerName} ({o.unitNumber}) —{' '}
+                            {o.status === 'CONFIRMED' ? 'Chờ nhận' : o.status}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div className="rounded-xl bg-[#F8FAFC] p-3.5 space-y-1.5 border border-neutral-200/70">
+                      <div className="flex justify-between">
+                        <span className="text-neutral-500">Khách đặt:</span>
+                        <strong className="text-[#0F172A]">{selectedPinOrder.customerName}</strong>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-neutral-500">Email nhận PIN:</span>
+                        <strong className="text-[#0F172A]">
+                          {selectedPinOrder.customerEmail || 'Đơn trực tuyến'}
+                        </strong>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-neutral-500">Gợi ý mã trên quầy:</span>
+                        <code className="font-mono font-bold text-[#16422C]">
+                          {selectedPinOrder.pinHint || '••••••'} (4 số đầu ẩn)
+                        </code>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-neutral-500">Đã cọc online:</span>
+                        <strong className="text-[#0E4F7E] tabular-nums">
+                          {formatVnd(selectedPinOrder.paidEscrow)}
+                        </strong>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-neutral-500">Cần thu thêm tại sân:</span>
+                        <strong className="text-amber-700 tabular-nums">
+                          {formatVnd(selectedPinOrder.remainingAtVenue)}
+                        </strong>
+                      </div>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setPreviewOrder(selectedPinOrder);
+                        setTab('TICKET_PREVIEW');
+                      }}
+                      className="text-[11px] font-bold text-[#0E4F7E] hover:underline cursor-pointer"
+                    >
+                      ✉ Mở xem Email vé của khách này để lấy PIN test →
+                    </button>
+                  </div>
+
+                  <div className="md:col-span-6 space-y-3 rounded-2xl border border-neutral-200 bg-white p-4 text-xs">
+                    <form
+                      onSubmit={(e) => {
+                        e.preventDefault();
+                        void handleSubmitPinVerify();
+                      }}
+                      className="space-y-3"
+                    >
+                      <div>
+                        <label className="mb-1 block font-bold text-[#0F172A]">
+                          1. Nhập Mã PIN 6 số khách đọc từ Email *
+                        </label>
+                        <input
+                          type="text"
+                          inputMode="numeric"
+                          maxLength={6}
+                          value={pinCodeInput}
+                          onChange={(e) => setPinCodeInput(e.target.value.replace(/\D/g, ''))}
+                          placeholder="Nhập 6 số (VD: 482913)"
+                          className="w-full rounded-xl border border-neutral-300 px-3.5 py-2.5 font-mono text-base font-bold tracking-[0.28em] text-[#0F172A] focus:border-[#16422C] focus:outline-none"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="mb-1 block font-bold text-[#0F172A]">
+                          2. Xác nhận 4 số cuối SĐT của khách (tùy chọn chống đọc hộ)
+                        </label>
+                        <input
+                          type="text"
+                          inputMode="numeric"
+                          maxLength={4}
+                          value={pinPhoneLast4Input}
+                          onChange={(e) => setPinPhoneLast4Input(e.target.value.replace(/\D/g, ''))}
+                          placeholder="VD: 6655"
+                          className="w-full rounded-xl border border-neutral-300 px-3.5 py-2 font-mono text-xs font-bold tracking-widest text-[#0F172A] focus:border-[#16422C] focus:outline-none"
+                        />
+                      </div>
+
+                      <div className="flex flex-wrap gap-2 pt-1">
+                        <ActionButton
+                          type="submit"
+                          variant="forest"
+                          size="md"
+                          disabled={pinVerifying || selectedPinOrder.status === 'COMPLETED'}
+                        >
+                          {pinVerifying ? 'Đang kiểm tra…' : '✓ Xác thực PIN & Mở sân'}
+                        </ActionButton>
+                        <button
+                          type="button"
+                          onClick={() => void handleSubmitPinVerify('999999')}
+                          className="rounded-full border border-rose-200 bg-rose-50 px-3 py-2 text-[11px] font-bold text-rose-700 hover:bg-rose-100 cursor-pointer"
+                        >
+                          ✕ Thử nhập sai PIN
+                        </button>
+                      </div>
+                    </form>
+
+                    {pinFeedback && (
+                      <div
+                        className={`rounded-xl border p-3 text-xs font-semibold ${
+                          pinFeedback.ok
+                            ? 'border-emerald-300 bg-emerald-50 text-emerald-900'
+                            : 'border-rose-300 bg-rose-50 text-rose-800'
+                        }`}
+                      >
+                        {pinFeedback.message}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ) : (
+                <div className="py-8 text-center text-xs text-neutral-500">
+                  Chưa có đơn nào để xác thực PIN.
+                </div>
+              )}
+            </div>
           ) : effectivePreview ? (
             /* EMAIL TICKET PREVIEW FOR TESTING & VISUALIZING WHAT CUSTOMER RECEIVES */
             <div className="mt-5 space-y-4">
@@ -623,29 +860,45 @@ export const QrCheckInScannerModal: React.FC<QrCheckInScannerModalProps> = ({
                       Từ: ArenaPulse Tickets &lt;noreply@arenapulse.vn&gt;
                     </div>
                     <div className="text-neutral-500">
-                      Đến: <strong>{effectivePreview.customerEmail || 'khach@gmail.com'}</strong> • Chủ đề: [ArenaPulse] Vé QR nhận sân {effectivePreview.orderId}
+                      Đến: <strong>{effectivePreview.customerEmail || 'khach@gmail.com'}</strong> •
+                      Chủ đề: [ArenaPulse] Vé nhận sân {effectivePreview.orderId}
                     </div>
                   </div>
                   <span className="rounded-full bg-[#16422C] px-3 py-0.5 text-[10.5px] font-bold text-white">
-                    {effectivePreview.status === 'CONFIRMED' ? 'Sẵn sàng quét' : effectivePreview.status}
+                    {effectivePreview.status === 'CONFIRMED'
+                      ? 'Sẵn sàng nhận sân'
+                      : effectivePreview.status}
                   </span>
                 </div>
 
                 <div className="mt-4 grid grid-cols-1 gap-5 sm:grid-cols-12 items-center">
-                  <div className="sm:col-span-5 flex flex-col items-center">
+                  <div className="sm:col-span-5 flex flex-col items-center space-y-2.5">
+                    {/* Prominent 6-Digit Email PIN for Option 2 (PIN_COUNTER) */}
+                    <div className="w-full rounded-2xl border border-[#16422C]/30 bg-[#E7F7D4] px-3 py-2.5 text-center">
+                      <div className="text-[10px] font-bold uppercase tracking-wider text-[#16422C]">
+                        Mã PIN 6 số trong Email
+                      </div>
+                      <div className="mt-0.5 font-mono text-2xl font-extrabold tracking-[0.28em] text-[#0F172A]">
+                        {effectivePreviewPin}
+                      </div>
+                      <div className="text-[10px] text-[#16422C]">
+                        Đọc cho bảo vệ nếu sân không có máy quét
+                      </div>
+                    </div>
+
                     <div
                       ref={qrSvgWrapRef}
-                      className="rounded-2xl border border-neutral-200 bg-white p-4 shadow-xs"
+                      className="rounded-2xl border border-neutral-200 bg-white p-3.5 shadow-xs"
                     >
                       <QRCodeSVG
                         value={effectivePreview.qrToken || effectivePreview.qrCode}
-                        size={176}
+                        size={148}
                         level="M"
                         bgColor="#FFFFFF"
                         fgColor="#0F172A"
                       />
                     </div>
-                    <span className="mt-2 font-mono text-[11px] font-bold text-[#16422C]">
+                    <span className="font-mono text-[11px] font-bold text-[#16422C]">
                       Mã vé: {effectivePreview.qrCode}
                     </span>
                   </div>
@@ -656,44 +909,71 @@ export const QrCheckInScannerModal: React.FC<QrCheckInScannerModalProps> = ({
                     </h4>
                     <div className="space-y-1 text-neutral-600">
                       <div>
-                        Khách hàng: <strong className="text-[#0F172A]">{effectivePreview.customerName}</strong> ({effectivePreview.customerPhone})
+                        Khách hàng:{' '}
+                        <strong className="text-[#0F172A]">{effectivePreview.customerName}</strong> (
+                        {effectivePreview.customerPhone})
                       </div>
                       <div>
-                        Cơ sở &amp; Sân: <strong className="text-[#0F172A]">{effectivePreview.venueName} — {effectivePreview.unitNumber}</strong>
+                        Cơ sở &amp; Sân:{' '}
+                        <strong className="text-[#0F172A]">
+                          {effectivePreview.venueName} — {effectivePreview.unitNumber}
+                        </strong>
                       </div>
                       <div>
-                        Khung giờ: <strong className="text-[#0F172A]">{effectivePreview.slotLabel}</strong>
+                        Khung giờ:{' '}
+                        <strong className="text-[#0F172A]">{effectivePreview.slotLabel}</strong>
                       </div>
                       <div>
-                        Đã thanh toán ký quỹ: <strong className="text-[#0E4F7E]">{formatVnd(effectivePreview.paidEscrow)}</strong> • Còn thu tại sân:{' '}
-                        <strong className="text-[#16422C]">{formatVnd(effectivePreview.remainingAtVenue)}</strong>
+                        Đã thanh toán ký quỹ:{' '}
+                        <strong className="text-[#0E4F7E]">
+                          {formatVnd(effectivePreview.paidEscrow)}
+                        </strong>{' '}
+                        • Còn thu tại sân:{' '}
+                        <strong className="text-[#16422C]">
+                          {formatVnd(effectivePreview.remainingAtVenue)}
+                        </strong>
                       </div>
                     </div>
 
                     <div className="rounded-xl border border-neutral-200 bg-white p-2.5 text-[10.5px] text-neutral-500 break-all">
                       <span className="font-bold text-[#0F172A]">Chữ ký Token nhúng trong QR: </span>
                       <span className="font-mono">
-                        {(effectivePreview.qrToken || effectivePreview.qrCode).slice(0, 72)}…
+                        {(effectivePreview.qrToken || effectivePreview.qrCode).slice(0, 68)}…
                       </span>
                     </div>
 
                     <div className="flex flex-wrap gap-2 pt-1">
                       <ActionButton
+                        variant="forest"
+                        size="sm"
+                        onClick={() => {
+                          setPinTargetOrderId(effectivePreview.orderId);
+                          setPinCodeInput(effectivePreviewPin);
+                          setPinPhoneLast4Input(
+                            effectivePreview.customerPhone.replace(/\D/g, '').slice(-4)
+                          );
+                          setPinFeedback(null);
+                          setTab('PIN_VERIFY');
+                        }}
+                      >
+                        🔢 Dùng PIN {effectivePreviewPin} kiểm tra ở Quầy PIN
+                      </ActionButton>
+                      <ActionButton
                         variant="outline"
                         size="sm"
                         onClick={() => handleDownloadTicketPng(effectivePreview)}
                       >
-                        ⬇ Tải ảnh QR PNG (như Gmail đính kèm)
+                        ⬇ Tải ảnh QR PNG
                       </ActionButton>
                       <ActionButton
-                        variant="forest"
+                        variant="outline"
                         size="sm"
                         onClick={() => {
                           setTab('SCANNER');
                           void runInspect(effectivePreview.qrToken || effectivePreview.qrCode);
                         }}
                       >
-                        🔍 Quét thử vé này trên Máy Staff
+                        🔍 Quét QR trên Máy Staff
                       </ActionButton>
                     </div>
                   </div>
@@ -710,4 +990,3 @@ export const QrCheckInScannerModal: React.FC<QrCheckInScannerModalProps> = ({
     </AnimatePresence>
   );
 };
-

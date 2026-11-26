@@ -75,6 +75,22 @@ public class Reservation {
     @Column(name = "qr_jti")
     private UUID qrJti;
 
+    @Column(name = "checkin_pin_hash")
+    private String checkinPinHash;
+
+    @Column(name = "checkin_pin_hint", length = 16)
+    private String checkinPinHint;
+
+    @Column(name = "pin_failed_attempts", nullable = false)
+    @Builder.Default
+    private Integer pinFailedAttempts = 0;
+
+    @Column(name = "pin_locked_until")
+    private Instant pinLockedUntil;
+
+    @Column(name = "pin_consumed_at")
+    private Instant pinConsumedAt;
+
     @Column(name = "hold_expires_at")
     private Instant holdExpiresAt;
 

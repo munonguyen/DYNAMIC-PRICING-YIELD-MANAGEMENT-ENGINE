@@ -66,4 +66,7 @@ public class ResourceGroupRequest {
 
     @Builder.Default
     private String timezone = "Asia/Ho_Chi_Minh";
+
+    @Builder.Default
+    private String checkinMode = "QR_STAFF";
 }

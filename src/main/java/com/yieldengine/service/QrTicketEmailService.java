@@ -145,6 +145,10 @@ public class QrTicketEmailService {
             paidAmount = reservation.getDepositAmount();
         }
         long remainingAtVenue = Math.max(0L, reservation.getLockedPrice() - paidAmount);
+        String effectiveCheckinMode = group != null && group.getCheckinMode() != null
+                ? group.getCheckinMode()
+                : (group != null && group.getTenant() != null ? group.getTenant().getCheckinMode() : "QR_STAFF");
+        String checkinPinCode = priceLockTokenService.deriveCheckInPin(reservation.getReservationId(), qrJti);
 
         byte[] qrPngBytes = generateQrPngBytes(qrToken, 320);
 
@@ -158,7 +162,9 @@ public class QrTicketEmailService {
                 reservation.getLockedPrice(),
                 paidAmount,
                 remainingAtVenue,
-                qrJti.toString()
+                qrJti.toString(),
+                effectiveCheckinMode,
+                checkinPinCode
         );
 
         if (mailSender == null || !mailPasswordConfigured) {
@@ -231,8 +237,14 @@ public class QrTicketEmailService {
             long lockedPrice,
             long paidAmount,
             long remainingAtVenue,
-            String qrJti
+            String qrJti,
+            String checkinMode,
+            String checkinPinCode
     ) {
+        boolean isPinCounter = "PIN_COUNTER".equalsIgnoreCase(checkinMode) || "MANUAL".equalsIgnoreCase(checkinMode);
+        String pinHeadline = isPinCounter
+                ? "Cơ sở dùng xác thực PIN 6 số (Không cần máy quét)"
+                : "Mã PIN 6 số dự phòng đọc tại quầy (dùng 1 lần)";
         return """
                 <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background:#F6F8F6; padding:24px; color:#0F172A;">
                   <div style="max-width:560px; margin:0 auto; background:#FFFFFF; border-radius:20px; border:1px solid #E5E7EB; overflow:hidden;">
@@ -251,18 +263,24 @@ public class QrTicketEmailService {
                         <div><strong>Đã thanh toán qua cổng:</strong> <span style="color:#16422C; font-weight:700;">%,d₫</span></div>
                         <div><strong>Còn thanh toán tại sân:</strong> %,d₫</div>
                       </div>
-                      <div style="text-align:center; margin:22px 0; padding:18px; border:1px dashed #CBD5E1; border-radius:16px;">
-                        <img src="cid:arenapulseTicketQr" alt="ArenaPulse QR Check-in" width="220" height="220" style="display:block; margin:0 auto;" />
-                        <div style="margin-top:10px; font-size:12px; color:#475569;">Xuất trình mã QR này tại quầy lễ tân khi nhận sân (hiệu lực 1 lần).</div>
+                      <div style="margin:18px 0; padding:16px; border-radius:14px; background:#E7F7D4; border:1px solid #16422C33; text-align:center;">
+                        <div style="font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.8px; color:#16422C;">%s</div>
+                        <div style="margin-top:6px; font-size:28px; font-weight:800; letter-spacing:6px; color:#0F172A; font-family:monospace;">%s</div>
+                        <div style="margin-top:4px; font-size:11px; color:#475569;">Đọc mã PIN này kèm 4 số cuối SĐT cho nhân viên khi nhận sân (tự khóa sau 1 lần dùng).</div>
+                      </div>
+                      <div style="text-align:center; margin:18px 0; padding:18px; border:1px dashed #CBD5E1; border-radius:16px;">
+                        <img src="cid:arenapulseTicketQr" alt="ArenaPulse QR Check-in" width="200" height="200" style="display:block; margin:0 auto;" />
+                        <div style="margin-top:10px; font-size:12px; color:#475569;">Hoặc xuất trình mã QR này để nhân viên quét nhanh tại quầy.</div>
                         <div style="margin-top:4px; font-size:11px; color:#94A3B8;">Mã vé: %s</div>
                       </div>
-                      <p style="margin:0; font-size:12px; color:#64748B;">Bạn cũng có thể mở lại mã QR bất cứ lúc nào trong mục <strong>Vé của tôi</strong> trên hệ thống ArenaPulse.</p>
+                      <p style="margin:0; font-size:12px; color:#64748B;">Bạn cũng có thể mở lại vé và mã PIN bất cứ lúc nào trong mục <strong>Vé của tôi</strong> trên hệ thống ArenaPulse.</p>
                     </div>
                   </div>
                 </div>
                 """.formatted(
                 customerName, venueName, venueAddress, groupName, unitNumber,
-                slotLabel, lockedPrice, paidAmount, remainingAtVenue, qrJti
+                slotLabel, lockedPrice, paidAmount, remainingAtVenue,
+                pinHeadline, checkinPinCode, qrJti
         );
     }
 }

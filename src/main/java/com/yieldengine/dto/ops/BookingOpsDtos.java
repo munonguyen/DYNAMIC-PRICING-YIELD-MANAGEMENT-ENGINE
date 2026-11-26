@@ -108,7 +108,9 @@ public final class BookingOpsDtos {
             String contactEmail,
             UUID qrJti,
             String qrToken,
-            Instant qrExpiresAt
+            Instant qrExpiresAt,
+            String checkinMode,
+            String checkinPinCode
     ) {
     }
 
@@ -140,6 +142,13 @@ public final class BookingOpsDtos {
 
     public record ScanQrRequest(
             @NotBlank String qrToken
+    ) {
+    }
+
+    public record VerifyPinRequest(
+            @NotNull UUID reservationId,
+            @NotBlank @Size(min = 4, max = 12) String pinCode,
+            @Size(max = 6) String phoneLast4
     ) {
     }
 

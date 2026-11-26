@@ -4,6 +4,7 @@ import type {
   AnalyticsDashboardData,
   AppPageId,
   AuthSession,
+  CheckinVerificationMode,
   CourtServiceOption,
   LessorBookingOrder,
   LessorPayoutRecord,
@@ -34,7 +35,7 @@ import {
 import { ActionButton, PillSelect } from './FairwayControls';
 import { LessorAddOnServicesManager } from './LessorAddOnServicesManager';
 import { LessorAnalyticsDashboard } from './LessorAnalyticsDashboard';
-import { QrCheckInScannerModal } from './QrCheckInScannerModal';
+import { QrCheckInScannerModal, type QrModalTabId } from './QrCheckInScannerModal';
 
 export type LessorPortalTabId =
   | 'OVERVIEW'
@@ -60,7 +61,13 @@ interface LessorPartnerPortalProps {
   onSelectTab?: (tab: LessorPortalTabId) => void;
   onUpdateListingPricing: (
     groupId: string,
-    patch: { basePrice: number; minPrice: number; maxPrice: number; depositPercent: number }
+    patch: {
+      basePrice: number;
+      minPrice: number;
+      maxPrice: number;
+      depositPercent: number;
+      checkinMode?: CheckinVerificationMode;
+    }
   ) => void;
   onUpdateListingServices: (groupId: string, nextServices: CourtServiceOption[]) => void;
   onToggleListingPublished: (groupId: string) => void;
@@ -351,9 +358,20 @@ export const LessorPartnerPortal: React.FC<LessorPartnerPortalProps> = ({
   };
 
   const [qrModalOpen, setQrModalOpen] = useState(false);
-  const [qrModalTab, setQrModalTab] = useState<'SCANNER' | 'TICKET_PREVIEW'>('SCANNER');
+  const [qrModalTab, setQrModalTab] = useState<QrModalTabId>('SCANNER');
   const [qrModalOrder, setQrModalOrder] = useState<LessorBookingOrder | null>(null);
   const [qrModalQuery, setQrModalQuery] = useState('');
+
+  const handlePinFailedAttempt = (orderId: string) => {
+    const updatedList = providerOrders.map((o) =>
+      o.orderId === orderId
+        ? { ...o, pinFailedAttempts: (o.pinFailedAttempts ?? 0) + 1 }
+        : o
+    );
+    const nextMap = { ...ordersByProvider, [activeProvider.providerId]: updatedList };
+    setOrdersByProvider(nextMap);
+    writePersistedOperationalOrdersMap(nextMap);
+  };
 
   const handleManualQrVerify = (e: React.FormEvent) => {
     e.preventDefault();
@@ -379,7 +397,8 @@ export const LessorPartnerPortal: React.FC<LessorPartnerPortalProps> = ({
   const [newCourtMinPrice, setNewCourtMinPrice] = useState<number>(140000);
   const [newCourtMaxPrice, setNewCourtMaxPrice] = useState<number>(360000);
   const [newCourtDepositPct, setNewCourtDepositPct] = useState<number>(35);
-  const [newCourtCheckinMode, setNewCourtCheckinMode] = useState<'QR_STAFF' | 'MANUAL'>('QR_STAFF');
+  const [newCourtCheckinMode, setNewCourtCheckinMode] =
+    useState<CheckinVerificationMode>('QR_STAFF');
   const [newCourtSurface, setNewCourtSurface] = useState<string>(
     'Mặt sân tiêu chuẩn thi đấu chống trượt, thoát nước nhanh'
   );
@@ -1144,7 +1163,21 @@ export const LessorPartnerPortal: React.FC<LessorPartnerPortalProps> = ({
                             setQrModalOpen(true);
                           }}
                         >
-                          📷 Mở Máy Quét QR / Thử Vé Giả
+                          📷 Quét QR (Có máy quét)
+                        </ActionButton>
+
+                        <ActionButton
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={() => {
+                            setQrModalOrder(null);
+                            setQrModalQuery('');
+                            setQrModalTab('PIN_VERIFY');
+                            setQrModalOpen(true);
+                          }}
+                        >
+                          🔢 Nhập PIN 6 số (Không máy quét)
                         </ActionButton>
 
                         <form
@@ -1156,7 +1189,7 @@ export const LessorPartnerPortal: React.FC<LessorPartnerPortalProps> = ({
                             value={qrScanInput}
                             onChange={(e) => setQrScanInput(e.target.value)}
                             placeholder="Nhập mã vé (VD: APQR-HN01-001)…"
-                            className="w-56 rounded-full border border-neutral-300 bg-white px-4 py-2 text-xs text-[#0F172A] focus:border-[#16422C] focus:outline-none"
+                            className="w-48 rounded-full border border-neutral-300 bg-white px-4 py-2 text-xs text-[#0F172A] focus:border-[#16422C] focus:outline-none"
                           />
                           <ActionButton type="submit" variant="outline" size="sm">
                             Kiểm tra
@@ -1253,7 +1286,15 @@ export const LessorPartnerPortal: React.FC<LessorPartnerPortalProps> = ({
                     </div>
 
                     <div className="divide-y divide-neutral-100">
-                      {paginatedOrders.map((order) => (
+                      {paginatedOrders.map((order) => {
+                        const orderListingMode =
+                          myListings.find((l) => l.groupId === order.groupId)?.checkinMode ??
+                          order.checkinMode ??
+                          'QR_STAFF';
+                        const usesPinCounter =
+                          orderListingMode === 'PIN_COUNTER' || orderListingMode === 'MANUAL';
+
+                        return (
                         <div
                           key={order.orderId}
                           className="flex flex-col gap-4 p-5 transition hover:bg-[#F8FAFC] xl:flex-row xl:items-center xl:justify-between"
@@ -1265,6 +1306,17 @@ export const LessorPartnerPortal: React.FC<LessorPartnerPortalProps> = ({
                               </span>
                               <span className="rounded-full bg-[#E7F7D4] px-2.5 py-0.5 text-[11px] font-bold text-[#16422C]">
                                 {order.unitNumber} • {order.sportName}
+                              </span>
+                              <span
+                                className={`rounded-full px-2.5 py-0.5 text-[10.5px] font-bold ${
+                                  usesPinCounter
+                                    ? 'bg-[#E6F1F8] text-[#0E4F7E]'
+                                    : 'bg-neutral-100 text-neutral-700'
+                                }`}
+                              >
+                                {usesPinCounter
+                                  ? `🔢 PIN 6 số (${order.pinHint || '••••••'})`
+                                  : '📷 Quét QR tại quầy'}
                               </span>
                               <span className="text-xs font-semibold text-[#0F172A]">
                                 {order.slotLabel}
@@ -1279,7 +1331,9 @@ export const LessorPartnerPortal: React.FC<LessorPartnerPortalProps> = ({
                                 }`}
                               >
                                 {order.status === 'CONFIRMED'
-                                  ? 'CHỜ QUÉT QR'
+                                  ? usesPinCounter
+                                    ? 'CHỜ NHẬP PIN'
+                                    : 'CHỜ QUÉT QR'
                                   : order.status === 'COMPLETED'
                                     ? 'ĐÃ NHẬN SÂN'
                                     : 'KHÁCH BỎ LỊCH'}
@@ -1304,7 +1358,7 @@ export const LessorPartnerPortal: React.FC<LessorPartnerPortalProps> = ({
                                 }}
                                 className="inline-flex items-center gap-1 rounded-full bg-[#E6F1F8] px-2.5 py-0.5 text-[11px] font-bold text-[#0E4F7E] hover:brightness-95 cursor-pointer"
                               >
-                                🎟 Xem vé QR ({order.qrCode})
+                                🎟 Xem vé Email ({order.qrCode})
                               </button>
                               {order.addOnSummary && (
                                 <span className="font-medium text-[#16422C]">
@@ -1336,13 +1390,18 @@ export const LessorPartnerPortal: React.FC<LessorPartnerPortalProps> = ({
                                   type="button"
                                   onClick={() => {
                                     setQrModalOrder(order);
-                                    setQrModalTab('SCANNER');
-                                    setQrModalQuery(order.qrToken || order.qrCode);
+                                    if (usesPinCounter) {
+                                      setQrModalTab('PIN_VERIFY');
+                                      setQrModalQuery('');
+                                    } else {
+                                      setQrModalTab('SCANNER');
+                                      setQrModalQuery(order.qrToken || order.qrCode);
+                                    }
                                     setQrModalOpen(true);
                                   }}
                                   className="rounded-full bg-[#16422C] px-3.5 py-2 text-xs font-bold text-white hover:bg-[#0F172A] cursor-pointer"
                                 >
-                                  🔍 Soát QR &amp; Nhận sân
+                                  {usesPinCounter ? '🔢 Nhập PIN 6 số' : '🔍 Soát QR & Nhận sân'}
                                 </button>
                                 <button
                                   type="button"
@@ -1360,7 +1419,8 @@ export const LessorPartnerPortal: React.FC<LessorPartnerPortalProps> = ({
                             )}
                           </div>
                         </div>
-                      ))}
+                        );
+                      })}
 
                       {filteredOrders.length === 0 && (
                         <div className="p-8 text-center text-xs text-neutral-500">
@@ -1621,20 +1681,45 @@ export const LessorPartnerPortal: React.FC<LessorPartnerPortalProps> = ({
                             />
                           </div>
 
-                          <div>
-                            <label className="mb-1 block font-semibold text-neutral-700">
-                              Phương thức Check-in
+                          <div className="md:col-span-3 space-y-2">
+                            <label className="block font-semibold text-neutral-700">
+                              Phương thức Xác thực Nhận sân (Chủ sân tự chọn theo thiết bị)
                             </label>
-                            <select
-                              value={newCourtCheckinMode}
-                              onChange={(e) =>
-                                setNewCourtCheckinMode(e.target.value as 'QR_STAFF' | 'MANUAL')
-                              }
-                              className="w-full rounded-xl border border-neutral-200 bg-[#F8FAFC] px-3 py-2.5 text-[#0F172A]"
-                            >
-                              <option value="QR_STAFF">Nhân viên quét vé QR 1 lần</option>
-                              <option value="MANUAL">Tự động / Đọc mã tại quầy</option>
-                            </select>
+                            <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
+                              {[
+                                {
+                                  id: 'QR_STAFF' as const,
+                                  title: '📷 Option 1: Có máy quét QR / Camera quầy',
+                                  desc: 'Khách đưa ảnh QR trong Email; nhân viên quét Camera / đầu đọc 2D (kiểm tra chữ ký HMAC 4 lớp + vé dùng 1 lần).',
+                                },
+                                {
+                                  id: 'PIN_COUNTER' as const,
+                                  title: '🔢 Option 2: Không có máy quét (PIN 6 số Email)',
+                                  desc: 'Khách đọc Mã PIN 6 số bí mật từ Email + 4 số cuối SĐT; nhân viên gõ xác thực trên web/điện thoại (khóa nếu sai 5 lần).',
+                                },
+                              ].map((opt) => {
+                                const active = newCourtCheckinMode === opt.id;
+                                return (
+                                  <button
+                                    key={opt.id}
+                                    type="button"
+                                    onClick={() => setNewCourtCheckinMode(opt.id)}
+                                    className={`rounded-2xl border p-3.5 text-left transition cursor-pointer ${
+                                      active
+                                        ? 'border-[#16422C] bg-[#E7F7D4]/55 ring-2 ring-[#16422C]/25'
+                                        : 'border-neutral-200 bg-[#F8FAFC] hover:border-neutral-300'
+                                    }`}
+                                  >
+                                    <div className="text-xs font-bold text-[#0F172A]">
+                                      {opt.title}
+                                    </div>
+                                    <p className="mt-1 text-[11px] leading-relaxed text-neutral-600">
+                                      {opt.desc}
+                                    </p>
+                                  </button>
+                                );
+                              })}
+                            </div>
                           </div>
                         </div>
 
@@ -1897,6 +1982,40 @@ export const LessorPartnerPortal: React.FC<LessorPartnerPortalProps> = ({
                                       Khung giá: {formatVnd(court.minPrice)} – {formatVnd(court.maxPrice)} (Cơ sở:{' '}
                                       {formatVnd(court.basePrice)})
                                     </span>
+
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        const nextMode: CheckinVerificationMode =
+                                          court.checkinMode === 'QR_STAFF'
+                                            ? 'PIN_COUNTER'
+                                            : 'QR_STAFF';
+                                        onUpdateListingPricing(court.groupId, {
+                                          basePrice: court.basePrice,
+                                          minPrice: court.minPrice,
+                                          maxPrice: court.maxPrice,
+                                          depositPercent: court.depositPercent,
+                                          checkinMode: nextMode,
+                                        });
+                                        flashToast(
+                                          nextMode === 'PIN_COUNTER'
+                                            ? `Đã chuyển "${court.groupName}" sang Option 2: Không cần máy quét (Xác thực PIN 6 số Email).`
+                                            : `Đã chuyển "${court.groupName}" sang Option 1: Có máy quét QR tại quầy.`
+                                        );
+                                      }}
+                                      className={`rounded-full border px-3 py-1.5 text-[11px] font-bold transition cursor-pointer ${
+                                        court.checkinMode === 'PIN_COUNTER' ||
+                                        court.checkinMode === 'MANUAL'
+                                          ? 'border-[#0E4F7E]/30 bg-[#E6F1F8] text-[#0E4F7E]'
+                                          : 'border-[#16422C]/25 bg-[#F4F8F4] text-[#16422C]'
+                                      }`}
+                                      title="Bấm để chuyển đổi phương thức nhận sân cho cụm này"
+                                    >
+                                      {court.checkinMode === 'PIN_COUNTER' ||
+                                      court.checkinMode === 'MANUAL'
+                                        ? '🔢 PIN 6 số (Không máy quét) ⇄'
+                                        : '📷 Quét QR tại quầy ⇄'}
+                                    </button>
 
                                     <button
                                       type="button"
@@ -2488,10 +2607,15 @@ export const LessorPartnerPortal: React.FC<LessorPartnerPortalProps> = ({
         activeProviderId={activeProvider.providerId}
         activeVenueName={activeProvider.providerName}
         onClose={() => setQrModalOpen(false)}
-        onConfirmCheckIn={(orderId) => {
+        onPinFailedAttempt={handlePinFailedAttempt}
+        onConfirmCheckIn={(orderId, method) => {
           updateOrderStatus(orderId, 'COMPLETED');
           setQrScanInput('');
-          flashToast(`✓ Check-in QR hợp lệ! Đã mở sân & giải ngân ký quỹ cho đơn ${orderId}.`);
+          flashToast(
+            method === 'PIN_COUNTER'
+              ? `✓ Xác thực PIN 6 số thành công! Đã mở sân & giải ngân ký quỹ cho đơn ${orderId}.`
+              : `✓ Check-in QR hợp lệ! Đã mở sân & giải ngân ký quỹ cho đơn ${orderId}.`
+          );
         }}
       />
     </section>

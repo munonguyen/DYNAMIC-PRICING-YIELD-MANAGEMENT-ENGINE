@@ -114,6 +114,34 @@ public class PriceLockTokenService {
         return payload;
     }
 
+    /**
+     * Option 2 (No-scanner PIN_COUNTER): derives a 6-digit single-use check-in PIN bound to
+     * reservationId + qrJti + server QR secret so it cannot be guessed without the email ticket.
+     */
+    public String deriveCheckInPin(UUID reservationId, UUID qrJti) {
+        if (reservationId == null || qrJti == null) {
+            throw new IllegalArgumentException("reservationId and qrJti are required to derive check-in PIN");
+        }
+        String hmacHex = CryptoHashUtils.hmacSha256Hex(
+                reservationId + ":" + qrJti + ":PIN_V1",
+                resolveSecret(TokenPurpose.QR_CHECKIN)
+        );
+        long numeric = Long.parseUnsignedLong(hmacHex.substring(0, 12), 16) % 1_000_000L;
+        return String.format("%06d", numeric);
+    }
+
+    public String hashCheckInPin(UUID reservationId, String rawPin) {
+        String digits = rawPin == null ? "" : rawPin.replaceAll("\\D", "");
+        return CryptoHashUtils.sha256Hex(
+                reservationId + ":" + digits + ":" + resolveSecret(TokenPurpose.QR_CHECKIN)
+        );
+    }
+
+    public String maskPinHint(String pin) {
+        String digits = pin == null ? "" : pin.replaceAll("\\D", "");
+        return digits.length() >= 2 ? "••••" + digits.substring(digits.length() - 2) : "••••••";
+    }
+
     private String serializeAndSign(Object payload, TokenPurpose purpose) {
         try {
             String payloadJson = objectMapper.writeValueAsString(payload);

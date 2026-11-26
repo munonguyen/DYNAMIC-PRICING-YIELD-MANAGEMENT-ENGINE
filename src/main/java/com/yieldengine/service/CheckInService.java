@@ -5,12 +5,15 @@ import com.yieldengine.dto.ops.BookingOpsDtos.QrCodeResponse;
 import com.yieldengine.dto.ops.BookingOpsDtos.QrInspectResponse;
 import com.yieldengine.entity.*;
 import com.yieldengine.enums.ReservationStatus;
+import com.yieldengine.exception.BusinessConflictException;
+import com.yieldengine.exception.ForbiddenAccessException;
 import com.yieldengine.exception.InvalidTokenSignatureException;
 import com.yieldengine.exception.ResourceNotFoundException;
 import com.yieldengine.exception.TokenExpiredException;
 import com.yieldengine.repository.*;
 import com.yieldengine.security.RbacGuard;
 import com.yieldengine.security.SessionPrincipal;
+import com.yieldengine.utils.CryptoHashUtils;
 import com.yieldengine.utils.DbClockUtils;
 import com.yieldengine.validate.BookingAndOpsValidator;
 import lombok.RequiredArgsConstructor;
@@ -201,6 +204,69 @@ public class CheckInService {
                 .orElseThrow(() -> new ResourceNotFoundException("Reservation not found"));
 
         return completeCheckInInternal(reservation, scanner, "QR_SCAN", payload.getQrJti());
+    }
+
+    @Transactional(noRollbackFor = {BusinessConflictException.class})
+    public CheckInResponse verifyPinCheckIn(UUID reservationId, String rawPin, String phoneLast4) {
+        SessionPrincipal staff = rbacGuard.requireAuthenticated();
+        Reservation reservation = reservationRepository.findByReservationId(reservationId)
+                .orElseThrow(() -> new ResourceNotFoundException("Reservation not found: " + reservationId));
+
+        if (!staff.hasTenantRole(reservation.getTenantId(), "STAFF", "MANAGER") && !staff.hasPlatformRole("ADMIN")) {
+            throw new ForbiddenAccessException("Tài khoản không thuộc cơ sở của đơn đặt sân này.");
+        }
+        if (checkInRepository.existsByReservationId(reservationId)
+                || reservation.getPinConsumedAt() != null
+                || ReservationStatus.COMPLETED.name().equals(reservation.getStatus())) {
+            throw new BusinessConflictException("Mã PIN nhận sân này đã được sử dụng trước đó (Chống dùng lại 1 lần).");
+        }
+        if (!ReservationStatus.CONFIRMED.name().equals(reservation.getStatus())) {
+            throw new BusinessConflictException("Đơn không ở trạng thái CONFIRMED để nhận sân (" + reservation.getStatus() + ").");
+        }
+
+        Instant dbNow = DbClockUtils.now(jdbcTemplate);
+        if (reservation.getPinLockedUntil() != null && dbNow.isBefore(reservation.getPinLockedUntil())) {
+            throw new BusinessConflictException("Đã nhập sai mã PIN quá 5 lần — quầy tạm khóa 5 phút để chống đoán mã.");
+        }
+
+        if (reservation.getQrJti() == null) {
+            reservation.setQrJti(UUID.randomUUID());
+        }
+        String expectedPin = priceLockTokenService.deriveCheckInPin(reservation.getReservationId(), reservation.getQrJti());
+        String expectedHash = reservation.getCheckinPinHash() != null
+                ? reservation.getCheckinPinHash()
+                : priceLockTokenService.hashCheckInPin(reservation.getReservationId(), expectedPin);
+        String candidateHash = priceLockTokenService.hashCheckInPin(reservation.getReservationId(), rawPin);
+
+        if (!CryptoHashUtils.constantTimeEquals(expectedHash, candidateHash)) {
+            int nextAttempts = (reservation.getPinFailedAttempts() != null ? reservation.getPinFailedAttempts() : 0) + 1;
+            reservation.setPinFailedAttempts(nextAttempts);
+            if (nextAttempts >= 5) {
+                reservation.setPinLockedUntil(dbNow.plus(Duration.ofMinutes(5)));
+            }
+            reservationRepository.save(reservation);
+            int remaining = Math.max(0, 5 - nextAttempts);
+            throw new BusinessConflictException(remaining > 0
+                    ? "Mã PIN 6 số không đúng! Còn " + remaining + " lần thử trước khi tạm khóa 5 phút."
+                    : "Sai mã PIN 5 lần liên tiếp — tạm khóa xác thực đơn này trong 5 phút.");
+        }
+
+        if (phoneLast4 != null && !phoneLast4.isBlank() && reservation.getBookingId() != null) {
+            Booking booking = bookingRepository.findById(reservation.getBookingId()).orElse(null);
+            String rawPhone = booking != null && booking.getContactPhone() != null
+                    ? booking.getContactPhone().replaceAll("\\D", "")
+                    : "";
+            if (rawPhone.length() >= 4 && !rawPhone.endsWith(phoneLast4.trim())) {
+                throw new BusinessConflictException("4 số cuối SĐT khách đọc không khớp với chủ vé đã đặt sân.");
+            }
+        }
+
+        reservation.setPinFailedAttempts(0);
+        reservation.setPinLockedUntil(null);
+        reservation.setPinConsumedAt(dbNow);
+        reservation.setCheckinPinHash(expectedHash);
+        reservation.setCheckinPinHint(priceLockTokenService.maskPinHint(expectedPin));
+        return completeCheckInInternal(reservation, staff, "PIN_COUNTER", null);
     }
 
     @Transactional

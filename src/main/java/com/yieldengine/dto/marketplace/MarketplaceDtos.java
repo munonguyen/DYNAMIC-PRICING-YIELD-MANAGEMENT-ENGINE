@@ -24,7 +24,7 @@ public final class MarketplaceDtos {
             String phone,
             @DecimalMin("-90.0") @DecimalMax("90.0") BigDecimal latitude,
             @DecimalMin("-180.0") @DecimalMax("180.0") BigDecimal longitude,
-            @Pattern(regexp = "QR_STAFF|MANUAL") String checkinMode,
+            @Pattern(regexp = "QR_STAFF|PIN_COUNTER|MANUAL") String checkinMode,
             Boolean isStaffChatEnabled
     ) {
     }

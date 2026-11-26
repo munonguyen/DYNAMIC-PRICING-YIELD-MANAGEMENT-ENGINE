@@ -26,8 +26,8 @@ interface MarketplaceExplorerSectionProps {
   onOpenAnnouncementsPage: () => void;
   selectedSport: string;
   onSelectSport: (code: string) => void;
-  checkinFilter: 'ALL' | 'QR_STAFF' | 'MANUAL';
-  onChangeCheckinFilter: (mode: 'ALL' | 'QR_STAFF' | 'MANUAL') => void;
+  checkinFilter: 'ALL' | 'QR_STAFF' | 'PIN_COUNTER' | 'MANUAL';
+  onChangeCheckinFilter: (mode: 'ALL' | 'QR_STAFF' | 'PIN_COUNTER' | 'MANUAL') => void;
   activeListing: PublishedListing | null;
   activeSlotStart: string | null;
   activeQuote: PriceQuote | null;
@@ -135,7 +135,13 @@ export const MarketplaceExplorerSection: React.FC<MarketplaceExplorerSectionProp
   const filteredListings = listings
     .filter((item) => {
       const matchSport = selectedSport === 'ALL' || item.sportCode === selectedSport;
-      const matchCheckin = checkinFilter === 'ALL' || item.checkinMode === checkinFilter;
+      const isPinMode = item.checkinMode === 'PIN_COUNTER' || item.checkinMode === 'MANUAL';
+      const matchCheckin =
+        checkinFilter === 'ALL'
+          ? true
+          : checkinFilter === 'QR_STAFF'
+            ? item.checkinMode === 'QR_STAFF'
+            : isPinMode;
       const matchLoc = !selectedLocationObj || item.venueName === selectedLocationObj.venueName;
       const matchDuration = durationFilter === 'ALL' || String(item.slotMinutes) === durationFilter;
       const q = searchQuery.trim().toLowerCase();
@@ -477,8 +483,8 @@ export const MarketplaceExplorerSection: React.FC<MarketplaceExplorerSectionProp
                     onChange={(v) => onChangeCheckinFilter(v as typeof checkinFilter)}
                     options={[
                       { value: 'ALL', label: 'Mọi hình thức' },
-                      { value: 'QR_STAFF', label: 'Quét vé QR 1 lần' },
-                      { value: 'MANUAL', label: 'Tự check-in' },
+                      { value: 'QR_STAFF', label: 'Có máy quét QR' },
+                      { value: 'PIN_COUNTER', label: 'Xác thực PIN 6 số' },
                     ]}
                   />
                 </div>

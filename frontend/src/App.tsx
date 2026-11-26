@@ -99,6 +99,7 @@ interface PersistedListingOverride {
   minPrice?: number;
   maxPrice?: number;
   depositPercent?: number;
+  checkinMode?: PublishedListing['checkinMode'];
   upcomingSlots?: SlotListingQuote[];
 }
 
@@ -168,7 +169,7 @@ export function App() {
   const [readAnnouncementIds, setReadAnnouncementIds] = useState<string[]>([]);
 
   const [selectedSport, setSelectedSport] = useState<string>('ALL');
-  const [checkinFilter, setCheckinFilter] = useState<'ALL' | 'QR_STAFF' | 'MANUAL'>('ALL');
+  const [checkinFilter, setCheckinFilter] = useState<'ALL' | 'QR_STAFF' | 'PIN_COUNTER' | 'MANUAL'>('ALL');
   const [activeRole, setActiveRole] = useState<RoleCode>(
     () => readSavedAuthSession()?.activeRole ?? 'USER'
   );
@@ -584,7 +585,13 @@ export function App() {
 
   const handleUpdateListingPricing = (
     groupId: string,
-    patch: { basePrice: number; minPrice: number; maxPrice: number; depositPercent: number }
+    patch: {
+      basePrice: number;
+      minPrice: number;
+      maxPrice: number;
+      depositPercent: number;
+      checkinMode?: 'QR_STAFF' | 'PIN_COUNTER' | 'MANUAL';
+    }
   ) => {
     const applyPatch = (listing: PublishedListing): PublishedListing => {
       if (listing.groupId !== groupId) return listing;
@@ -599,11 +606,13 @@ export function App() {
               ? clamp(patch.basePrice * 1.28)
               : clamp(patch.basePrice),
       }));
+      const nextCheckinMode = patch.checkinMode ?? listing.checkinMode;
       persistListingOverride(groupId, {
         basePrice: patch.basePrice,
         minPrice: patch.minPrice,
         maxPrice: patch.maxPrice,
         depositPercent: patch.depositPercent,
+        checkinMode: nextCheckinMode,
         upcomingSlots: updatedUpcoming,
       });
       return {
@@ -612,6 +621,7 @@ export function App() {
         minPrice: patch.minPrice,
         maxPrice: patch.maxPrice,
         depositPercent: patch.depositPercent,
+        checkinMode: nextCheckinMode,
         upcomingSlots: updatedUpcoming,
       };
     };

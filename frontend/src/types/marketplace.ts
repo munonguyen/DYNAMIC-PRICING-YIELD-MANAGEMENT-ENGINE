@@ -84,6 +84,8 @@ export interface CourtMediaItem {
   createdAt?: string;
 }
 
+export type CheckinVerificationMode = 'QR_STAFF' | 'PIN_COUNTER' | 'MANUAL';
+
 export interface PublishedListing {
   groupId: string;
   groupCode: string;
@@ -100,7 +102,7 @@ export interface PublishedListing {
   maxPrice: number;
   depositPercent: number;
   slotMinutes: number;
-  checkinMode: 'QR_STAFF' | 'MANUAL';
+  checkinMode: CheckinVerificationMode;
   imageUrl?: string;
   galleryImages?: string[];
   galleryCaptions?: string[];
@@ -189,6 +191,8 @@ export interface MyTicketRecord {
   qrJti?: string | null;
   qrToken?: string | null;
   qrExpiresAt?: string | null;
+  checkinMode?: CheckinVerificationMode | null;
+  checkinPinCode?: string | null;
 }
 
 export type PaymentGatewayCode = 'VIETQR_NAPAS' | 'VNPAY_ESCROW' | 'MOMO_WALLET' | 'INTL_CARD';
@@ -374,6 +378,10 @@ export interface LessorBookingOrder {
   qrCode: string;
   qrToken?: string;
   qrJti?: string;
+  checkinMode?: CheckinVerificationMode;
+  checkinPin?: string;
+  pinHint?: string;
+  pinFailedAttempts?: number;
   status: 'CONFIRMED' | 'HELD' | 'COMPLETED' | 'NO_SHOW' | 'CANCELLED';
   createdAtLabel: string;
   dateIso?: string;

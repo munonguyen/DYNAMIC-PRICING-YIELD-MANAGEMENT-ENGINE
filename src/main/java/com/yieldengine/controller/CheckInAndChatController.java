@@ -39,6 +39,16 @@ public class CheckInAndChatController {
         return ResponseEntity.ok(checkInService.scanQrCheckIn(request.qrToken()));
     }
 
+    @Operation(summary = "Verify 6-digit single-use PIN from customer email for venues without QR scanner (Option 2)")
+    @PostMapping("/checkins/verify-pin")
+    public ResponseEntity<CheckInResponse> verifyPin(@Valid @RequestBody VerifyPinRequest request) {
+        return ResponseEntity.ok(checkInService.verifyPinCheckIn(
+                request.reservationId(),
+                request.pinCode(),
+                request.phoneLast4()
+        ));
+    }
+
     @Operation(summary = "Manual check-in for venues operating without staff (MANAGER - UC-16)")
     @PostMapping("/checkins/{reservationId}/manual")
     public ResponseEntity<CheckInResponse> manualCheckIn(@PathVariable UUID reservationId) {

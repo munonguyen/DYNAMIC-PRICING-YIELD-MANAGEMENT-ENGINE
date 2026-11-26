@@ -473,6 +473,9 @@ public class BookingOrchestratorService {
         if (reservation.getQrJti() == null) {
             reservation.setQrJti(UUID.randomUUID());
         }
+        String derivedPin = priceLockTokenService.deriveCheckInPin(reservation.getReservationId(), reservation.getQrJti());
+        reservation.setCheckinPinHash(priceLockTokenService.hashCheckInPin(reservation.getReservationId(), derivedPin));
+        reservation.setCheckinPinHint(priceLockTokenService.maskPinHint(derivedPin));
         reservationRepository.save(reservation);
 
         booking.setStatus("CONFIRMED");
@@ -624,6 +627,12 @@ public class BookingOrchestratorService {
                                     qrExpiry
                             )
                             : null;
+                    String effectiveCheckinMode = group != null && group.getCheckinMode() != null
+                            ? group.getCheckinMode()
+                            : (group != null && group.getTenant() != null ? group.getTenant().getCheckinMode() : "QR_STAFF");
+                    String pinCode = ("CONFIRMED".equals(res.getStatus()) && res.getQrJti() != null && res.getPinConsumedAt() == null)
+                            ? priceLockTokenService.deriveCheckInPin(res.getReservationId(), res.getQrJti())
+                            : null;
                     return new com.yieldengine.dto.ops.BookingOpsDtos.MyTicketResponse(
                             res.getReservationId(),
                             group != null && group.getTenant() != null ? group.getTenant().getName() : "ArenaPulse Complex",
@@ -640,7 +649,9 @@ public class BookingOrchestratorService {
                             booking != null ? booking.getContactEmail() : null,
                             res.getQrJti(),
                             qrToken,
-                            qrExpiry
+                            qrExpiry,
+                            effectiveCheckinMode,
+                            pinCode
                     );
                 })
                 .toList();

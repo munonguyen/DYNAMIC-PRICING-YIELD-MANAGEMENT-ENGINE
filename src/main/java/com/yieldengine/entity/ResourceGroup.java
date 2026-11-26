@@ -79,6 +79,10 @@ public class ResourceGroup extends BaseEntity {
     @Builder.Default
     private String balancePaymentMode = "AT_VENUE";
 
+    @Column(name = "checkin_mode", nullable = false)
+    @Builder.Default
+    private String checkinMode = "QR_STAFF";
+
     @Column(nullable = false)
     @Builder.Default
     private String status = "ACTIVE";
