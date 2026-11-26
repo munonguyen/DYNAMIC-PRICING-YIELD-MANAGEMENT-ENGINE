@@ -1,0 +1,38 @@
+{
+  "branch": "service/admin/venue-governance",
+  "title": "Quản trị cơ sở đối tác",
+  "scope": "Tra cứu cơ sở và cụm sân, kích hoạt hoặc đình chỉ cơ sở.",
+  "operations": [
+    {
+      "method": "GET",
+      "path": "/api/v1/admin/tenants",
+      "operationId": "listTenants"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/admin/resource-groups",
+      "operationId": "listResourceGroups"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/v1/admin/tenants/{id}/status",
+      "operationId": "updateTenantStatus"
+    }
+  ],
+  "source": [
+    {
+      "file": "src/main/java/com/yieldengine/controller/admin/AdminPlatformController.java",
+      "anchors": [
+        "listTenants(",
+        "listResourceGroups(",
+        "updateTenantStatus("
+      ]
+    },
+    {
+      "file": "frontend/src/components/AdminPartnerGovernance.tsx",
+      "anchors": [
+        "AdminPartnerGovernance"
+      ]
+    }
+  ]
+}
