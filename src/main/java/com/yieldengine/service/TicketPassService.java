@@ -89,14 +89,17 @@ public class TicketPassService {
         Instant qrExpiresAt = slotEnd.plus(Duration.ofMinutes(graceMinutes));
 
         UUID qrJti = reservation.getQrJti() != null ? reservation.getQrJti() : UUID.randomUUID();
-        String qrToken = priceLockTokenService.generateQrToken(
-                pricingEngineService.getActiveQrKeyId(),
-                qrJti,
-                reservation.getTenantId(),
-                reservation.getReservationId(),
-                reservation.getSlotStart(),
-                qrExpiresAt
-        );
+        boolean pinOnly = "PIN_COUNTER".equalsIgnoreCase(effectiveMode) || "MANUAL".equalsIgnoreCase(effectiveMode);
+        String qrToken = pinOnly
+                ? null
+                : priceLockTokenService.generateQrToken(
+                        pricingEngineService.getActiveQrKeyId(),
+                        qrJti,
+                        reservation.getTenantId(),
+                        reservation.getReservationId(),
+                        reservation.getSlotStart(),
+                        qrExpiresAt
+                );
         String pinCode = priceLockTokenService.deriveCheckInPin(reservation.getReservationId(), qrJti);
 
         long paidAmount = resolveTotalPaidAmount(reservation);

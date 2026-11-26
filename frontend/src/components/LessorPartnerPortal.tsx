@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
+import { KeyRound, QrCode } from 'lucide-react';
 import type {
   AnalyticsDashboardData,
   AppPageId,
@@ -359,8 +360,17 @@ export const LessorPartnerPortal: React.FC<LessorPartnerPortalProps> = ({
 
   const [qrModalOpen, setQrModalOpen] = useState(false);
   const [qrModalTab, setQrModalTab] = useState<QrModalTabId>('SCANNER');
+  const [qrModalAllowedModes, setQrModalAllowedModes] = useState<QrModalTabId[]>([
+    'SCANNER',
+    'PIN_VERIFY',
+  ]);
   const [qrModalOrder, setQrModalOrder] = useState<LessorBookingOrder | null>(null);
   const [qrModalQuery, setQrModalQuery] = useState('');
+
+  const venueSupportsQr = myListings.some((l) => l.checkinMode === 'QR_STAFF');
+  const venueSupportsPin = myListings.some(
+    (l) => l.checkinMode === 'PIN_COUNTER' || l.checkinMode === 'MANUAL'
+  );
 
   const handlePinFailedAttempt = (orderId: string) => {
     const updatedList = providerOrders.map((o) =>
@@ -375,9 +385,25 @@ export const LessorPartnerPortal: React.FC<LessorPartnerPortalProps> = ({
 
   const handleManualQrVerify = (e: React.FormEvent) => {
     e.preventDefault();
-    setQrModalOrder(null);
-    setQrModalTab('SCANNER');
-    setQrModalQuery(qrScanInput.trim());
+    const q = qrScanInput.trim();
+    const matchedPinOrder = !venueSupportsQr
+      ? providerOrders.find(
+          (o) =>
+            o.orderId.toLowerCase() === q.toLowerCase() ||
+            o.orderId.replace('#', '').toLowerCase() === q.replace('#', '').toLowerCase()
+        ) ?? null
+      : null;
+
+    setQrModalOrder(matchedPinOrder);
+    if (venueSupportsQr) {
+      setQrModalTab('SCANNER');
+      setQrModalAllowedModes(['SCANNER']);
+      setQrModalQuery(q);
+    } else {
+      setQrModalTab('PIN_VERIFY');
+      setQrModalAllowedModes(['PIN_VERIFY']);
+      setQrModalQuery('');
+    }
     setQrModalOpen(true);
   };
 
@@ -1042,15 +1068,15 @@ export const LessorPartnerPortal: React.FC<LessorPartnerPortalProps> = ({
                     />
                   )}
 
-                  {/* Compact Quick Link to Dedicated Order & QR Check-in Workspace */}
+                  {/* Compact Quick Link to Dedicated Order & Check-in Workspace */}
                   <div className="flex flex-col gap-3 rounded-[24px] border border-[#16422C]/20 bg-[#F4F8F4] px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
                     <div className="space-y-0.5">
                       <span className="text-[11px] font-bold uppercase tracking-wider text-[#16422C]">
-                        Điều phối Đơn &amp; Quầy Soát Vé QR (Đã tách khu riêng)
+                        Điều phối Đơn &amp; Quầy Nhận Sân (Khu vực làm việc riêng)
                       </span>
                       <p className="text-xs text-neutral-600">
-                        Hiện có <strong className="text-[#0F172A]">{metrics.pendingCheckins} đơn chờ quét QR</strong> trong tổng số{' '}
-                        <strong className="text-[#0F172A]">{providerOrders.length} đơn</strong>. Mở tab riêng để lọc tìm theo khách, ngày, cụm sân và quét QR 4 lớp.
+                        Hiện có <strong className="text-[#0F172A]">{metrics.pendingCheckins} đơn chờ nhận sân</strong> trong tổng số{' '}
+                        <strong className="text-[#0F172A]">{providerOrders.length} đơn</strong>. Mở khu làm việc riêng để lọc tìm và xác thực khách đến sân.
                       </p>
                     </div>
                     <div className="flex flex-wrap gap-2 shrink-0">
@@ -1061,11 +1087,21 @@ export const LessorPartnerPortal: React.FC<LessorPartnerPortalProps> = ({
                         onClick={() => {
                           setQrModalOrder(null);
                           setQrModalQuery('');
-                          setQrModalTab('SCANNER');
+                          const defaultTab: QrModalTabId = venueSupportsQr ? 'SCANNER' : 'PIN_VERIFY';
+                          const allowed: QrModalTabId[] = [
+                            ...(venueSupportsQr ? (['SCANNER'] as QrModalTabId[]) : []),
+                            ...(venueSupportsPin ? (['PIN_VERIFY'] as QrModalTabId[]) : []),
+                          ];
+                          setQrModalTab(defaultTab);
+                          setQrModalAllowedModes(allowed.length > 0 ? allowed : ['SCANNER']);
                           setQrModalOpen(true);
                         }}
                       >
-                        📷 Quét QR nhanh
+                        {venueSupportsQr && !venueSupportsPin
+                          ? 'Mở Quầy Quét QR'
+                          : !venueSupportsQr && venueSupportsPin
+                            ? 'Nhập Mã PIN Nhận Sân'
+                            : 'Mở Quầy Nhận Sân'}
                       </ActionButton>
                       <ActionButton
                         type="button"
@@ -1136,68 +1172,115 @@ export const LessorPartnerPortal: React.FC<LessorPartnerPortalProps> = ({
                     ))}
                   </div>
 
-                  {/* Instant One-Time QR Ticket Check-In Bar */}
-                  <div className="rounded-[26px] border border-[#16422C]/25 bg-[#F4F8F4] p-5 sm:p-6">
-                    <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
-                      <div className="space-y-1">
-                        <span className="text-[11px] font-bold uppercase tracking-wider text-[#16422C]">
-                          Quầy Soát Vé &amp; Xác Minh Khách Hàng
-                        </span>
-                        <h3 className="text-base sm:text-lg font-bold text-[#0F172A]">
-                          Quét mã QR hoặc nhập PIN 6 số để xác thực vé &amp; đối chiếu đúng chủ vé
-                        </h3>
-                        <p className="text-xs text-neutral-600">
-                          Hệ thống kiểm tra chứng thực vé điện tử, đúng cụm sân, hiệu lực sử dụng 1 lần và hỏi 4 số cuối SĐT trước khi mở sân.
-                        </p>
+                  {/* Adaptive Venue Verification Bar: renders ONLY capabilities enabled by this venue's court listings */}
+                  {(() => {
+                    const scopedListings =
+                      orderCourtFilter === 'ALL'
+                        ? myListings
+                        : myListings.filter((l) => l.groupId === orderCourtFilter);
+                    const deskQr = scopedListings.some((l) => l.checkinMode === 'QR_STAFF');
+                    const deskPin = scopedListings.some(
+                      (l) => l.checkinMode === 'PIN_COUNTER' || l.checkinMode === 'MANUAL'
+                    );
+                    const pinOnlyDesk = deskPin && !deskQr;
+                    const qrOnlyDesk = deskQr && !deskPin;
+
+                    return (
+                      <div className="rounded-[26px] border border-[#16422C]/20 bg-gradient-to-r from-[#F4F8F4] to-white p-5 sm:p-6 shadow-2xs">
+                        <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
+                          <div className="space-y-1.5">
+                            <span className="inline-flex items-center gap-1.5 rounded-full bg-white px-3 py-0.5 text-[10.5px] font-bold uppercase tracking-wider text-[#16422C] border border-[#16422C]/15">
+                              {pinOnlyDesk ? (
+                                <>
+                                  <KeyRound className="h-3.5 w-3.5" /> Quầy Xác Thực Mã PIN (Không Máy Quét)
+                                </>
+                              ) : qrOnlyDesk ? (
+                                <>
+                                  <QrCode className="h-3.5 w-3.5" /> Quầy Quét Mã QR Tại Sân
+                                </>
+                              ) : (
+                                <>
+                                  <QrCode className="h-3.5 w-3.5" /> Quầy Nhận Sân Đa Chế Độ (Theo Cấu Hình Cụm)
+                                </>
+                              )}
+                            </span>
+                            <h3 className="text-base sm:text-lg font-bold text-[#0F172A]">
+                              {pinOnlyDesk
+                                ? 'Nhập Mã PIN 6 chữ số từ Email khách & 4 số cuối SĐT để mở sân'
+                                : qrOnlyDesk
+                                  ? 'Quét mã QR khách xuất trình trên Email để đối chiếu & mở sân'
+                                  : 'Chọn đúng phương thức của từng cụm sân (Quét QR hoặc Nhập Mã PIN 6 số)'}
+                            </h3>
+                            <p className="text-xs text-neutral-600">
+                              {pinOnlyDesk
+                                ? 'Cụm sân này không sử dụng máy quét QR — toàn bộ đơn chỉ dùng Mã PIN 6 số dùng 1 lần và hỏi 4 số cuối SĐT.'
+                                : qrOnlyDesk
+                                  ? 'Hệ thống kiểm tra hiệu lực vé QR dùng 1 lần, đúng cơ sở quản lý và yêu cầu xác nhận 4 số cuối SĐT.'
+                                  : 'Cụm dùng máy quét chỉ xử lý bằng QR; cụm không máy quét chỉ xử lý bằng Mã PIN 6 số.'}
+                            </p>
+                          </div>
+
+                          <div className="flex flex-wrap items-center gap-2 xl:shrink-0">
+                            {deskQr && (
+                              <ActionButton
+                                type="button"
+                                variant="forest"
+                                size="sm"
+                                onClick={() => {
+                                  setQrModalOrder(null);
+                                  setQrModalQuery('');
+                                  setQrModalTab('SCANNER');
+                                  setQrModalAllowedModes(['SCANNER']);
+                                  setQrModalOpen(true);
+                                }}
+                              >
+                                <span className="inline-flex items-center gap-1.5">
+                                  <QrCode className="h-3.5 w-3.5" /> Mở Máy Quét QR
+                                </span>
+                              </ActionButton>
+                            )}
+
+                            {deskPin && (
+                              <ActionButton
+                                type="button"
+                                variant={pinOnlyDesk ? 'forest' : 'outline'}
+                                size="sm"
+                                onClick={() => {
+                                  setQrModalOrder(null);
+                                  setQrModalQuery('');
+                                  setQrModalTab('PIN_VERIFY');
+                                  setQrModalAllowedModes(['PIN_VERIFY']);
+                                  setQrModalOpen(true);
+                                }}
+                              >
+                                <span className="inline-flex items-center gap-1.5">
+                                  <KeyRound className="h-3.5 w-3.5" /> Nhập Mã PIN 6 số
+                                </span>
+                              </ActionButton>
+                            )}
+
+                            {deskQr && (
+                              <form
+                                onSubmit={handleManualQrVerify}
+                                className="flex w-full sm:w-auto items-center gap-2"
+                              >
+                                <input
+                                  type="text"
+                                  value={qrScanInput}
+                                  onChange={(e) => setQrScanInput(e.target.value)}
+                                  placeholder="Nhập mã vé hoặc mã đơn…"
+                                  className="w-48 rounded-full border border-neutral-300 bg-white px-4 py-2 text-xs text-[#0F172A] focus:border-[#16422C] focus:outline-none"
+                                />
+                                <ActionButton type="submit" variant="outline" size="sm">
+                                  Kiểm tra
+                                </ActionButton>
+                              </form>
+                            )}
+                          </div>
+                        </div>
                       </div>
-
-                      <div className="flex flex-wrap items-center gap-2 xl:shrink-0">
-                        <ActionButton
-                          type="button"
-                          variant="forest"
-                          size="sm"
-                          onClick={() => {
-                            setQrModalOrder(null);
-                            setQrModalQuery('');
-                            setQrModalTab('SCANNER');
-                            setQrModalOpen(true);
-                          }}
-                        >
-                          📷 Quét QR (Có máy quét)
-                        </ActionButton>
-
-                        <ActionButton
-                          type="button"
-                          variant="outline"
-                          size="sm"
-                          onClick={() => {
-                            setQrModalOrder(null);
-                            setQrModalQuery('');
-                            setQrModalTab('PIN_VERIFY');
-                            setQrModalOpen(true);
-                          }}
-                        >
-                          🔢 Nhập PIN 6 số (Không máy quét)
-                        </ActionButton>
-
-                        <form
-                          onSubmit={handleManualQrVerify}
-                          className="flex w-full sm:w-auto items-center gap-2"
-                        >
-                          <input
-                            type="text"
-                            value={qrScanInput}
-                            onChange={(e) => setQrScanInput(e.target.value)}
-                            placeholder="Nhập mã vé (VD: APQR-HN01-001)…"
-                            className="w-48 rounded-full border border-neutral-300 bg-white px-4 py-2 text-xs text-[#0F172A] focus:border-[#16422C] focus:outline-none"
-                          />
-                          <ActionButton type="submit" variant="outline" size="sm">
-                            Kiểm tra
-                          </ActionButton>
-                        </form>
-                      </div>
-                    </div>
-                  </div>
+                    );
+                  })()}
 
                   {/* Live Booking Dispatch Table with Search + Court + Date + Pagination */}
                   <div className="overflow-hidden rounded-[26px] border border-neutral-200/90 bg-white shadow-xs">
@@ -1308,15 +1391,21 @@ export const LessorPartnerPortal: React.FC<LessorPartnerPortalProps> = ({
                                 {order.unitNumber} • {order.sportName}
                               </span>
                               <span
-                                className={`rounded-full px-2.5 py-0.5 text-[10.5px] font-bold ${
+                                className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[10.5px] font-bold ${
                                   usesPinCounter
                                     ? 'bg-[#E6F1F8] text-[#0E4F7E]'
                                     : 'bg-neutral-100 text-neutral-700'
                                 }`}
                               >
-                                {usesPinCounter
-                                  ? '🔢 PIN 6 số (Tại quầy)'
-                                  : '📷 Quét QR tại quầy'}
+                                {usesPinCounter ? (
+                                  <>
+                                    <KeyRound className="h-3 w-3" /> Mã PIN 6 số (Không máy quét)
+                                  </>
+                                ) : (
+                                  <>
+                                    <QrCode className="h-3 w-3" /> Quét QR tại quầy
+                                  </>
+                                )}
                               </span>
                               <span className="text-xs font-semibold text-[#0F172A]">
                                 {order.slotLabel}
@@ -1353,7 +1442,7 @@ export const LessorPartnerPortal: React.FC<LessorPartnerPortalProps> = ({
                                 )
                               </span>
                               <span className="inline-flex items-center gap-1 rounded-full bg-[#F1F5F9] px-2.5 py-0.5 text-[11px] font-semibold text-neutral-700">
-                                Mã vé: {order.qrCode}
+                                {usesPinCounter ? 'Xác thực qua Mã PIN Email' : `Mã vé QR: ${order.qrCode}`}
                               </span>
                               {order.addOnSummary && (
                                 <span className="font-medium text-[#16422C]">
@@ -1387,16 +1476,26 @@ export const LessorPartnerPortal: React.FC<LessorPartnerPortalProps> = ({
                                     setQrModalOrder(order);
                                     if (usesPinCounter) {
                                       setQrModalTab('PIN_VERIFY');
+                                      setQrModalAllowedModes(['PIN_VERIFY']);
                                       setQrModalQuery('');
                                     } else {
                                       setQrModalTab('SCANNER');
+                                      setQrModalAllowedModes(['SCANNER']);
                                       setQrModalQuery(order.qrToken || order.qrCode);
                                     }
                                     setQrModalOpen(true);
                                   }}
-                                  className="rounded-full bg-[#16422C] px-3.5 py-2 text-xs font-bold text-white hover:bg-[#0F172A] cursor-pointer"
+                                  className="inline-flex items-center gap-1.5 rounded-full bg-[#16422C] px-3.5 py-2 text-xs font-bold text-white hover:bg-[#0F172A] cursor-pointer"
                                 >
-                                  {usesPinCounter ? '🔢 Nhập PIN 6 số' : '🔍 Soát QR & Nhận sân'}
+                                  {usesPinCounter ? (
+                                    <>
+                                      <KeyRound className="h-3.5 w-3.5" /> Nhập PIN 6 số
+                                    </>
+                                  ) : (
+                                    <>
+                                      <QrCode className="h-3.5 w-3.5" /> Quét QR nhận sân
+                                    </>
+                                  )}
                                 </button>
                                 <button
                                   type="button"
@@ -1684,13 +1783,13 @@ export const LessorPartnerPortal: React.FC<LessorPartnerPortalProps> = ({
                               {[
                                 {
                                   id: 'QR_STAFF' as const,
-                                  title: '📷 Option 1: Có máy quét QR / Camera quầy',
-                                  desc: 'Khách đưa ảnh QR trong Email; nhân viên quét Camera / đầu đọc 2D (kiểm tra tính hợp lệ của vé, hiệu lực 1 lần & đối chiếu chủ sân).',
+                                  title: 'Có máy quét QR / Camera quầy',
+                                  desc: 'Khách xuất trình mã QR trong Email; quầy dùng Camera hoặc đầu đọc 2D để kiểm tra vé và hỏi 4 số cuối SĐT.',
                                 },
                                 {
                                   id: 'PIN_COUNTER' as const,
-                                  title: '🔢 Option 2: Không có máy quét (PIN 6 số Email)',
-                                  desc: 'Khách đọc Mã PIN 6 số bí mật từ Email + 4 số cuối SĐT; nhân viên gõ xác thực trên web/điện thoại (khóa nếu sai 5 lần).',
+                                  title: 'Không có máy quét — Chỉ dùng Mã PIN 6 số',
+                                  desc: 'Không phát hành hay xử lý QR. Hệ thống chỉ gửi Mã PIN 6 số về Email khách để nhân viên đối chiếu cùng 4 số cuối SĐT.',
                                 },
                               ].map((opt) => {
                                 const active = newCourtCheckinMode === opt.id;
@@ -1705,7 +1804,12 @@ export const LessorPartnerPortal: React.FC<LessorPartnerPortalProps> = ({
                                         : 'border-neutral-200 bg-[#F8FAFC] hover:border-neutral-300'
                                     }`}
                                   >
-                                    <div className="text-xs font-bold text-[#0F172A]">
+                                    <div className="inline-flex items-center gap-1.5 text-xs font-bold text-[#0F172A]">
+                                      {opt.id === 'QR_STAFF' ? (
+                                        <QrCode className="h-3.5 w-3.5 text-[#16422C]" />
+                                      ) : (
+                                        <KeyRound className="h-3.5 w-3.5 text-[#0E4F7E]" />
+                                      )}
                                       {opt.title}
                                     </div>
                                     <p className="mt-1 text-[11px] leading-relaxed text-neutral-600">
@@ -2595,6 +2699,7 @@ export const LessorPartnerPortal: React.FC<LessorPartnerPortalProps> = ({
       <QrCheckInScannerModal
         open={qrModalOpen}
         initialTab={qrModalTab}
+        allowedModes={qrModalAllowedModes}
         initialOrder={qrModalOrder}
         initialQuery={qrModalQuery}
         providerOrders={providerOrders}

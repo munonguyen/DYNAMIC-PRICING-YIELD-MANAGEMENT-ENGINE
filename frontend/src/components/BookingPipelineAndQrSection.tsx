@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
 import { QRCodeSVG } from 'qrcode.react';
+import { KeyRound, QrCode, ShieldCheck } from 'lucide-react';
 import type {
   AuthSession,
   CancelBookingResult,
@@ -1594,107 +1595,140 @@ export const BookingPipelineAndQrSection: React.FC<BookingPipelineAndQrSectionPr
               )}
             </div>
 
-            {/* Electronic Single-Use QR Pass */}
-            <div className="chamfer-top-right overflow-hidden rounded-[28px] border border-neutral-200 bg-white shadow-md">
-              <div className="relative h-28 w-full overflow-hidden">
-                <img
-                  src={activeListing?.imageUrl || '/images/real-football-turf.jpg'}
-                  alt=""
-                  loading="lazy"
-                  decoding="async"
-                  className="h-full w-full object-cover"
-                />
-                <div className="absolute inset-0 bg-gradient-to-t from-[#0A1E15]/90 via-[#0A1E15]/40 to-transparent" />
-                <div className="absolute inset-x-5 bottom-3 text-white">
-                  <div className="flex items-center justify-between text-[11px] text-white/80 pr-8">
-                    <span>Vé Điện Tử ArenaPulse Pass</span>
-                    <span className="tabular-nums">QR 1 Lần</span>
-                  </div>
-                  <div className="text-sm font-semibold">
-                    Sân {holdResult?.unitNumber ?? 'PIC-04'} •{' '}
-                    {checkInResult
-                      ? 'ĐÃ NHẬN SÂN'
-                      : cancelResult
-                        ? 'ĐÃ HỦY VÉ'
-                        : qrTicket
-                          ? 'ĐÃ KÍCH HOẠT'
-                          : 'CHỜ THANH TOÁN'}
-                  </div>
-                </div>
-              </div>
+            {/* Mode-Specific Electronic Check-in Pass (QR for Scanner Venues / 6-Digit PIN for No-Scanner Venues) */}
+            {(() => {
+              const isPinOnlyCourt =
+                activeListing?.checkinMode === 'PIN_COUNTER' ||
+                activeListing?.checkinMode === 'MANUAL';
+              const customerPinCode = (() => {
+                if (!qrTicket) return '';
+                const seed = `${holdResult?.reservationId ?? ''}:${qrTicket.qrJti}`;
+                let h = 0x811c9dc5;
+                for (let i = 0; i < seed.length; i++) {
+                  h = Math.imul(h ^ seed.charCodeAt(i), 0x01000193) >>> 0;
+                }
+                return String((h % 900_000) + 100_000);
+              })();
 
-              <div className="p-5 text-center">
-                <div className="inline-flex rounded-2xl border border-neutral-200 bg-white p-3.5">
-                  <QRCodeSVG
-                    value={
-                      qrTicket?.qrToken ??
-                      `ARENAPULSE_PREVIEW:${activeQuote?.tokenJti ?? 'PENDING_PAYMENT'}`
-                    }
-                    size={148}
-                    level="M"
-                    bgColor="#FFFFFF"
-                    fgColor="#0F172A"
-                  />
-                </div>
-                <div className="mt-2.5 tabular-nums text-[11px] text-neutral-500 break-all">
-                  {checkInResult
-                    ? `Đã check-in thành công lúc ${new Date(checkInResult.scannedAt).toLocaleTimeString('vi-VN')}`
-                    : qrTicket
-                      ? `Xuất trình mã vé này cho nhân viên sân khi check-in (${qrTicket.qrJti})`
-                      : 'Mã QR chính thức sẽ tự động kích hoạt ngay sau khi xác nhận thanh toán'}
-                </div>
-
-                {qrTicket && !cancelResult && (
-                  <div className="mt-3 rounded-2xl border border-[#16422C]/25 bg-[#F4F8F4] px-3.5 py-2.5">
-                    <div className="text-[10px] font-bold uppercase tracking-wider text-[#16422C]">
-                      {activeListing?.checkinMode === 'PIN_COUNTER' ||
-                      activeListing?.checkinMode === 'MANUAL'
-                        ? 'Mã PIN 6 số Nhận sân (Cơ sở không máy quét)'
-                        : 'Mã PIN 6 số dự phòng tại quầy'}
-                    </div>
-                    <div className="mt-0.5 font-mono text-xl font-extrabold tracking-[0.28em] text-[#0F172A]">
-                      {(() => {
-                        const seed = `${holdResult?.reservationId ?? ''}:${qrTicket.qrJti}`;
-                        let h = 0x811c9dc5;
-                        for (let i = 0; i < seed.length; i++) {
-                          h = Math.imul(h ^ seed.charCodeAt(i), 0x01000193) >>> 0;
-                        }
-                        return String((h % 900_000) + 100_000);
-                      })()}
-                    </div>
-                    <div className="text-[10.5px] text-neutral-500">
-                      Đọc mã này + 4 số cuối SĐT cho nhân viên nếu sân không quét QR (tự khóa sau 1 lần dùng).
+              return (
+                <div className="chamfer-top-right overflow-hidden rounded-[28px] border border-neutral-200 bg-white shadow-md">
+                  <div className="relative h-28 w-full overflow-hidden">
+                    <img
+                      src={activeListing?.imageUrl || '/images/real-football-turf.jpg'}
+                      alt=""
+                      loading="lazy"
+                      decoding="async"
+                      className="h-full w-full object-cover"
+                    />
+                    <div className="absolute inset-0 bg-gradient-to-t from-[#0A1E15]/90 via-[#0A1E15]/40 to-transparent" />
+                    <div className="absolute inset-x-5 bottom-3 text-white">
+                      <div className="flex items-center justify-between text-[11px] text-white/80 pr-8">
+                        <span>ArenaPulse E-Pass</span>
+                        <span className="inline-flex items-center gap-1 tabular-nums">
+                          {isPinOnlyCourt ? (
+                            <>
+                              <KeyRound className="h-3 w-3" /> Mã PIN 1 Lần
+                            </>
+                          ) : (
+                            <>
+                              <QrCode className="h-3 w-3" /> Vé QR 1 Lần
+                            </>
+                          )}
+                        </span>
+                      </div>
+                      <div className="text-sm font-semibold">
+                        Sân {holdResult?.unitNumber ?? 'PIC-04'} •{' '}
+                        {checkInResult
+                          ? 'ĐÃ NHẬN SÂN'
+                          : cancelResult
+                            ? 'ĐÃ HỦY VÉ'
+                            : qrTicket
+                              ? 'ĐÃ KÍCH HOẠT'
+                              : 'CHỜ THANH TOÁN'}
+                      </div>
                     </div>
                   </div>
-                )}
 
-                {qrTicket && holdResult && !cancelResult && (
-                  <div className="mt-4 space-y-2 border-t border-neutral-100 pt-3.5 text-left">
-                    <ActionButton
-                      variant="outline"
-                      size="sm"
-                      fullWidth
-                      disabled={sendingEmail}
-                      onClick={() =>
-                        handleSendQrEmailNow(
-                          holdResult.reservationId,
-                          customerEmail || paymentReceipt?.customerEmail || ''
-                        )
-                      }
-                    >
-                      {sendingEmail
-                        ? 'Đang gửi ảnh QR qua Email…'
-                        : `Gửi ảnh QR về Gmail (${customerEmail || 'nhập email ở mục 3'})`}
-                    </ActionButton>
-                    {resendEmailStatus && (
-                      <div className="rounded-xl bg-[#F4F8F4] px-3 py-2 text-[11px] text-[#16422C] border border-[#16422C]/20">
-                        {resendEmailStatus}
+                  <div className="p-5 text-center">
+                    {isPinOnlyCourt ? (
+                      <div className="space-y-3">
+                        <div className="rounded-2xl border border-[#16422C]/25 bg-[#F4F8F4] px-4 py-5">
+                          <div className="inline-flex items-center gap-1.5 rounded-full bg-white px-3 py-1 text-[10.5px] font-bold text-[#16422C] shadow-2xs">
+                            <KeyRound className="h-3.5 w-3.5" />
+                            Xác thực bằng Mã Số (Cơ sở không dùng máy quét)
+                          </div>
+
+                          <div className="mt-3 font-mono text-3xl font-extrabold tracking-[0.28em] text-[#0F172A]">
+                            {qrTicket ? `${customerPinCode.slice(0, 3)} ${customerPinCode.slice(3)}` : '• • •  • • •'}
+                          </div>
+
+                          <p className="mt-2.5 text-[11px] leading-relaxed text-neutral-600">
+                            {checkInResult
+                              ? `Đã check-in thành công lúc ${new Date(checkInResult.scannedAt).toLocaleTimeString('vi-VN')}`
+                              : qrTicket
+                                ? 'Đọc mã PIN 6 chữ số này kèm 4 số cuối SĐT cho nhân viên trực sân (tự vô hiệu hóa sau 1 lần dùng).'
+                                : 'Mã PIN 6 chữ số bí mật sẽ tự động kích hoạt ngay sau khi xác nhận thanh toán đặt cọc.'}
+                          </p>
+                        </div>
+                      </div>
+                    ) : (
+                      <>
+                        <div className="inline-flex rounded-2xl border border-neutral-200 bg-white p-3.5 shadow-2xs">
+                          <QRCodeSVG
+                            value={
+                              qrTicket?.qrToken ??
+                              `ARENAPULSE_PENDING:${holdResult?.reservationId ?? 'DRAFT'}`
+                            }
+                            size={156}
+                            level="M"
+                            bgColor="#FFFFFF"
+                            fgColor="#0F172A"
+                          />
+                        </div>
+                        <div className="mt-3 flex items-center justify-center gap-1.5 text-[11px] text-neutral-600">
+                          <ShieldCheck className="h-3.5 w-3.5 text-[#16422C] shrink-0" />
+                          <span>
+                            {checkInResult
+                              ? `Đã check-in thành công lúc ${new Date(checkInResult.scannedAt).toLocaleTimeString('vi-VN')}`
+                              : qrTicket
+                                ? 'Đưa mã QR này cho nhân viên quét tại quầy kèm 4 số cuối SĐT đăng ký.'
+                                : 'Mã QR điện tử sẽ kích hoạt ngay sau khi xác nhận thanh toán.'}
+                          </span>
+                        </div>
+                      </>
+                    )}
+
+                    {qrTicket && holdResult && !cancelResult && (
+                      <div className="mt-4 space-y-2 border-t border-neutral-100 pt-3.5 text-left">
+                        <ActionButton
+                          variant="outline"
+                          size="sm"
+                          fullWidth
+                          disabled={sendingEmail}
+                          onClick={() =>
+                            handleSendQrEmailNow(
+                              holdResult.reservationId,
+                              customerEmail || paymentReceipt?.customerEmail || ''
+                            )
+                          }
+                        >
+                          {sendingEmail
+                            ? 'Đang gửi phiếu nhận sân qua Email…'
+                            : isPinOnlyCourt
+                              ? `Gửi Mã PIN 6 số về Gmail (${customerEmail || 'nhập email ở mục 3'})`
+                              : `Gửi Vé QR về Gmail (${customerEmail || 'nhập email ở mục 3'})`}
+                        </ActionButton>
+                        {resendEmailStatus && (
+                          <div className="rounded-xl bg-[#F4F8F4] px-3 py-2 text-[11px] text-[#16422C] border border-[#16422C]/20">
+                            {resendEmailStatus}
+                          </div>
+                        )}
                       </div>
                     )}
                   </div>
-                )}
-              </div>
-            </div>
+                </div>
+              );
+            })()}
 
             {/* Persistent "Vé của tôi" Saved Tickets */}
             {myTickets.length > 0 && (

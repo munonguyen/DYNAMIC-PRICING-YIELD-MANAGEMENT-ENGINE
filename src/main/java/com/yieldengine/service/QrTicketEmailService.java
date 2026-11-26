@@ -19,8 +19,8 @@ import java.nio.charset.StandardCharsets;
 import java.util.UUID;
 
 /**
- * Orchestrates e-ticket email dispatch (PNG QR attachment + 6-digit PIN pass) over SMTP.
- * All pass data assembly and HTML rendering are delegated cleanly to TicketPassService & TicketEmailTemplateRenderer.
+ * Orchestrates e-ticket email dispatch over SMTP. Sends numeric PIN emails (without QR)
+ * for no-scanner PIN_COUNTER venues and signed QR PNG passes for QR_STAFF venues.
  */
 @Slf4j
 @Service
@@ -71,7 +71,7 @@ public class QrTicketEmailService {
                 .orElseThrow(() -> new ResourceNotFoundException("Reservation not found: " + reservationId));
 
         if (!"CONFIRMED".equals(reservation.getStatus())) {
-            throw new IllegalStateException("Chỉ gửi vé QR cho đơn đã thanh toán CONFIRMED.");
+            throw new IllegalStateException("Chỉ gửi phiếu nhận sân cho đơn đã thanh toán CONFIRMED.");
         }
 
         TicketPassService.TicketPassSnapshot pass = ticketPassService.buildPassSnapshot(reservation);
@@ -79,37 +79,29 @@ public class QrTicketEmailService {
                 ? explicitRecipientEmail.trim()
                 : pass.customerEmail();
         if (!StringUtils.hasText(recipientEmail)) {
-            throw new IllegalArgumentException("Không có địa chỉ email người nhận để gửi mã QR.");
+            throw new IllegalArgumentException("Không có địa chỉ email người nhận để gửi phiếu nhận sân.");
         }
 
         String recipientName = StringUtils.hasText(explicitRecipientName)
                 ? explicitRecipientName.trim()
                 : pass.customerName();
 
-        byte[] qrPngBytes = QrCodeImageUtils.renderQrPng(pass.qrToken(), 320);
+        boolean pinOnly = templateRenderer.isPinOnlyMode(pass);
+        byte[] qrPngBytes = pinOnly ? new byte[0] : QrCodeImageUtils.renderQrPng(pass.qrToken(), 320);
         String html = templateRenderer.renderBookingTicketHtml(pass, recipientName);
 
         if (mailSender == null || !mailPasswordConfigured) {
-            log.warn("SMTP credentials missing — prepared QR PNG ({} bytes) for {} without network send.",
-                    qrPngBytes.length, recipientEmail);
-            return new EmailDispatchResult(
-                    false,
-                    recipientEmail,
-                    reservationId,
-                    qrPngBytes.length,
-                    "SMTP chưa cấu hình MAIL_USERNAME/MAIL_PASSWORD (Gmail App Password) — đã dựng sẵn vé PNG QR ("
-                            + qrPngBytes.length + " bytes)."
-            );
+            String offlineNote = pinOnly
+                    ? "Đã dựng sẵn phiếu Mã PIN 6 số gửi khách (cơ sở không dùng máy quét)."
+                    : "Đã dựng sẵn vé QR điện tử (" + qrPngBytes.length + " bytes).";
+            return new EmailDispatchResult(false, recipientEmail, reservationId, qrPngBytes.length, offlineNote);
         }
 
-        dispatchMimeEmail(recipientEmail, pass.unitNumber(), pass.venueName(), html, qrPngBytes);
-        return new EmailDispatchResult(
-                true,
-                recipientEmail,
-                reservationId,
-                qrPngBytes.length,
-                "Đã gửi thành công vé điện tử kèm ảnh QR tới " + recipientEmail
-        );
+        dispatchMimeEmail(recipientEmail, pass.unitNumber(), pass.venueName(), html, qrPngBytes, pinOnly);
+        String successNote = pinOnly
+                ? "Đã gửi thành công Mã PIN 6 số nhận sân tới " + recipientEmail
+                : "Đã gửi thành công vé điện tử kèm ảnh QR tới " + recipientEmail;
+        return new EmailDispatchResult(true, recipientEmail, reservationId, qrPngBytes.length, successNote);
     }
 
     private void dispatchMimeEmail(
@@ -117,25 +109,31 @@ public class QrTicketEmailService {
             String unitNumber,
             String venueName,
             String html,
-            byte[] qrPngBytes
+            byte[] qrPngBytes,
+            boolean pinOnly
     ) {
         try {
             MimeMessage mimeMessage = mailSender.createMimeMessage();
-            MimeMessageHelper helper = new MimeMessageHelper(mimeMessage, true, StandardCharsets.UTF_8.name());
+            MimeMessageHelper helper = new MimeMessageHelper(mimeMessage, !pinOnly, StandardCharsets.UTF_8.name());
             helper.setFrom(senderEmail);
             helper.setTo(recipientEmail);
-            helper.setSubject("[ArenaPulse] Vé Điện Tử Sân " + unitNumber + " • " + venueName);
+            helper.setSubject(pinOnly
+                    ? "[ArenaPulse] Mã số nhận sân " + unitNumber + " • " + venueName
+                    : "[ArenaPulse] Vé QR Sân " + unitNumber + " • " + venueName);
             helper.setText(html, true);
-            helper.addInline("arenapulseTicketQr", new ByteArrayResource(qrPngBytes), "image/png");
-            helper.addAttachment("ArenaPulse-Ve-San-" + unitNumber + ".png",
-                    new ByteArrayResource(qrPngBytes), "image/png");
+
+            if (!pinOnly && qrPngBytes.length > 0) {
+                helper.addInline("arenapulseTicketQr", new ByteArrayResource(qrPngBytes), "image/png");
+                helper.addAttachment("ArenaPulse-Ve-San-" + unitNumber + ".png",
+                        new ByteArrayResource(qrPngBytes), "image/png");
+            }
 
             mailSender.send(mimeMessage);
-            log.info("Dispatched ticket email ({} bytes PNG) to {} for unit {}",
-                    qrPngBytes.length, recipientEmail, unitNumber);
+            log.info("Dispatched {} email to {} for unit {}",
+                    pinOnly ? "PIN pass" : "QR ticket", recipientEmail, unitNumber);
         } catch (Exception ex) {
             log.error("Failed dispatching ticket email to {}: {}", recipientEmail, ex.getMessage(), ex);
-            throw new IllegalStateException("Gửi email vé điện tử thất bại: " + ex.getMessage(), ex);
+            throw new IllegalStateException("Gửi email phiếu nhận sân thất bại: " + ex.getMessage(), ex);
         }
     }
 }

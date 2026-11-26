@@ -133,6 +133,55 @@ class QrTicketEmailAndMoMoTest {
     }
 
     @Test
+    @DisplayName("Dispatches numeric PIN email without QR image or attachment for PIN_COUNTER venues")
+    void sendsPinOnlyEmailWithoutQrForNoScannerVenue() throws Exception {
+        UUID tenantId = UUID.randomUUID();
+        UUID groupId = UUID.randomUUID();
+        UUID bookingId = UUID.randomUUID();
+        UUID reservationId = UUID.randomUUID();
+        UUID qrJti = UUID.randomUUID();
+        Instant slotStart = Instant.now().plus(2, ChronoUnit.DAYS);
+
+        Tenant tenant = Tenant.builder().id(tenantId).code("PIN_SAN").name("Sân Tự Quản").address("Hà Nội")
+                .checkinMode("PIN_COUNTER").build();
+        ResourceGroup group = ResourceGroup.builder()
+                .tenant(tenant).code("PB_PIN").name("Cụm Không Máy Quét").noshowGraceMinutes(15)
+                .basePrice(180_000L).minPrice(120_000L).maxPrice(260_000L).checkinMode("PIN_COUNTER").build();
+        group.setId(groupId);
+
+        Unit unit = Unit.builder().tenantId(tenantId).resourceGroup(group).unitNumber("SAN_02").status("ACTIVE").build();
+        Booking booking = Booking.builder()
+                .tenant(tenant).userId(UUID.randomUUID())
+                .contactName("Trần Hoàng Bách").contactEmail("bach@gmail.com")
+                .totalAmount(180_000L).depositTotal(60_000L).build();
+        booking.setId(bookingId);
+
+        Reservation res = Reservation.builder()
+                .id(new ReservationId(reservationId, slotStart))
+                .tenantId(tenantId).groupId(groupId).bookingId(bookingId)
+                .unit(unit).status("CONFIRMED").lockedPrice(180_000L)
+                .depositAmount(60_000L).qrJti(qrJti).build();
+
+        when(reservationRepository.findByReservationId(reservationId)).thenReturn(Optional.of(res));
+        when(bookingRepository.findById(bookingId)).thenReturn(Optional.of(booking));
+        when(resourceGroupRepository.findById(groupId)).thenReturn(Optional.of(group));
+        when(paymentRepository.sumSuccessfulPaidByBookingId(bookingId)).thenReturn(60_000L);
+        when(priceLockTokenService.deriveCheckInPin(reservationId, qrJti)).thenReturn("651905");
+
+        QrTicketEmailService.EmailDispatchResult result =
+                emailService.sendQrTicketEmailForReservation(reservationId, "bach@gmail.com", "Trần Hoàng Bách");
+
+        assertTrue(result.sentOverSmtp());
+        assertEquals(0, result.qrPngBytes());
+        MimeMessage[] received = greenMail.getReceivedMessages();
+        assertEquals(1, received.length);
+        assertTrue(received[0].getSubject().contains("Mã số nhận sân"));
+        String body = received[0].getContent().toString();
+        assertTrue(body.contains("651905"));
+        assertFalse(body.contains("arenapulseTicketQr"));
+    }
+
+    @Test
     @DisplayName("MoMo v2 HMAC-SHA256 IPN signature verification accepts authentic signature and blocks tampering")
     void verifiesMoMoHmacSignatureStrictly() {
         com.yieldengine.config.MoMoGatewayProperties props = new com.yieldengine.config.MoMoGatewayProperties();
