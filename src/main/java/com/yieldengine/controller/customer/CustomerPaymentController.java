@@ -6,6 +6,7 @@ import com.yieldengine.record.momo.MoMoPaymentInitResult;
 import com.yieldengine.record.ops.BookingPaymentStatus;
 import com.yieldengine.record.ops.CreateQrPaymentRequest;
 import com.yieldengine.record.ops.MoMoPaymentSessionResponse;
+import com.yieldengine.record.ops.MyTicketResponse;
 import com.yieldengine.record.security.SessionPrincipal;
 import com.yieldengine.record.vnpay.CreateVnPayPaymentRequest;
 import com.yieldengine.record.vnpay.VnPayPaymentUrlResponse;
@@ -49,6 +50,15 @@ public class CustomerPaymentController {
     @GetMapping("/providers")
     public List<String> paymentProviders() {
         return checkoutPaymentService.configuredProviders();
+    }
+
+    @Operation(summary = "[USER] List authenticated customer payment & ticket history from PostgreSQL")
+    @GetMapping("/history")
+    public ResponseEntity<List<MyTicketResponse>> paymentHistory() {
+        SessionPrincipal user = rbacGuard.requireAuthenticated();
+        return ResponseEntity.ok()
+                .cacheControl(CacheControl.noStore())
+                .body(bookingOrchestratorService.listPaymentHistory(user.userId()));
     }
 
     @Operation(summary = "[USER] Create MoMo v2 HMAC-SHA256 payment session matching PayGate spec")

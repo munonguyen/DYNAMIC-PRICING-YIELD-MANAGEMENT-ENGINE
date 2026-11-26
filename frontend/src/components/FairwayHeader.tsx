@@ -5,6 +5,7 @@ import {
   Building2,
   CheckCircle2,
   MessageSquare,
+  Receipt,
   Scale,
   ShieldCheck,
   Store,
@@ -12,6 +13,7 @@ import {
   Users,
   Zap,
 } from 'lucide-react';
+import { QRCodeSVG } from 'qrcode.react';
 import {
   AnimatePresence,
   motion,
@@ -22,11 +24,14 @@ import {
 import type {
   AppPageId,
   AuthSession,
+  MyTicketRecord,
   RoleCode,
 } from '../types/marketplace';
+import { formatSlotWindow, formatVnd, marketplaceApi } from '../api/marketplaceApi';
 import type { LessorPortalTabId } from './LessorPartnerPortal';
 import { ArenaPulseLogo } from './ArenaPulseLogo';
 import { ActionButton } from './FairwayControls';
+import { PaymentMethodLogo } from './PaymentMethodLogo';
 import { EXPO_EASE } from './motionPrimitives';
 
 export interface PageNavItem {
@@ -51,7 +56,6 @@ export type AdminHeaderTabId =
   | 'OPERATIONS'
   | 'USER_ACCOUNTS'
   | 'LESSOR_INSPECTOR'
-  | 'RBAC_MATRIX'
   | 'FINANCE_LEDGER'
   | 'ADMIN_KYC';
 
@@ -164,6 +168,58 @@ export const FairwayHeader: React.FC<FairwayHeaderProps> = ({
       window.removeEventListener('mousedown', onOutsideClick);
     };
   }, []);
+
+  const [accountTickets, setAccountTickets] = useState<MyTicketRecord[]>([]);
+  const [expandedTicketId, setExpandedTicketId] = useState<string | null>(null);
+
+  const loadAccountPaymentHistory = () => {
+    if (!session?.userId) {
+      setAccountTickets([]);
+      return;
+    }
+    marketplaceApi
+      .getPaymentHistory()
+      .then((list) => setAccountTickets(list))
+      .catch(() => {
+        // Keep current cached history if request fails
+      });
+  };
+
+  useEffect(() => {
+    loadAccountPaymentHistory();
+  }, [session?.userId, accountMenuOpen]);
+
+  useEffect(() => {
+    const onTicketsUpdated = () => loadAccountPaymentHistory();
+    window.addEventListener('arenapulse:tickets-updated', onTicketsUpdated);
+    return () => window.removeEventListener('arenapulse:tickets-updated', onTicketsUpdated);
+  }, [session?.userId]);
+
+  const [accountTickets, setAccountTickets] = useState<MyTicketRecord[]>([]);
+  const [expandedTicketId, setExpandedTicketId] = useState<string | null>(null);
+
+  const loadAccountPaymentHistory = () => {
+    if (!session?.userId) {
+      setAccountTickets([]);
+      return;
+    }
+    marketplaceApi
+      .getPaymentHistory()
+      .then((list) => setAccountTickets(list))
+      .catch(() => {
+        // Keep current cached history if request fails
+      });
+  };
+
+  useEffect(() => {
+    loadAccountPaymentHistory();
+  }, [session?.userId, accountMenuOpen]);
+
+  useEffect(() => {
+    const onTicketsUpdated = () => loadAccountPaymentHistory();
+    window.addEventListener('arenapulse:tickets-updated', onTicketsUpdated);
+    return () => window.removeEventListener('arenapulse:tickets-updated', onTicketsUpdated);
+  }, [session?.userId]);
 
   const nativeRole: RoleCode = session?.roles?.[0]?.roleCode ?? 'USER';
   const isInternalWorkspaceMode = Boolean(session && activeRole !== 'USER');
@@ -287,7 +343,7 @@ export const FairwayHeader: React.FC<FairwayHeaderProps> = ({
               },
               {
                 key: 'admin-ledger',
-                label: 'Sổ cái & RBAC',
+                label: 'Sổ cái Kép',
                 targetPage: 'governance',
                 adminTab: 'FINANCE_LEDGER',
               },
@@ -529,7 +585,7 @@ export const FairwayHeader: React.FC<FairwayHeaderProps> = ({
                         animate={{ opacity: 1, y: 0, scale: 1 }}
                         exit={{ opacity: 0, y: 6, scale: 0.97 }}
                         transition={{ duration: 0.2, ease: EXPO_EASE }}
-                        className="absolute right-0 mt-2.5 w-[310px] rounded-[24px] border border-neutral-200/95 bg-white p-4 text-xs text-[#0F172A] shadow-[0_24px_60px_rgba(15,23,42,0.18)] z-50"
+                        className="absolute right-0 mt-2.5 w-[340px] sm:w-[400px] max-h-[82vh] overflow-y-auto rounded-[24px] border border-neutral-200/95 bg-white p-4 text-xs text-[#0F172A] shadow-[0_24px_60px_rgba(15,23,42,0.18)] z-50"
                       >
                         {/* Identity Summary */}
                         <div className="border-b border-neutral-100 pb-3">
@@ -758,6 +814,109 @@ export const FairwayHeader: React.FC<FairwayHeaderProps> = ({
                                 </button>
                               )}
                             </>
+                          )}
+                        </div>
+
+                        {/* Account Payment History & QR Tickets Section */}
+                        <div className="mt-2 border-t border-neutral-100 pt-3 space-y-2">
+                          <div className="flex items-center justify-between">
+                            <span className="inline-flex items-center gap-1.5 text-[10.5px] font-bold uppercase tracking-wider text-[#0E4F7E]">
+                              <Receipt className="h-3.5 w-3.5" />
+                              Lịch sử Thanh toán &amp; Vé QR ({accountTickets.length})
+                            </span>
+                            {accountTickets.length > 0 && (
+                              <span className="text-[10px] text-neutral-400">Cuộn để xem thêm</span>
+                            )}
+                          </div>
+
+                          {accountTickets.length === 0 ? (
+                            <div className="rounded-xl bg-[#F8FAFC] border border-neutral-200/60 px-3 py-2.5 text-[11px] text-neutral-500">
+                              Chưa có giao dịch thanh toán thuê sân nào trong tài khoản này.
+                            </div>
+                          ) : (
+                            <div className="max-h-56 overflow-y-auto space-y-2 pr-0.5">
+                              {accountTickets.map((ticket) => {
+                                const isExpanded = expandedTicketId === ticket.reservationId;
+                                const isCancelled = ticket.status === 'CANCELLED';
+                                const providerCode = ticket.paymentProvider ?? 'VIETQR_NAPAS';
+                                const amountPaid =
+                                  ticket.paidOnlineAmount > 0
+                                    ? ticket.paidOnlineAmount
+                                    : ticket.depositAmount;
+                                return (
+                                  <div
+                                    key={ticket.reservationId}
+                                    className="rounded-2xl border border-neutral-200/80 bg-[#F8FAFC] p-2.5 transition hover:border-[#0E4F7E]/30"
+                                  >
+                                    <button
+                                      type="button"
+                                      onClick={() =>
+                                        setExpandedTicketId(isExpanded ? null : ticket.reservationId)
+                                      }
+                                      className="flex w-full items-center justify-between gap-2.5 text-left cursor-pointer"
+                                    >
+                                      <div className="flex items-center gap-2.5 min-w-0">
+                                        <PaymentMethodLogo code={providerCode} size={28} />
+                                        <div className="min-w-0">
+                                          <div className="font-bold text-[#0F172A] truncate">
+                                            {ticket.groupName} • {ticket.unitNumber}
+                                          </div>
+                                          <div className="text-[10px] text-neutral-500 truncate">
+                                            {formatSlotWindow(ticket.slotStart, ticket.slotEnd)}
+                                          </div>
+                                        </div>
+                                      </div>
+
+                                      <div className="text-right shrink-0">
+                                        <div className="font-bold tabular-nums text-[#0F172A]">
+                                          {formatVnd(amountPaid)}
+                                        </div>
+                                        <span
+                                          className={`inline-block rounded-full px-1.5 py-0.5 text-[9.5px] font-bold ${
+                                            isCancelled
+                                              ? 'bg-rose-100 text-rose-700'
+                                              : 'bg-emerald-50 text-emerald-700'
+                                          }`}
+                                        >
+                                          {isCancelled ? 'Đã hủy' : 'Đã xác nhận'}
+                                        </span>
+                                      </div>
+                                    </button>
+
+                                    {isExpanded && !isCancelled && (ticket.qrToken || ticket.checkinPinCode) && (
+                                      <div className="mt-2.5 flex items-center gap-3 border-t border-neutral-200/80 pt-2.5 bg-white rounded-xl p-2.5">
+                                        {ticket.qrToken && (
+                                          <QRCodeSVG
+                                            value={ticket.qrToken}
+                                            size={68}
+                                            marginSize={1}
+                                            className="shrink-0 rounded-lg border border-neutral-100"
+                                          />
+                                        )}
+                                        <div className="min-w-0 space-y-1 text-[10.5px]">
+                                          <div className="font-bold text-[#16422C]">
+                                            Vé nhận sân {ticket.unitNumber}
+                                          </div>
+                                          {ticket.providerReference && (
+                                            <div className="text-neutral-500 font-mono truncate">
+                                              Mã GD: {ticket.providerReference}
+                                            </div>
+                                          )}
+                                          {ticket.checkinPinCode && (
+                                            <div className="font-mono font-bold text-[#0E4F7E]">
+                                              PIN: {ticket.checkinPinCode}
+                                            </div>
+                                          )}
+                                          <div className="text-neutral-500">
+                                            Còn tại sân: <strong>{formatVnd(ticket.remainingAtVenue)}</strong>
+                                          </div>
+                                        </div>
+                                      </div>
+                                    )}
+                                  </div>
+                                );
+                              })}
+                            </div>
                           )}
                         </div>
 

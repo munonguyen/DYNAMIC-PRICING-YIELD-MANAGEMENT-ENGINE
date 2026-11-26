@@ -1,16 +1,18 @@
 import { useEffect, useState } from 'react';
-import { Clock3, ScanLine } from 'lucide-react';
+import { Clock3 } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 import type { BookingPaymentStatus } from '../types/marketplace';
 import { formatVnd } from '../api/marketplaceApi';
+import { PaymentMethodLogo } from './PaymentMethodLogo';
 
 interface CheckoutPaymentQrProps {
   qr: NonNullable<BookingPaymentStatus['paymentQr']>;
+  provider?: BookingPaymentStatus['provider'];
   amount: number;
   reference: string;
 }
 
-export function CheckoutPaymentQr({ qr, amount, reference }: CheckoutPaymentQrProps) {
+export function CheckoutPaymentQr({ qr, provider, amount, reference }: CheckoutPaymentQrProps) {
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
     const timer = window.setInterval(() => setNow(Date.now()), 1000);
@@ -23,13 +25,21 @@ export function CheckoutPaymentQr({ qr, amount, reference }: CheckoutPaymentQrPr
   }
   const timeLeft = `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`;
   const { transfer } = qr;
-  const gateway = transfer ? 'VietQR' : qr.sandbox ? 'MoMo Test' : 'MoMo';
+  const resolvedProvider = provider ?? (transfer ? 'VIETQR_NAPAS' : 'MOMO_WALLET');
+  const gateway =
+    resolvedProvider === 'VIETQR_NAPAS'
+      ? 'VietQR'
+      : resolvedProvider === 'VNPAY_ESCROW'
+        ? 'VNPAY'
+        : qr.sandbox
+          ? 'MoMo Test'
+          : 'MoMo';
 
   return (
     <section aria-label="Quét QR thanh toán" className="mt-5 rounded-3xl border border-neutral-200 bg-[#F8FAF8] p-4 sm:p-5">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h4 className="flex items-center gap-2 text-sm font-semibold text-[#16422C]">
-          <ScanLine aria-hidden="true" className="h-5 w-5" />
+          <PaymentMethodLogo code={resolvedProvider} size={28} />
           QR thanh toán {gateway}
         </h4>
         <p className="flex items-center gap-1.5 text-xs text-neutral-700">

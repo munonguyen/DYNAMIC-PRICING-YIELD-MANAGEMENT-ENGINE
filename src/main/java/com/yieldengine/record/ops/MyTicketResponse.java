@@ -20,6 +20,9 @@ public record MyTicketResponse(
         String qrToken,
         Instant qrExpiresAt,
         String checkinMode,
-        String checkinPinCode
+        String checkinPinCode,
+        String paymentProvider,
+        String providerReference,
+        Instant paidAt
 ) {
 }

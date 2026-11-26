@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
 import { QRCodeSVG } from 'qrcode.react';
-import { Lock, ScanLine } from 'lucide-react';
+import { Lock } from 'lucide-react';
 import type {
   AuthSession,
   BookingPaymentStatus,
@@ -21,6 +21,7 @@ import { isValidVietnamTaxCode } from '../utils/lessorLegalValidator';
 import { EXPO_EASE, ScrollReveal } from './motionPrimitives';
 import { ActionButton } from './FairwayControls';
 import { CheckoutPaymentQr } from './CheckoutPaymentQr';
+import { PaymentMethodLogo } from './PaymentMethodLogo';
 
 interface BookingPipelineAndQrSectionProps {
   activeListing: PublishedListing | null;
@@ -44,8 +45,9 @@ interface BookingPipelineAndQrSectionProps {
 }
 
 const qrProviders = [
-  { code: 'VIETQR_NAPAS', title: 'Chuyển khoản VietQR', detail: 'Quét bằng ứng dụng ngân hàng' },
-  { code: 'MOMO_WALLET', title: 'Ví MoMo', detail: 'Quét bằng ứng dụng MoMo' },
+  { code: 'VIETQR_NAPAS', title: 'Chuyển khoản VietQR', detail: 'Quét QR động & đối soát NAPAS 24/7' },
+  { code: 'MOMO_WALLET', title: 'Ví MoMo', detail: 'Quét bằng ứng dụng MoMo PayGate v2' },
+  { code: 'VNPAY_ESCROW', title: 'Cổng VNPAY', detail: 'Thẻ ATM nội địa, VNPAY-QR & Visa/Master' },
 ] as const;
 
 const stateMessages: Record<BookingPaymentStatus['paymentStatus'], string> = {
@@ -104,8 +106,19 @@ export const BookingPipelineAndQrSection: React.FC<BookingPipelineAndQrSectionPr
   const [resendEmailStatus, setResendEmailStatus] = useState<string | null>(null);
   const [sendingEmail, setSendingEmail] = useState(false);
   const ownerId = session?.userId;
-  const trackingKey = ownerId ? `arenapulse:checkout:${ownerId}` : null;
-  const trackedReservation = holdResult?.reservationId ?? rememberedReservation;
+  const trackingKey =
+    ownerId && activeListing?.groupId && activeQuote?.slotStart
+      ? `arenapulse:checkout:${ownerId}:${activeListing.groupId}:${activeQuote.slotStart}`
+      : null;
+  const matchingHold =
+    holdResult &&
+    activeListing &&
+    activeQuote &&
+    holdResult.groupId === activeListing.groupId &&
+    holdResult.slotStart === activeQuote.slotStart
+      ? holdResult
+      : null;
+  const trackedReservation = matchingHold?.reservationId ?? rememberedReservation;
   const currentPayment = paymentStatus?.reservationId === trackedReservation ? paymentStatus : null;
   const state = currentPayment?.paymentStatus;
   const issued = state === 'VERIFIED' || state === 'NO_DEPOSIT';
@@ -117,19 +130,31 @@ export const BookingPipelineAndQrSection: React.FC<BookingPipelineAndQrSectionPr
 
   useEffect(() => {
     let active = true;
-    if (!trackingKey) return;
+    if (ownerId) {
+      window.sessionStorage.removeItem(`arenapulse:checkout:${ownerId}`);
+    }
+    if (!trackingKey) {
+      setRememberedReservation(null);
+      setPaymentStatus(null);
+      setPaymentError(null);
+      return;
+    }
     setRememberedReservation(window.sessionStorage.getItem(trackingKey));
     window.sessionStorage.removeItem(`${trackingKey}:url`);
     setMyTickets([]);
     setPaymentStatus(null);
-    marketplaceApi.getCheckoutProviders().then(data => {
-      if (active) setProviders(data);
-    }).catch(() => {
-      if (active) {
-        setProviders([]);
-        setPaymentError('Chưa tải được danh sách cổng thanh toán.');
-      }
-    });
+    setPaymentError(null);
+    setStatusError(null);
+    marketplaceApi
+      .getCheckoutProviders()
+      .then((data) => {
+        if (active) setProviders(data);
+      })
+      .catch(() => {
+        if (active) {
+          setProviders(['VIETQR_NAPAS', 'MOMO_WALLET', 'VNPAY_ESCROW']);
+        }
+      });
     const location = window.location;
     const params = new URLSearchParams(location.search);
     if (params.has('vnp_TxnRef') && params.has('vnp_SecureHash')) {
@@ -146,14 +171,23 @@ export const BookingPipelineAndQrSection: React.FC<BookingPipelineAndQrSectionPr
       window.history.replaceState({}, '', location.pathname);
     }
     return () => { active = false; };
-  }, [trackingKey]);
+  }, [ownerId, trackingKey]);
 
   useEffect(() => {
-    if (trackingKey && holdResult?.reservationId) {
-      window.sessionStorage.setItem(trackingKey, holdResult.reservationId);
-      setRememberedReservation(holdResult.reservationId);
+    if (trackingKey && matchingHold?.reservationId) {
+      window.sessionStorage.setItem(trackingKey, matchingHold.reservationId);
+      setRememberedReservation(matchingHold.reservationId);
     }
-  }, [trackingKey, holdResult?.reservationId]);
+  }, [trackingKey, matchingHold?.reservationId]);
+
+  useEffect(() => {
+    if (
+      trackingKey &&
+      (state === 'VERIFIED' || state === 'NO_DEPOSIT' || state === 'CANCELLED' || state === 'EXPIRED')
+    ) {
+      window.sessionStorage.removeItem(trackingKey);
+    }
+  }, [trackingKey, state]);
 
   useEffect(() => {
     if (!ownerId || !trackedReservation) return;
@@ -221,10 +255,10 @@ export const BookingPipelineAndQrSection: React.FC<BookingPipelineAndQrSectionPr
   const orderCancelled = Boolean(cancelResult || currentPayment?.reservationStatus === 'CANCELLED');
   const recordedPrice = currentPayment && !orderCancelled
     ? currentPayment.remainingAtVenue + (state === 'VERIFIED' ? currentPayment.paidAmount : 0) : null;
-  const lockedPrice = recordedPrice ?? holdResult?.lockedPrice ?? activeQuote?.currentPrice ?? 193_000;
+  const lockedPrice = recordedPrice ?? matchingHold?.lockedPrice ?? activeQuote?.currentPrice ?? 193_000;
   const dynamicDelta = lockedPrice - basePrice;
   const depositPct = activeListing?.depositPercent ?? 35;
-  const depositAmount = holdResult?.depositAmount ?? Math.floor((lockedPrice * depositPct) / 100);
+  const depositAmount = matchingHold?.depositAmount ?? Math.floor((lockedPrice * depositPct) / 100);
 
   const sportServices = getActiveLessorServices(activeListing);
   const selectedServiceItems = sportServices
@@ -241,7 +275,7 @@ export const BookingPipelineAndQrSection: React.FC<BookingPipelineAndQrSectionPr
     : currentPayment?.requestedAmount ?? (planMode === 'FULL_ONLINE' ? lockedPrice : depositAmount);
   const remainingAtVenue = issued && currentPayment ? currentPayment.remainingAtVenue : Math.max(0, lockedPrice - payableNow);
   const displaysFullPayment = payableNow > 0 && payableNow === lockedPrice;
-  const canStartPayment = Boolean(holdResult && selectedProvider && !isHoldExpired && !cancelResult
+  const canStartPayment = Boolean(matchingHold && selectedProvider && !isHoldExpired && !cancelResult
     && (state === 'NOT_STARTED' || state === 'FAILED'));
   const paymentLocked = Boolean(paymentBusy || issued || state === 'PENDING' || state === 'REVIEW_REQUIRED' || cancelResult);
   const canVenueOperate = activeRole === 'STAFF' || activeRole === 'MANAGER' || activeRole === 'ADMIN';
@@ -260,7 +294,7 @@ export const BookingPipelineAndQrSection: React.FC<BookingPipelineAndQrSectionPr
 
   const validateAndSubmitPayment = async () => {
     setPaymentError(null);
-    if (!canStartPayment || !holdResult || !selectedProvider) return;
+    if (!canStartPayment || !matchingHold || !selectedProvider) return;
     const cleanPhone = customerPhone.replace(/\s+/g, '');
     if (customerName.trim().split(/\s+/).length < 2) {
       setPaymentError('Vui lòng nhập đầy đủ họ tên người nhận sân (ít nhất 2 từ).');
@@ -292,7 +326,7 @@ export const BookingPipelineAndQrSection: React.FC<BookingPipelineAndQrSectionPr
     };
     setPaymentBusy(true);
     try {
-      await marketplaceApi.createInlineQrPayment(selectedProvider.code, holdResult, customer);
+      await marketplaceApi.createInlineQrPayment(selectedProvider.code, matchingHold, customer);
     } catch (error) {
       setPaymentError(error instanceof Error ? error.message : 'Chưa tạo được giao dịch thanh toán.');
     } finally {
@@ -417,10 +451,15 @@ export const BookingPipelineAndQrSection: React.FC<BookingPipelineAndQrSectionPr
             </h2>
           </div>
 
-          {holdResult && (
+          {matchingHold && (
             <button
               type="button"
-              onClick={onResetFlow}
+              onClick={() => {
+                if (trackingKey) window.sessionStorage.removeItem(trackingKey);
+                setRememberedReservation(null);
+                setPaymentStatus(null);
+                onResetFlow();
+              }}
               className="fairway-interactive self-start rounded-full border border-neutral-300 bg-white px-4 py-2 text-xs font-semibold text-[#0F172A]"
             >
               Đặt thêm lượt sân mới
@@ -537,15 +576,15 @@ export const BookingPipelineAndQrSection: React.FC<BookingPipelineAndQrSectionPr
             <ScrollReveal delay={0.05} className="rounded-[26px] border border-neutral-200/90 bg-white p-6 sm:p-7 shadow-xs">
               <h3 className="text-base sm:text-lg font-semibold text-[#0F172A]">2. Phương thức thanh toán</h3>
               {enabledQrProviders.length > 0 ? (
-                <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                <div className="mt-4 grid gap-3 sm:grid-cols-3">
                   {enabledQrProviders.map(({ code, title, detail }) => (
                     <button type="button" key={code} disabled={paymentLocked} aria-pressed={shownProvider === code}
                       onClick={() => { setPreferredProvider(code); setPaymentError(null); }}
-                      className={`flex items-start gap-3 rounded-2xl border p-4 text-left ${shownProvider === code
-                        ? 'border-[#16422C] bg-[#F4F8F4] text-[#16422C]' : 'border-neutral-200 text-neutral-800'}`}>
-                      <ScanLine aria-hidden="true" className="h-5 w-5 shrink-0" />
+                      className={`flex items-start gap-3 rounded-2xl border p-4 text-left transition cursor-pointer ${shownProvider === code
+                        ? 'border-[#16422C] bg-[#F4F8F4] text-[#16422C] ring-1 ring-[#16422C]/25' : 'border-neutral-200 text-neutral-800 hover:border-neutral-300'}`}>
+                      <PaymentMethodLogo code={code} size={36} />
                       <span><span className="block text-sm font-semibold">{title}</span>
-                        <span className="mt-1 block text-xs">{detail}</span></span>
+                        <span className="mt-1 block text-xs opacity-80">{detail}</span></span>
                     </button>
                   ))}
                 </div>
@@ -746,7 +785,7 @@ export const BookingPipelineAndQrSection: React.FC<BookingPipelineAndQrSectionPr
                   </div>
                 </div>
 
-                {holdResult && !cancelResult && state !== 'PENDING' && (
+                {matchingHold && !cancelResult && state !== 'PENDING' && (
                   <button
                     type="button"
                     onClick={() =>
@@ -804,7 +843,7 @@ export const BookingPipelineAndQrSection: React.FC<BookingPipelineAndQrSectionPr
                 <div>
                   <span className="text-[10px] text-neutral-400 block">Mã sân vật lý</span>
                   <strong className="tabular-nums text-[#16422C]">
-                    {activeTicket?.unitNumber ?? holdResult?.unitNumber ?? 'Tự động cấp khi giữ chỗ'}
+                    {activeTicket?.unitNumber ?? matchingHold?.unitNumber ?? 'Tự động cấp khi giữ chỗ'}
                   </strong>
                 </div>
               </div>
@@ -962,7 +1001,7 @@ export const BookingPipelineAndQrSection: React.FC<BookingPipelineAndQrSectionPr
                   </ActionButton>
                 )}
 
-                {!isHoldExpired && !holdResult && !issued && state !== 'PENDING' && state !== 'REVIEW_REQUIRED' && (
+                {!isHoldExpired && !matchingHold && !issued && state !== 'PENDING' && state !== 'REVIEW_REQUIRED' && (
                   <ActionButton
                     variant="ink"
                     size="lg"
@@ -992,7 +1031,27 @@ export const BookingPipelineAndQrSection: React.FC<BookingPipelineAndQrSectionPr
               </div>
 
               {activePaymentQr && currentPayment?.requestedAmount != null && currentPayment.providerReference && !cancelResult && (
-                <CheckoutPaymentQr qr={activePaymentQr} amount={currentPayment.requestedAmount} reference={currentPayment.providerReference} />
+                <div className="space-y-2.5">
+                  <CheckoutPaymentQr
+                    qr={activePaymentQr}
+                    provider={currentPayment.provider}
+                    amount={currentPayment.requestedAmount}
+                    reference={currentPayment.providerReference}
+                  />
+                  {trackedReservation && marketplaceApi.hasLocalSandboxSession(trackedReservation) && (
+                    <ActionButton
+                      variant="forest"
+                      size="md"
+                      fullWidth
+                      onClick={() => {
+                        marketplaceApi.simulateLocalSandboxSuccess(trackedReservation);
+                        setStatusRequest((v) => v + 1);
+                      }}
+                    >
+                      Mô phỏng Xác nhận Chuyển khoản / Cổng thành công
+                    </ActionButton>
+                  )}
+                </div>
               )}
 
               {trackedReservation && !cancelResult && (
@@ -1031,10 +1090,31 @@ export const BookingPipelineAndQrSection: React.FC<BookingPipelineAndQrSectionPr
             </div>
 
             <section className="rounded-[26px] border border-neutral-200 bg-white p-5 shadow-xs space-y-3" aria-labelledby="my-tickets-title">
-              <h4 id="my-tickets-title" className="text-base font-semibold text-[#0F172A]">Vé của tôi</h4>
-              {activeTicket && !cancelResult && (activeTicket.qrToken || activeTicket.checkinPinCode) && (
+              <div className="flex items-center justify-between gap-2">
+                <h4 id="my-tickets-title" className="text-base font-semibold text-[#0F172A]">Vé vừa phát hành</h4>
+                {issued && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (trackingKey) window.sessionStorage.removeItem(trackingKey);
+                      setRememberedReservation(null);
+                      setPaymentStatus(null);
+                      onResetFlow();
+                    }}
+                    className="rounded-full bg-[#E7F7D4] px-3 py-1 text-[11px] font-bold text-[#16422C] hover:bg-[#16422C] hover:text-white transition cursor-pointer"
+                  >
+                    + Đặt ca mới
+                  </button>
+                )}
+              </div>
+              {activeTicket && !cancelResult && (activeTicket.qrToken || activeTicket.checkinPinCode) ? (
                 <article className="space-y-3 rounded-xl border border-[#16422C]/20 bg-[#F4F8F4] p-4 text-sm">
-                  <p className="font-semibold">Vé nhận sân {activeTicket.unitNumber}</p>
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="font-semibold text-[#16422C]">Vé nhận sân {activeTicket.unitNumber}</p>
+                    <span className="rounded-full bg-white px-2.5 py-0.5 text-[10px] font-bold text-[#16422C] border border-[#16422C]/20">
+                      Đã lưu Lịch sử Tài khoản
+                    </span>
+                  </div>
                   {activeTicket.qrToken && <QRCodeSVG value={activeTicket.qrToken} size={196} marginSize={2} title="Vé QR nhận sân" />}
                   {!activeTicket.qrToken && activeTicket.checkinPinCode && (
                     <p>PIN nhận sân <strong className="ml-1 font-mono text-lg tracking-widest">{activeTicket.checkinPinCode}</strong></p>
@@ -1047,14 +1127,11 @@ export const BookingPipelineAndQrSection: React.FC<BookingPipelineAndQrSectionPr
                   )}
                   {resendEmailStatus && <p role="status" className="text-xs text-neutral-700">{resendEmailStatus}</p>}
                 </article>
+              ) : (
+                <p className="text-xs leading-relaxed text-neutral-600">
+                  Sau khi xác nhận thanh toán, mã QR vào sân sẽ xuất hiện tại đây và tự động lưu vào mục <strong>Lịch sử Thanh toán &amp; Vé QR</strong> trong Card Tài khoản ở góc trên phải.
+                </p>
               )}
-              {!issued && <p className="text-sm text-neutral-600">Hệ thống cấp vé sau khi đủ điều kiện xác nhận đặt sân.</p>}
-              {myTickets.filter(ticket => ticket.status === 'CONFIRMED' && (ticket.qrToken || ticket.checkinPinCode)).map(ticket => (
-                <article key={ticket.reservationId} className="rounded-xl border border-neutral-200 p-3 text-sm">
-                  <strong>{ticket.venueName} · {ticket.unitNumber}</strong>
-                  <p className="text-xs text-neutral-600">{formatSlotWindow(ticket.slotStart, ticket.slotEnd)}</p>
-                </article>
-              ))}
             </section>
           </div>
         </div>

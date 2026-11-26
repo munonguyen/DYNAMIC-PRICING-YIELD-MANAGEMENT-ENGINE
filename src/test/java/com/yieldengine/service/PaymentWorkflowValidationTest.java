@@ -120,11 +120,11 @@ class PaymentWorkflowValidationTest {
                 ))
                 .build();
 
-        when(paymentRepository.findByProviderAndProviderRef(anyString(), anyString())).thenReturn(Optional.empty());
-        when(reservationRepository.lockByReservationId(reservationId)).thenReturn(Optional.of(heldReservation));
-        when(resourceGroupRepository.findById(groupId)).thenReturn(Optional.of(group));
-        when(bookingRepository.findById(bookingId)).thenReturn(Optional.of(booking));
-        when(jdbcTemplate.queryForObject(anyString(), eq(Instant.class))).thenReturn(Instant.now());
+        lenient().when(paymentRepository.findByProviderAndProviderRef(anyString(), anyString())).thenReturn(Optional.empty());
+        lenient().when(reservationRepository.lockByReservationId(reservationId)).thenReturn(Optional.of(heldReservation));
+        lenient().when(resourceGroupRepository.findById(groupId)).thenReturn(Optional.of(group));
+        lenient().when(bookingRepository.findById(bookingId)).thenReturn(Optional.of(booking));
+        lenient().when(jdbcTemplate.queryForObject(anyString(), eq(Instant.class))).thenReturn(Instant.now());
     }
 
     @Test
@@ -221,5 +221,68 @@ class PaymentWorkflowValidationTest {
         assertEquals("PENDING", refund.getStatus());
         assertEquals("REFUND", refund.getPaymentType());
         assertNull(refund.getGatewayVerifiedAt());
+    }
+
+    @Test
+    @DisplayName("Builds user payment history with verified gateway provider & ref while hiding bare holds")
+    void listPaymentHistoryIncludesVerifiedProviderAndExcludesBareHolds() {
+        UUID userId = booking.getUserId();
+        UUID paidBookingId = bookingId;
+        UUID bareBookingId = UUID.randomUUID();
+
+        Instant paidSlotStart = Instant.now().plus(Duration.ofHours(6));
+        Reservation confirmedRes = Reservation.builder()
+                .id(new ReservationId(reservationId, paidSlotStart))
+                .tenantId(tenantId)
+                .groupId(groupId)
+                .bookingId(paidBookingId)
+                .userId(userId)
+                .lockedPrice(200_000L)
+                .depositAmount(70_000L)
+                .status(ReservationStatus.CONFIRMED.name())
+                .qrJti(UUID.randomUUID())
+                .build();
+
+        Reservation bareHoldRes = Reservation.builder()
+                .id(new ReservationId(UUID.randomUUID(), paidSlotStart.plus(Duration.ofHours(2))))
+                .tenantId(tenantId)
+                .groupId(groupId)
+                .bookingId(bareBookingId)
+                .userId(userId)
+                .lockedPrice(200_000L)
+                .depositAmount(70_000L)
+                .status(ReservationStatus.HELD.name())
+                .build();
+
+        Instant verifiedAt = Instant.now().minusSeconds(120);
+        Payment vietQrPayment = Payment.builder()
+                .booking(booking)
+                .tenant(tenant)
+                .provider("VIETQR_NAPAS")
+                .providerRef("AP9911AABB")
+                .paymentType("DEPOSIT")
+                .amount(70_000L)
+                .status("SUCCESS")
+                .gatewayVerifiedAt(verifiedAt)
+                .build();
+
+        when(reservationRepository.findByUserIdOrderBySlotStartDesc(userId))
+                .thenReturn(List.of(bareHoldRes, confirmedRes));
+        when(paymentRepository.findByBookingIdOrderByCreatedAtAsc(paidBookingId))
+                .thenReturn(List.of(vietQrPayment));
+        when(paymentRepository.findByBookingIdOrderByCreatedAtAsc(bareBookingId))
+                .thenReturn(List.of());
+        when(paymentRepository.sumSuccessfulPaidByBookingId(paidBookingId)).thenReturn(70_000L);
+        when(paymentRepository.sumSuccessfulEscrowByBookingId(paidBookingId)).thenReturn(70_000L);
+        when(pricingEngineService.getActiveQrKeyId()).thenReturn("v3-key-1");
+        when(priceLockTokenService.generateQrToken(any(), any(), any(), any(), any(), any()))
+                .thenReturn("SIGNED_QR_TOKEN");
+
+        var history = orchestrator.listPaymentHistory(userId);
+        assertEquals(1, history.size());
+        assertEquals("VIETQR_NAPAS", history.get(0).paymentProvider());
+        assertEquals("AP9911AABB", history.get(0).providerReference());
+        assertEquals(verifiedAt, history.get(0).paidAt());
+        assertEquals("SIGNED_QR_TOKEN", history.get(0).qrToken());
     }
 }
