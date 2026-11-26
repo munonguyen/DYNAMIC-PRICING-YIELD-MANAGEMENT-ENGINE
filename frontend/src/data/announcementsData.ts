@@ -83,26 +83,26 @@ export const INITIAL_ANNOUNCEMENTS: VenueAnnouncement[] = [
     category: 'ACCOUNT_PAYMENT',
     severity: 'POSITIVE',
     pinned: true,
-    title: 'Chính thức vận hành cổng VNPAY v2.1.0, MoMo PayGate v2 & Gửi Vé QR qua Gmail tự động',
+    title: 'Thanh toán QR MoMo và nhận vé tại ArenaPulse',
     summary:
-      'Toàn bộ giao dịch đặt cọc ký quỹ hoặc tất toán 100% qua VNPAY-QR, thẻ nội địa NCB, Ví MoMo và VietQR Napas 247 đều được hạch toán tức thì vào Sổ cái kép và cấp mã QR check-in một lần.',
+      'Checkout hiển thị mã QR MoMo theo từng đơn khi cổng đã được cấu hình. Hệ thống chỉ ghi nhận tiền và cấp vé sau xác nhận của cổng thanh toán.',
     authorName: 'Trung tâm Thanh toán & Đối soát ArenaPulse',
     readMinutes: 3,
     coverImageUrl: '/images/sport-complex-aerial.jpg',
-    imageCaption: 'Hệ thống thanh toán đa cổng đồng bộ tức thời với Sổ cái kế toán kép và phát hành vé QR.',
+    imageCaption: 'Giao dịch đã xác minh được ghi vào sổ cái và dùng để đối soát.',
     pullQuote:
       'Ngay khi giao dịch thanh toán được xác nhận thành công, vé QR check-in một lần được kích hoạt trên hệ thống và gửi đính kèm về Gmail người đặt.',
     keyTakeaways: [
-      'Hỗ trợ đồng thời 4 phương thức: VietQR Napas 247, VNPAY v2.1.0 (QR/NCB/Visa), Ví MoMo PayGate v2 và Thẻ quốc tế.',
-      'Chống trùng lặp Webhook/IPN và tự động hoàn cọc 100% nếu cổng trả kết quả trễ sau thời hạn giữ chỗ 10 phút.',
+      'Khách có thể chọn đặt cọc hoặc trả đủ tiền sân qua QR MoMo trên checkout.',
+      'Nếu khoản tiền đến trễ và sân không còn, giao dịch được đưa vào đối soát.',
       'Người chơi có thể xem lại hoặc bấm gửi lại vé QR qua Gmail bất cứ lúc nào trong mục Thanh toán & Vé.',
     ],
     articleSections: [
       {
-        heading: '1. Tình hình nâng cấp hạ tầng thanh toán hiện tại',
+        heading: '1. Thanh toán và xác nhận',
         paragraphs: [
-          'Kể từ hôm nay, ArenaPulse.vn hoàn tất tích hợp chuẩn kết nối VNPAY Payment Gateway (xác thực đa lớp, hỗ trợ hoàn tiền tự động) song song cùng cổng MoMo.',
-          'Điều này cho phép người chơi thanh toán nhanh bằng quét mã QR ứng dụng ngân hàng, thẻ ATM nội địa hoặc ví điện tử chỉ trong vài giây với độ an toàn cấp ngân hàng.',
+          'Tạo mã QR trong checkout rồi xác nhận giao dịch bằng ứng dụng MoMo.',
+          'Trang thanh toán cập nhật trạng thái sau khi hệ thống nhận xác nhận từ cổng.',
         ],
       },
       {
@@ -129,7 +129,7 @@ export const INITIAL_ANNOUNCEMENTS: VenueAnnouncement[] = [
     pinned: true,
     title: 'Cập nhật thời tiết Nam Từ Liêm: Dự báo mưa rào nhẹ 19:30 – 20:30 & Quy trình hoàn cọc 100%',
     summary:
-      'Hệ thống thoát nước mặt cỏ FIFA vẫn đảm bảo thi đấu. Trường hợp mưa lớn không thể lăn bóng, Ban quản lý chủ động hủy ca và hoàn tự động 100% tiền đặt cọc về tài khoản khách hàng.',
+      'Hệ thống thoát nước mặt cỏ FIFA vẫn đảm bảo thi đấu. Trường hợp mưa lớn không thể lăn bóng, Ban quản lý chủ động hủy ca và ghi nhận khoản hoàn theo chính sách.',
     authorName: 'Ban Quản Lý Mỹ Đình SportPark',
     readMinutes: 2,
     coverImageUrl: '/images/sport-football-pitch.jpg',
@@ -139,7 +139,7 @@ export const INITIAL_ANNOUNCEMENTS: VenueAnnouncement[] = [
     keyTakeaways: [
       'Cụm sân bóng đá 7 người ngoài trời số 01–06 vẫn đang mở đèn chiếu sáng và thoát nước tốt.',
       'Mưa rào nhẹ vẫn thi đấu bình thường; nếu mưa giông lớn gây ngập mặt sân, ca chơi sẽ được hủy miễn phí.',
-      'Khoản cọc hoặc toàn bộ tiền tất toán trước được hoàn 100% và ghi nhận minh bạch trên Sổ cái.',
+      'Nếu sân hủy, khoản hoàn được xác định theo chính sách và theo dõi đến khi có xác nhận của cổng.',
     ],
     articleSections: [
       {
@@ -152,7 +152,7 @@ export const INITIAL_ANNOUNCEMENTS: VenueAnnouncement[] = [
       {
         heading: '2. Hướng dẫn cho các đội đã giữ chỗ khung 19:00 – 21:30',
         paragraphs: [
-          'Các đội bóng giữ lịch như bình thường. Trong tình huống thời tiết chuyển biến xấu khiến mặt sân không đảm bảo an toàn, quản lý cơ sở sẽ kích hoạt hủy ca từ hệ thống để hoàn lại 100% số tiền khách đã thanh toán qua cổng thanh toán ban đầu.',
+          'Các đội bóng giữ lịch như bình thường. Trong tình huống thời tiết chuyển biến xấu khiến mặt sân không đảm bảo an toàn, quản lý cơ sở sẽ hủy ca và kiểm tra khoản hoàn theo chính sách.',
           'Bạn cũng có thể liên hệ trực tiếp với nhân viên cụm sân ngay trên khung Chat góc phải màn hình để hỏi tình hình mặt sân theo thời gian thực trước khi di chuyển.',
         ],
       },
@@ -342,8 +342,8 @@ export const INITIAL_PERSONAL_NOTIFICATIONS: PersonalUserNotification[] = [
   {
     id: 'pn-2',
     kind: 'PAYMENT',
-    title: 'Đã kích hoạt thanh toán VNPAY & MoMo Sandbox',
-    body: 'Bạn có thể thanh toán đặt cọc hoặc tất toán 100% trực tiếp qua thẻ nội địa NCB (VNPAY) hoặc quét QR Ví MoMo ngay tại bước Checkout.',
+    title: 'Thanh toán QR ngay tại checkout',
+    body: 'Khi QR MoMo được cấu hình, bạn có thể đặt cọc hoặc trả đủ tiền sân bằng cách quét mã của đơn.',
     timestampLabel: '22 phút trước',
     isNew: true,
     actionLabel: 'Đi tới Thanh toán →',
@@ -353,7 +353,7 @@ export const INITIAL_PERSONAL_NOTIFICATIONS: PersonalUserNotification[] = [
     id: 'pn-3',
     kind: 'HOLD_TIMER',
     title: 'Nhắc nhở thời hạn khóa giá & giữ sân 10 phút',
-    body: 'Mỗi lượt giữ sân tạm thời có hiệu lực trong 10 phút. Nếu cổng thanh toán báo về trễ sau khi sân đã kín, hệ thống tự động hoàn cọc 100%.',
+    body: 'Mỗi lượt giữ sân tạm thời có hiệu lực trong 10 phút. Nếu cổng báo đã thu tiền sau khi sân hết chỗ, giao dịch cần được đối soát.',
     timestampLabel: '1 giờ trước',
     isNew: true,
     actionLabel: 'Chọn khung giờ sân →',

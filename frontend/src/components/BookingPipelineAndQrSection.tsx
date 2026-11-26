@@ -50,8 +50,11 @@ const stateMessages: Record<BookingPaymentStatus['paymentStatus'], string> = {
   VERIFIED: 'Đã nhận xác nhận thanh toán từ cổng.',
   NO_DEPOSIT: 'Đã xác nhận đặt sân. Ca này thanh toán tại sân.',
   EXPIRED: 'Lượt giữ sân đã kết thúc. Hệ thống tiếp tục kiểm tra giao dịch đã gửi.',
+  CANCELLED: 'Đơn đặt sân đã hủy.',
   UNVERIFIED: 'Đơn cũ cần đối soát trước khi cấp vé.',
   REVIEW_REQUIRED: 'Cổng đã báo thu tiền. Giao dịch cần được đối soát với đơn đặt sân.',
+  REFUND_PENDING: 'Khoản hoàn đang chờ xác nhận từ cổng thanh toán.',
+  REFUNDED: 'Cổng thanh toán đã xác nhận hoàn tiền.',
 };
 
 export const BookingPipelineAndQrSection: React.FC<BookingPipelineAndQrSectionProps> = ({
@@ -207,7 +210,9 @@ export const BookingPipelineAndQrSection: React.FC<BookingPipelineAndQrSectionPr
   }, [session, customerName, customerEmail]);
 
   const basePrice = activeListing?.basePrice ?? 200_000;
-  const recordedPrice = currentPayment ? currentPayment.remainingAtVenue + (state === 'VERIFIED' ? currentPayment.paidAmount : 0) : null;
+  const orderCancelled = Boolean(cancelResult || currentPayment?.reservationStatus === 'CANCELLED');
+  const recordedPrice = currentPayment && !orderCancelled
+    ? currentPayment.remainingAtVenue + (state === 'VERIFIED' ? currentPayment.paidAmount : 0) : null;
   const lockedPrice = recordedPrice ?? holdResult?.lockedPrice ?? activeQuote?.currentPrice ?? 193_000;
   const dynamicDelta = lockedPrice - basePrice;
   const depositPct = activeListing?.depositPercent ?? 35;
@@ -904,15 +909,12 @@ export const BookingPipelineAndQrSection: React.FC<BookingPipelineAndQrSectionPr
                 </div>
               </div>
 
-              <div className="mt-4 space-y-2">
+              {!orderCancelled && <div className="mt-4 space-y-2">
                 <div className="flex items-baseline justify-between">
                   <div>
                     <span className="text-xs font-semibold text-[#16422C] block">
-                      Thanh toán ngay (
-                      {displaysFullPayment
-                        ? '100% tiền sân'
-                        : `Cọc ${depositPct}%`}
-                      )
+                      {state === 'NO_DEPOSIT' ? 'Đã thu online'
+                        : displaysFullPayment ? 'Thanh toán ngay (100% tiền sân)' : `Thanh toán ngay (Cọc ${depositPct}%)`}
                     </span>
                     <span className="text-[11px] text-neutral-400">
                       {issued && state === 'NO_DEPOSIT' ? 'Thanh toán tại sân' : currentPayment?.provider === 'VNPAY_ESCROW' ? 'Qua VNPay' : 'Qua QR MoMo'}
@@ -929,7 +931,7 @@ export const BookingPipelineAndQrSection: React.FC<BookingPipelineAndQrSectionPr
                     {formatVnd(remainingAtVenue)}
                   </span>
                 </div>
-              </div>
+              </div>}
 
               {paymentError && (
                 <div className="mt-4 rounded-xl border border-rose-200 bg-rose-50 px-3.5 py-2.5 text-xs font-medium text-rose-700">
@@ -1004,6 +1006,10 @@ export const BookingPipelineAndQrSection: React.FC<BookingPipelineAndQrSectionPr
                   <strong className="tabular-nums">{formatVnd(cancelResult.refundAmount)}</strong> (
                   {cancelResult.appliedRefundPercent}%) • Khấu trừ:{' '}
                   <strong className="tabular-nums">{formatVnd(cancelResult.forfeitedAmount)}</strong>.
+                  {cancelResult.refundAmount > 0 && (
+                    <p className="mt-2" role="status">{state === 'REFUNDED'
+                      ? stateMessages.REFUNDED : stateMessages.REFUND_PENDING}</p>
+                  )}
                 </div>
               )}
             </div>

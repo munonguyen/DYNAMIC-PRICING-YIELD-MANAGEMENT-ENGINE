@@ -452,7 +452,7 @@ export const AdminExecutivePortal: React.FC<AdminExecutivePortalProps> = ({
                 <div className="flex items-center justify-between">
                   <span className="text-neutral-600">Sổ cái Kế toán Kép</span>
                   <span className="font-bold text-[#16422C]">
-                    {reconciliation?.doubleEntryBalanced ? '✓ Nợ = Có' : 'Đang đồng bộ'}
+                    {reconciliation ? (reconciliation.doubleEntryBalanced ? '✓ Nợ = Có' : 'Cần kiểm tra') : 'Chưa có dữ liệu'}
                   </span>
                 </div>
               </div>
@@ -873,9 +873,9 @@ export const AdminExecutivePortal: React.FC<AdminExecutivePortalProps> = ({
                         </h3>
                       </div>
                       <span className="rounded-full bg-[#E7F7D4] px-3.5 py-1 text-xs font-bold text-[#204E18]">
-                        {reconciliation?.doubleEntryBalanced ?? true
-                          ? '✓ Cân bằng Tổng Nợ = Tổng Có'
-                          : 'Cần kiểm tra'}
+                        {reconciliation
+                          ? (reconciliation.doubleEntryBalanced ? '✓ Cân bằng Tổng Nợ = Tổng Có' : 'Cần kiểm tra')
+                          : 'Chưa tải được số liệu'}
                       </span>
                     </div>
 
@@ -883,37 +883,37 @@ export const AdminExecutivePortal: React.FC<AdminExecutivePortalProps> = ({
                       <div className="rounded-2xl bg-[#F8F9FA] p-4 border border-neutral-200/60">
                         <div className="text-[11px] text-neutral-500">Tổng thu hộ ký quỹ</div>
                         <div className="mt-1 tabular-nums text-lg font-bold text-[#0F172A]">
-                          {formatVnd(reconciliation?.totalEscrowCredits ?? 48_650_000)}
+                          {reconciliation ? formatVnd(reconciliation.totalEscrowCredits) : '—'}
                         </div>
                       </div>
                       <div className="rounded-2xl bg-[#F4F8F4] p-4 border border-[#16422C]/20">
                         <div className="text-[11px] text-[#16422C] font-semibold">Hoa hồng sàn thu về</div>
                         <div className="mt-1 tabular-nums text-lg font-bold text-[#16422C]">
-                          {formatVnd(reconciliation?.totalPlatformCommission ?? 4_865_000)}
+                          {reconciliation ? formatVnd(reconciliation.totalPlatformCommission) : '—'}
                         </div>
                       </div>
                       <div className="rounded-2xl bg-[#F4F8FB] p-4 border border-[#0E4F7E]/20">
                         <div className="text-[11px] text-[#0E4F7E] font-semibold">Công nợ trả chủ sân</div>
                         <div className="mt-1 tabular-nums text-lg font-bold text-[#0E4F7E]">
-                          {formatVnd(reconciliation?.totalVenuePayable ?? 40_935_000)}
+                          {reconciliation ? formatVnd(reconciliation.totalVenuePayable) : '—'}
                         </div>
                       </div>
                       <div className="rounded-2xl bg-[#F8F9FA] p-4 border border-neutral-200/60">
-                        <div className="text-[11px] text-neutral-500">Đã hoàn trả khách hủy hợp lệ</div>
+                        <div className="text-[11px] text-neutral-500">Hoàn tiền đã xác minh</div>
                         <div className="mt-1 tabular-nums text-base font-bold text-[#16422C]">
-                          {formatVnd(reconciliation?.totalCustomerRefunds ?? 2_850_000)}
+                          {reconciliation ? formatVnd(reconciliation.totalCustomerRefunds) : '—'}
                         </div>
                       </div>
                       <div className="rounded-2xl bg-[#F8F9FA] p-4 border border-neutral-200/60">
                         <div className="text-[11px] text-neutral-500">Tiền cọc khấu trừ bỏ lịch</div>
                         <div className="mt-1 tabular-nums text-base font-bold text-neutral-800">
-                          {formatVnd(reconciliation?.totalForfeitedDeposits ?? 3_420_000)}
+                          {reconciliation ? formatVnd(reconciliation.totalForfeitedDeposits) : '—'}
                         </div>
                       </div>
                       <div className="rounded-2xl bg-[#F8F9FA] p-4 border border-neutral-200/60">
-                        <div className="text-[11px] text-neutral-500">Tính toàn vẹn dữ liệu</div>
-                        <div className="mt-1 text-sm font-bold text-[#0F172A]">
-                          Append-Only GIST Trigger
+                        <div className="text-[11px] text-neutral-500">Tiền còn phải hoàn</div>
+                        <div className="mt-1 tabular-nums text-base font-bold text-amber-900">
+                          {reconciliation?.totalCustomerRefundsPending != null ? formatVnd(reconciliation.totalCustomerRefundsPending) : '—'}
                         </div>
                       </div>
                     </div>

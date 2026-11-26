@@ -19,6 +19,8 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -48,6 +50,7 @@ class VnPayPaymentServiceTest {
     @Mock private PaymentRepository paymentRepository;
     @Mock private BookingOrchestratorService bookingOrchestratorService;
     @Mock private HttpClient mockHttpClient;
+    @Mock private VnPayRefundSettlement refundSettlement;
 
     private VnPayProperties properties;
     private VnPayCryptoCodec cryptoCodec;
@@ -78,6 +81,7 @@ class VnPayPaymentServiceTest {
                 paymentRepository,
                 bookingOrchestratorService,
                 new ObjectMapper(),
+                refundSettlement,
                 mockHttpClient
         );
 
@@ -96,15 +100,16 @@ class VnPayPaymentServiceTest {
                 .build();
     }
 
-    @Test
+    @ParameterizedTest
+    @ValueSource(strings = {"VNPAYQR", "VNBANK", "INTCARD"})
     @DisplayName("Create Payment URL signs HMAC-SHA512 cleanly, strips Vietnamese accents, and stores PENDING transaction")
-    void createsSignedVnPayUrlAndPersistsPendingTransaction() {
+    void createsSignedVnPayUrlAndPersistsPendingTransaction(String bankCode) {
         UUID userId = UUID.randomUUID();
         when(bookingOrchestratorService.prepareGatewayPayment(reservationId, userId)).thenReturn(heldReservation);
         when(txnRepository.save(any(VnPayTransaction.class))).thenAnswer(inv -> inv.getArgument(0));
 
         CreateVnPayPaymentRequest req = new CreateVnPayPaymentRequest(
-                reservationId, 70_000L, "NCB", "vn", "other",
+                reservationId, 70_000L, bankCode, "vn", "other",
                 "Đặt sân Pickleball số 04", "Nguyễn Muno", "0912345678",
                 "munonguyen2005@gmail.com", false, null, null, "San bong ro"
         );
@@ -122,7 +127,7 @@ class VnPayPaymentServiceTest {
         assertEquals("pay", parsed.get("vnp_Command"));
         assertEquals("ARENAPULSE", parsed.get("vnp_TmnCode"));
         assertEquals("7000000", parsed.get("vnp_Amount"));
-        assertEquals("NCB", parsed.get("vnp_BankCode"));
+        assertEquals(bankCode, parsed.get("vnp_BankCode"));
         assertEquals("Dat san Pickleball so 04", parsed.get("vnp_OrderInfo"));
         assertTrue(cryptoCodec.verifyCallbackSignature(parsed, properties.getHashSecret()));
 
@@ -253,18 +258,8 @@ class VnPayPaymentServiceTest {
 
         HttpResponse<String> queryResp = mock(HttpResponse.class);
         when(queryResp.statusCode()).thenReturn(200);
-        when(queryResp.body()).thenReturn("""
-                {
-                  "vnp_ResponseCode": "00",
-                  "vnp_Message": "Confirm Success",
-                  "vnp_TxnRef": "VNP_OK_99",
-                  "vnp_Amount": "7000000",
-                  "vnp_BankCode": "NCB",
-                  "vnp_TransactionNo": "99887766",
-                  "vnp_TransactionStatus": "00",
-                  "vnp_PayDate": "20261126093100"
-                }
-                """);
+        var query = merchantResponse("querydr", "01", "00");
+        when(queryResp.body()).thenReturn(query.toString());
         when(mockHttpClient.send(any(HttpRequest.class), any(HttpResponse.BodyHandler.class)))
                 .thenReturn(queryResp);
 
@@ -277,25 +272,52 @@ class VnPayPaymentServiceTest {
         assertTrue(dr.liveGatewayResponse());
         assertNotNull(successTxn.getLastQueryDrAt());
 
-        // Refund execution
+        query.put("vnp_Amount", "1000000");
+        when(queryResp.body()).thenReturn(query.toString());
+        assertThrows(IllegalStateException.class,
+                () -> service.queryTransactionStatus(new VnPayQueryDrRequest("VNP_OK_99", null), "127.0.0.1"));
+
+        var request = new VnPayRefundRequest("VNP_OK_99", 70_000L, "02", "accountant", null);
+        when(refundSettlement.begin(eq(request), anyString())).thenReturn(successTxn);
         HttpResponse<String> refundResp = mock(HttpResponse.class);
         when(refundResp.statusCode()).thenReturn(200);
-        when(refundResp.body()).thenReturn("""
-                {
-                  "vnp_ResponseCode": "00",
-                  "vnp_Message": "Refund Success"
-                }
-                """);
-        when(mockHttpClient.send(any(HttpRequest.class), any(HttpResponse.BodyHandler.class)))
-                .thenReturn(refundResp);
+        when(mockHttpClient.send(any(HttpRequest.class), any(HttpResponse.BodyHandler.class))).thenReturn(refundResp);
 
-        VnPayRefundResponse refund = service.refundTransaction(
-                new VnPayRefundRequest("VNP_OK_99", 70_000L, "02", "admin@arenapulse.vn", "Hoan tien test"),
-                "127.0.0.1"
-        );
-        assertEquals("00", refund.responseCode());
-        assertEquals("REFUNDED", refund.status());
-        assertEquals(VnPayTransactionStatus.REFUNDED, successTxn.getStatus());
+        var unsigned = merchantResponse("refund", "02", "00");
+        unsigned.remove("vnp_SecureHash");
+        when(refundResp.body()).thenReturn(unsigned.toString());
+        assertEquals("REFUND_PENDING", service.refundTransaction(request, "127.0.0.1").status());
+
+        var accepted = merchantResponse("refund", "02", "05");
+        when(refundResp.body()).thenReturn(accepted.toString());
+        assertEquals("REFUND_PENDING", service.refundTransaction(request, "127.0.0.1").status());
+        verify(refundSettlement, never()).complete(any(), any(), any());
+
+        var settled = merchantResponse("refund", "02", "00");
+        when(refundResp.body()).thenReturn(settled.toString());
+        assertEquals("REFUNDED", service.refundTransaction(request, "127.0.0.1").status());
+        verify(refundSettlement).complete(eq("VNP_OK_99"), eq("99887766"), any(Instant.class));
+    }
+
+    private com.fasterxml.jackson.databind.node.ObjectNode merchantResponse(String command, String type, String transactionStatus) {
+        var response = new ObjectMapper().createObjectNode();
+        response.put("vnp_ResponseId", "fixture_1");
+        response.put("vnp_Command", command);
+        response.put("vnp_ResponseCode", "00");
+        response.put("vnp_Message", "Fixture");
+        response.put("vnp_TmnCode", "ARENAPULSE");
+        response.put("vnp_TxnRef", "VNP_OK_99");
+        response.put("vnp_Amount", 7_000_000);
+        response.put("vnp_BankCode", "NCB");
+        response.put("vnp_PayDate", "20261126093100");
+        response.put("vnp_TransactionNo", "99887766");
+        response.put("vnp_TransactionType", type);
+        response.put("vnp_TransactionStatus", transactionStatus);
+        response.put("vnp_OrderInfo", "Fixture");
+        String data = "fixture_1|" + command + "|00|Fixture|ARENAPULSE|VNP_OK_99|7000000|NCB|20261126093100|99887766|"
+                + type + "|" + transactionStatus + "|Fixture" + ("querydr".equals(command) ? "||" : "");
+        response.put("vnp_SecureHash", cryptoCodec.hmacSha512Hex(data, properties.getHashSecret()));
+        return response;
     }
 
     private Map<String, String> signCallback(Map<String, String> rawParams) {

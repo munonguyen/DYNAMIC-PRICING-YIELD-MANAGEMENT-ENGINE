@@ -17,5 +17,8 @@ public record BookingPaymentStatus(
 ) {
     public record PaymentQr(String payload, Instant holdUntil, boolean sandbox) {}
 
-    public enum State { NOT_STARTED, PENDING, FAILED, VERIFIED, NO_DEPOSIT, EXPIRED, UNVERIFIED, REVIEW_REQUIRED }
+    public enum State {
+        NOT_STARTED, PENDING, FAILED, VERIFIED, NO_DEPOSIT, EXPIRED, CANCELLED, UNVERIFIED, REVIEW_REQUIRED,
+        REFUND_PENDING, REFUNDED
+    }
 }

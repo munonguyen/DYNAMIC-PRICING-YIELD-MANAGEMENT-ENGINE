@@ -212,12 +212,14 @@ class PaymentWorkflowValidationTest {
         // Now simulate cancellation 5h before play -> 50% tier applies ONLY to 70,000đ deposit (35,000đ forfeit),
         // while 130,000đ pre-paid balance is refunded 100% -> total refund = 165,000đ
         when(paymentRepository.sumSuccessfulEscrowByBookingId(bookingId)).thenReturn(200_000L);
-        when(paymentRepository.findFirstByBookingIdAndPaymentTypeAndStatusOrderByCreatedAtDesc(
-                eq(bookingId), eq("DEPOSIT"), eq("SUCCESS"))).thenReturn(Optional.empty());
-
         CancelBookingResponse cancelRes = orchestrator.cancelReservationWithPolicy(reservationId, null, "USER_CANCELLED");
         assertEquals(165_000L, cancelRes.refundAmount());
         assertEquals(35_000L, cancelRes.forfeitedAmount());
         assertEquals(50, cancelRes.appliedRefundPercent());
+        verify(paymentRepository, times(2)).save(payCaptor.capture());
+        Payment refund = payCaptor.getValue();
+        assertEquals("PENDING", refund.getStatus());
+        assertEquals("REFUND", refund.getPaymentType());
+        assertNull(refund.getGatewayVerifiedAt());
     }
 }

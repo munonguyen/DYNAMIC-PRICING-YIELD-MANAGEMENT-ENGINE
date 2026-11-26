@@ -33,6 +33,15 @@ public interface LedgerEntryRepository extends JpaRepository<LedgerEntry, Ledger
     List<LedgerEntry> findByJournalId(UUID journalId);
 
     @Query("""
+        SELECT COALESCE(SUM(le.amount), 0) FROM LedgerEntry le, Payment p
+        WHERE le.paymentId = p.id AND p.paymentType = 'REFUND' AND p.status = 'SUCCESS' AND p.gatewayVerifiedAt IS NOT NULL
+          AND le.accountCode = 'GATEWAY_CLEARING' AND le.direction = 'CREDIT'
+          AND (:tenantId IS NULL OR le.tenantId = :tenantId)
+          AND le.id.occurredAt >= :fromTime AND le.id.occurredAt <= :toTime
+        """)
+    long sumVerifiedRefunds(@Param("tenantId") UUID tenantId, @Param("fromTime") Instant fromTime, @Param("toTime") Instant toTime);
+
+    @Query("""
         SELECT COALESCE(SUM(le.amount), 0) FROM LedgerEntry le
         WHERE (:tenantId IS NULL OR le.tenantId = :tenantId)
           AND le.accountCode = :accountCode

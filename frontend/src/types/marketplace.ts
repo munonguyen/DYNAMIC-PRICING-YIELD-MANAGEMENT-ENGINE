@@ -202,7 +202,8 @@ export type CheckoutProvider = 'VNPAY_ESCROW' | 'MOMO_WALLET';
 export interface BookingPaymentStatus {
   reservationId: string;
   reservationStatus: string;
-  paymentStatus: 'NOT_STARTED' | 'PENDING' | 'FAILED' | 'VERIFIED' | 'NO_DEPOSIT' | 'EXPIRED' | 'UNVERIFIED' | 'REVIEW_REQUIRED';
+  paymentStatus: 'NOT_STARTED' | 'PENDING' | 'FAILED' | 'VERIFIED' | 'NO_DEPOSIT' | 'EXPIRED'
+    | 'CANCELLED' | 'UNVERIFIED' | 'REVIEW_REQUIRED' | 'REFUND_PENDING' | 'REFUNDED';
   paidAmount: number;
   remainingAtVenue: number;
   requestedAmount: number | null;
@@ -299,6 +300,7 @@ export interface ReconciliationSummary {
   totalPlatformCommission: number;
   totalVenuePayable: number;
   totalCustomerRefunds: number;
+  totalCustomerRefundsPending: number;
   totalForfeitedDeposits: number;
   doubleEntryBalanced: boolean;
 }

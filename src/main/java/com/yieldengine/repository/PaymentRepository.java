@@ -14,11 +14,8 @@ import java.util.UUID;
 public interface PaymentRepository extends JpaRepository<Payment, UUID> {
     Optional<Payment> findByProviderAndProviderRef(String provider, String providerRef);
 
-    Optional<Payment> findFirstByBookingIdAndPaymentTypeAndStatusOrderByCreatedAtDesc(
-            UUID bookingId, String paymentType, String status);
-
-    Optional<Payment> findFirstByBookingIdAndGatewayVerifiedAtIsNotNullAndStatusOrderByGatewayVerifiedAtDesc(
-            UUID bookingId, String status);
+    Optional<Payment> findFirstByBookingIdAndGatewayVerifiedAtIsNotNullAndPaymentTypeNotAndStatusOrderByGatewayVerifiedAtDesc(
+            UUID bookingId, String excludedPaymentType, String status);
 
     Optional<Payment> findFirstByBookingIdOrderByCreatedAtDesc(UUID bookingId);
 

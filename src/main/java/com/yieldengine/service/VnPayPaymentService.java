@@ -12,12 +12,15 @@ import com.yieldengine.enums.VnPayIpnAckCode;
 import com.yieldengine.enums.VnPayResponseCode;
 import com.yieldengine.enums.VnPayTransactionStatus;
 import com.yieldengine.exception.ResourceNotFoundException;
+import com.yieldengine.exception.ForbiddenAccessException;
 import com.yieldengine.mapper.VnPayTransactionMapper;
 import com.yieldengine.repository.PaymentRepository;
 import com.yieldengine.repository.ReservationRepository;
 import com.yieldengine.repository.VnPayTransactionRepository;
+import com.yieldengine.record.security.SessionPrincipal;
 import com.yieldengine.service.vnpay.VnPayCryptoCodec;
 import com.yieldengine.validate.VnPayPaymentValidator;
+import com.yieldengine.utils.CryptoHashUtils;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
@@ -34,7 +37,9 @@ import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Stream;
 
 /**
  * Handles the complete VNPAY Payment Gateway v2.1.0 lifecycle:
@@ -46,6 +51,11 @@ import java.util.UUID;
 public class VnPayPaymentService {
 
     private static final String PROVIDER_CODE = "VNPAY_ESCROW";
+    private static final Set<String> REFUND_REJECTED_CODES = Set.of("02", "03", "91", "95", "97");
+    private static final List<String> MERCHANT_RESPONSE_FIELDS = List.of(
+            "vnp_ResponseId", "vnp_Command", "vnp_ResponseCode", "vnp_Message", "vnp_TmnCode", "vnp_TxnRef",
+            "vnp_Amount", "vnp_BankCode", "vnp_PayDate", "vnp_TransactionNo", "vnp_TransactionType",
+            "vnp_TransactionStatus", "vnp_OrderInfo");
 
     private final VnPayProperties properties;
     private final VnPayCryptoCodec cryptoCodec;
@@ -55,6 +65,7 @@ public class VnPayPaymentService {
     private final ReservationRepository reservationRepository;
     private final PaymentRepository paymentRepository;
     private final BookingOrchestratorService bookingOrchestratorService;
+    private final VnPayRefundSettlement refundSettlement;
     private final ObjectMapper objectMapper;
     private final HttpClient httpClient;
 
@@ -68,7 +79,8 @@ public class VnPayPaymentService {
             ReservationRepository reservationRepository,
             PaymentRepository paymentRepository,
             BookingOrchestratorService bookingOrchestratorService,
-            ObjectMapper objectMapper
+            ObjectMapper objectMapper,
+            VnPayRefundSettlement refundSettlement
     ) {
         this(
                 properties,
@@ -80,6 +92,7 @@ public class VnPayPaymentService {
                 paymentRepository,
                 bookingOrchestratorService,
                 objectMapper,
+                refundSettlement,
                 HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(10)).build()
         );
     }
@@ -94,6 +107,7 @@ public class VnPayPaymentService {
             PaymentRepository paymentRepository,
             BookingOrchestratorService bookingOrchestratorService,
             ObjectMapper objectMapper,
+            VnPayRefundSettlement refundSettlement,
             HttpClient httpClient
     ) {
         this.properties = properties;
@@ -104,6 +118,7 @@ public class VnPayPaymentService {
         this.reservationRepository = reservationRepository;
         this.paymentRepository = paymentRepository;
         this.bookingOrchestratorService = bookingOrchestratorService;
+        this.refundSettlement = refundSettlement;
         this.objectMapper = objectMapper != null ? objectMapper : new ObjectMapper();
         this.httpClient = httpClient;
     }
@@ -267,6 +282,7 @@ public class VnPayPaymentService {
 
     @Transactional
     public VnPayQueryDrResponse queryTransactionStatus(VnPayQueryDrRequest request, String clientIp) {
+        requireMerchantApi();
         VnPayTransaction txn = findByTxnRefOrThrow(request.txnRef());
         String requestId = UUID.randomUUID().toString().replace("-", "").substring(0, 16);
         String command = "querydr";
@@ -303,6 +319,11 @@ public class VnPayPaymentService {
         body.put("vnp_SecureHash", secureHash);
 
         JsonNode root = executeMerchantApiPost(body, txn.getTxnRef(), command);
+        if (!matchesMerchantResponse(root, txn.getTxnRef(), command)
+                || ("00".equals(field(root, "vnp_ResponseCode"))
+                && parseLongSafe(field(root, "vnp_Amount"), -1L) != txn.getVnpAmount())) {
+            throw new IllegalStateException("Phản hồi tra cứu VNPay không khớp chữ ký hoặc giao dịch.");
+        }
         txn.setLastQueryDrAt(Instant.now());
         txn.setLastQueryDrPayload(objectMapper.convertValue(
                 root,
@@ -323,12 +344,10 @@ public class VnPayPaymentService {
         );
     }
 
-    @Transactional
     public VnPayRefundResponse refundTransaction(VnPayRefundRequest request, String clientIp) {
-        VnPayTransaction txn = findByTxnRefOrThrow(request.txnRef());
-        validator.validateRefundRequest(request, txn);
-
+        requireMerchantApi();
         String requestId = UUID.randomUUID().toString().replace("-", "").substring(0, 16);
+        VnPayTransaction txn = refundSettlement.begin(request, requestId);
         String command = "refund";
         long refundVnpAmount = request.amountVnd() * 100L;
         String transactionNo = hasText(txn.getTransactionNo()) ? txn.getTransactionNo() : "0";
@@ -373,37 +392,89 @@ public class VnPayPaymentService {
         body.put("vnp_OrderInfo", orderInfo);
         body.put("vnp_SecureHash", secureHash);
 
-        JsonNode root = executeMerchantApiPost(body, txn.getTxnRef(), command);
-        String responseCode = root.path("vnp_ResponseCode").asText("99");
-        String message = root.path("vnp_Message").asText("Yêu cầu hoàn tiền VNPAY");
+        JsonNode root;
+        try {
+            root = executeMerchantApiPost(body, txn.getTxnRef(), command);
+        } catch (IllegalStateException ex) {
+            log.warn("Uncertain VNPay refund result for txnRef={}", txn.getTxnRef());
+            return uncertainRefund(request);
+        }
+        if (!matchesMerchantResponse(root, txn.getTxnRef(), command)
+                || parseLongSafe(field(root, "vnp_Amount"), -1L) != refundVnpAmount
+                || !request.transactionType().equals(field(root, "vnp_TransactionType"))) {
+            return uncertainRefund(request);
+        }
 
-        VnPayTransactionStatus nextStatus = "00".equals(responseCode)
-                ? VnPayTransactionStatus.REFUNDED
-                : VnPayTransactionStatus.REFUND_PENDING;
-        txn.setStatus(nextStatus);
-        txnRepository.save(txn);
-
-        return new VnPayRefundResponse(
-                txn.getTxnRef(),
-                responseCode,
-                message,
-                request.amountVnd(),
-                request.transactionType(),
-                nextStatus.name(),
-                true
-        );
+        String code = field(root, "vnp_ResponseCode");
+        String gatewayStatus = field(root, "vnp_TransactionStatus");
+        String status = VnPayTransactionStatus.REFUND_PENDING.name();
+        if ("00".equals(code) && "00".equals(gatewayStatus)
+                && parseLongSafe(field(root, "vnp_TransactionNo"), -1L) > 0) {
+            refundSettlement.complete(txn.getTxnRef(), field(root, "vnp_TransactionNo"), Instant.now());
+            status = VnPayTransactionStatus.REFUNDED.name();
+        } else if (REFUND_REJECTED_CODES.contains(code) || "09".equals(gatewayStatus)) {
+            refundSettlement.releaseRejected(txn.getTxnRef());
+            status = "REFUND_REJECTED";
+        }
+        return new VnPayRefundResponse(txn.getTxnRef(), code, field(root, "vnp_Message"),
+                request.amountVnd(), request.transactionType(), status, true);
     }
 
     @Transactional(readOnly = true)
-    public VnPayTransactionSummaryDto getTransactionByTxnRef(String txnRef) {
-        return mapper.toSummaryDto(findByTxnRefOrThrow(txnRef));
+    public VnPayTransactionSummaryDto getTransactionByTxnRef(String txnRef, SessionPrincipal actor) {
+        VnPayTransaction txn = findByTxnRefOrThrow(txnRef);
+        requireTransactionAccess(txn.getReservationId(), actor);
+        return mapper.toSummaryDto(txn);
     }
 
     @Transactional(readOnly = true)
-    public List<VnPayTransactionSummaryDto> listTransactionsByReservation(UUID reservationId) {
+    public List<VnPayTransactionSummaryDto> listTransactionsByReservation(UUID reservationId, SessionPrincipal actor) {
+        requireTransactionAccess(reservationId, actor);
         return txnRepository.findByReservationIdOrderByCreatedAtDesc(reservationId).stream()
                 .map(mapper::toSummaryDto)
                 .toList();
+    }
+
+    private void requireTransactionAccess(UUID reservationId, SessionPrincipal actor) {
+        Reservation reservation = reservationRepository.findByReservationId(reservationId)
+                .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy đơn đặt sân."));
+        if (!actor.userId().equals(reservation.getUserId())
+                && !actor.hasPlatformRole("ADMIN", "ACCOUNTANT")
+                && !actor.hasTenantRole(reservation.getTenantId(), "MANAGER", "ACCOUNTANT", "STAFF")) {
+            throw new ForbiddenAccessException("Bạn không có quyền xem giao dịch của đơn.");
+        }
+    }
+
+    private void requireMerchantApi() {
+        if (!isConfigured() || !hasText(properties.getApiUrl())) {
+            throw new IllegalStateException("API đối soát VNPay chưa được cấu hình.");
+        }
+    }
+
+    private boolean matchesMerchantResponse(JsonNode root, String txnRef, String command) {
+        String responseCommand = field(root, "vnp_Command");
+        String responseMerchant = field(root, "vnp_TmnCode");
+        if ((!command.equals(responseCommand) && (!"refund".equals(command) || !responseCommand.isEmpty()))
+                || (!properties.getTmnCode().equals(responseMerchant) && (!"refund".equals(command) || !responseMerchant.isEmpty()))
+                || !txnRef.equals(field(root, "vnp_TxnRef"))
+                || !hasText(field(root, "vnp_ResponseId")) || !hasText(field(root, "vnp_ResponseCode"))) {
+            return false;
+        }
+        Stream<String> fields = MERCHANT_RESPONSE_FIELDS.stream();
+        if ("querydr".equals(command)) {
+            fields = Stream.concat(fields, Stream.of("vnp_PromotionCode", "vnp_PromotionAmount"));
+        }
+        String expected = cryptoCodec.signPipeSeparated(properties.getHashSecret(), fields.map(key -> field(root, key)).toArray(String[]::new));
+        return CryptoHashUtils.constantTimeEqualsIgnoreCase(expected, field(root, "vnp_SecureHash"));
+    }
+
+    private String field(JsonNode root, String key) {
+        return root == null ? "" : root.path(key).asText("");
+    }
+
+    private VnPayRefundResponse uncertainRefund(VnPayRefundRequest request) {
+        return new VnPayRefundResponse(request.txnRef(), "99", "Chưa xác minh được hoàn tiền. Cần đối soát với VNPay.",
+                request.amountVnd(), request.transactionType(), VnPayTransactionStatus.REFUND_PENDING.name(), false);
     }
 
     private Reservation applyGatewayOutcome(VnPayTransaction txn, Map<String, String> params) {

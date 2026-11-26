@@ -360,6 +360,8 @@ public class BookingOrchestratorService {
             throw new IllegalArgumentException("Khung giờ không khớp đơn đặt.");
         }
         ReservationStatus currentStatus = ReservationStatus.valueOf(reservation.getStatus());
+        SessionPrincipal actor = AuthContext.current().orElse(null);
+        bookingValidator.validateCancellationPermission(reservation, actor);
 
         if (currentStatus == ReservationStatus.CANCELLED) {
             return new CancelBookingResponse(
@@ -375,9 +377,6 @@ public class BookingOrchestratorService {
         }
 
         currentStatus.assertCanTransitionTo(ReservationStatus.CANCELLED);
-
-        SessionPrincipal actor = AuthContext.current().orElse(null);
-        bookingValidator.validateCancellationPermission(reservation, actor);
 
         boolean venueInitiated = actor != null
                 && (actor.hasPlatformRole("ADMIN") || actor.hasTenantRole(reservation.getTenantId(), "MANAGER"));
@@ -509,18 +508,19 @@ public class BookingOrchestratorService {
         if (booking == null) {
             return null;
         }
-        Optional<Payment> originalDeposit = paymentRepository
-                .findFirstByBookingIdAndPaymentTypeAndStatusOrderByCreatedAtDesc(booking.getId(), "DEPOSIT", "SUCCESS");
+        Optional<Payment> originalPayment = paymentRepository
+                .findFirstByBookingIdAndGatewayVerifiedAtIsNotNullAndPaymentTypeNotAndStatusOrderByGatewayVerifiedAtDesc(
+                        booking.getId(), "REFUND", "SUCCESS");
         return paymentRepository.save(Payment.builder()
                 .tenant(group.getTenant())
                 .booking(booking)
                 .provider("PLATFORM_REFUND")
                 .providerRef("REFUND_" + reservation.getReservationId())
                 .paymentType("REFUND")
-                .relatedPaymentId(originalDeposit.map(Payment::getId).orElse(null))
+                .relatedPaymentId(originalPayment.map(Payment::getId).orElse(null))
                 .amount(refundAmount)
                 .currency(group.getCurrency())
-                .status("SUCCESS")
+                .status("PENDING")
                 .build());
     }
 

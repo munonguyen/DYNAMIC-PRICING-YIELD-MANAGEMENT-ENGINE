@@ -13,6 +13,7 @@ import com.yieldengine.utils.CryptoHashUtils;
 import com.yieldengine.record.ops.OpenConversationRequest;
 import com.yieldengine.record.ops.BookingPaymentStatus.State;
 import com.yieldengine.record.vnpay.CreateVnPayPaymentRequest;
+import com.yieldengine.record.vnpay.VnPayRefundRequest;
 import com.yieldengine.record.ops.QrCodeResponse;
 import com.yieldengine.record.ops.SendMessageRequest;
 import com.yieldengine.dto.request.CreateTimeSlotRequest;
@@ -81,6 +82,9 @@ class V3MarketplaceIntegrationTest {
 
     @Autowired
     private VnPayPaymentService vnPay;
+
+    @Autowired
+    private VnPayRefundSettlement vnPayRefundSettlement;
 
     @Autowired
     private VnPayCryptoCodec vnPayCodec;
@@ -469,6 +473,85 @@ class V3MarketplaceIntegrationTest {
         return mvc.perform(MockMvcRequestBuilders.post("/api/v1/payments/momo/ipn")
                 .contentType("application/json").content(new ObjectMapper().writeValueAsString(notice)))
                 .andReturn().getResponse().getStatus();
+    }
+
+    @Test
+    @Order(8)
+    void fullCardPaymentRefundStaysPayableUntilTheGatewaySettlement() throws Exception {
+        var player = authService.register(new RegisterRequest("refund_" + UUID.randomUUID().toString().substring(0, 8),
+                UUID.randomUUID() + "@example.test", "Pass12345!", "Test", "Player", null));
+        var login = authService.login(new LoginRequest(player.username(), "Pass12345!"));
+        var owner = sessionStore.findSession(login.accessToken()).orElseThrow();
+        AuthContext.set(owner, login.accessToken());
+        Instant start = Instant.now().plus(Duration.ofDays(7)).truncatedTo(ChronoUnit.MILLIS);
+        var hold = createPaymentTestHold(start, player.id());
+        var create = new CreateVnPayPaymentRequest(hold.getReservationId(), hold.getLockedPrice(),
+                "INTCARD", "vn", null, null, null, null, null, null, null, null, null);
+        var attempt = vnPay.createPaymentUrl(create, "127.0.0.1", player.id());
+        var foreigner = new com.yieldengine.record.security.SessionPrincipal(UUID.randomUUID(), "other-player",
+                List.of(), Instant.now(), Instant.now().plusSeconds(60));
+        assertEquals(attempt.txnRef(), vnPay.getTransactionByTxnRef(attempt.txnRef(), owner).txnRef());
+        assertThrows(ForbiddenAccessException.class, () -> vnPay.getTransactionByTxnRef(attempt.txnRef(), foreigner));
+        assertThrows(ForbiddenAccessException.class, () -> vnPay.listTransactionsByReservation(hold.getReservationId(), foreigner));
+        var notice = signedVnPayFixture(attempt.txnRef(), attempt.vnpAmount(), "00", "00");
+        assertEquals("00", vnPay.handleIpnCallback(notice).rspCode());
+        assertEquals(0, checkoutPayment.getStatus(hold.getReservationId(), player.id()).remainingAtVenue());
+        var cancel = bookingOrchestratorService.cancelReservationWithPolicy(hold.getReservationId(), start, "USER_CANCELLED");
+        assertEquals(hold.getLockedPrice(), cancel.refundAmount());
+        assertEquals(State.REFUND_PENDING, checkoutPayment.getStatus(hold.getReservationId(), player.id()).paymentStatus());
+        assertEquals(hold.getLockedPrice(), refundCredits(hold.getReservationId(), "CUSTOMER_REFUND_PAYABLE"));
+        assertEquals(0, refundCredits(hold.getReservationId(), "GATEWAY_CLEARING"));
+
+        var request = new VnPayRefundRequest(attempt.txnRef(), cancel.refundAmount(), "02", "test-accountant", null);
+        vnPayRefundSettlement.begin(request, "request-fixture");
+        assertEquals("02", vnPay.handleIpnCallback(notice).rspCode());
+        assertThrows(BusinessConflictException.class, () -> vnPayRefundSettlement.begin(request, "duplicate-fixture"));
+        vnPayRefundSettlement.complete(attempt.txnRef(), "10000001", Instant.now());
+        vnPayRefundSettlement.complete(attempt.txnRef(), "10000001", Instant.now());
+        assertEquals(State.REFUNDED, checkoutPayment.getStatus(hold.getReservationId(), player.id()).paymentStatus());
+        assertEquals(hold.getLockedPrice(), refundCredits(hold.getReservationId(), "GATEWAY_CLEARING"));
+        assertTrue(financeLedgerService.reconcile(DEFAULT_TENANT_ID, Instant.now().minusSeconds(60), Instant.now().plusSeconds(60))
+                .doubleEntryBalanced());
+        assertThrows(BusinessConflictException.class, () -> checkInService.issueOrGetQrCode(hold.getReservationId()));
+    }
+
+    @Test
+    @Order(9)
+    void noDepositBookingLeavesTheFullPricePayableAtTheVenue() {
+        var player = authService.register(new RegisterRequest("onsite_" + UUID.randomUUID().toString().substring(0, 8),
+                UUID.randomUUID() + "@example.test", "Pass12345!", "Test", "Player", null));
+        var login = authService.login(new LoginRequest(player.username(), "Pass12345!"));
+        AuthContext.set(sessionStore.findSession(login.accessToken()).orElseThrow(), login.accessToken());
+        Integer original = jdbcTemplate.queryForObject("SELECT deposit_percent FROM resource_groups WHERE id = ?", Integer.class, DEFAULT_GROUP_ID);
+        HoldSlotResponse hold;
+        try {
+            jdbcTemplate.update("UPDATE resource_groups SET deposit_percent = 0 WHERE id = ?", DEFAULT_GROUP_ID);
+            hold = createPaymentTestHold(Instant.now().plus(Duration.ofDays(8)).truncatedTo(ChronoUnit.MILLIS), player.id());
+        } finally {
+            jdbcTemplate.update("UPDATE resource_groups SET deposit_percent = ? WHERE id = ?", original, DEFAULT_GROUP_ID);
+        }
+        var status = checkoutPayment.getStatus(hold.getReservationId(), player.id());
+        assertEquals("CONFIRMED", hold.getStatus());
+        assertEquals(State.NO_DEPOSIT, status.paymentStatus());
+        assertEquals(0, status.paidAmount());
+        assertEquals(hold.getLockedPrice(), status.remainingAtVenue());
+        assertNull(status.paymentQr());
+        assertNotNull(checkInService.issueOrGetQrCode(hold.getReservationId()).qrToken());
+    }
+
+    private HoldSlotResponse createPaymentTestHold(Instant start, UUID userId) {
+        inventoryService.createTimeSlot(CreateTimeSlotRequest.builder().groupId(DEFAULT_GROUP_ID)
+                .slotStart(start).slotEnd(start.plusSeconds(3600)).totalCapacity(10).contextMultiplier(BigDecimal.ONE).build());
+        var quote = pricingEngineService.getPriceQuote(DEFAULT_GROUP_ID, start, userId.toString());
+        return bookingOrchestratorService.holdSlot(HoldSlotRequest.builder().groupId(DEFAULT_GROUP_ID)
+                .slotStart(start).userId(userId.toString()).priceLockToken(quote.getPriceLockToken()).build());
+    }
+
+    private long refundCredits(UUID reservationId, String account) {
+        return jdbcTemplate.queryForObject("""
+                SELECT COALESCE(SUM(amount), 0) FROM ledger_entries
+                WHERE reservation_id = ? AND account_code = ? AND direction = 'CREDIT'
+                """, Long.class, reservationId, account);
     }
 
     private Map<String, String> signedVnPayFixture(String ref, long amount, String code, String status) {

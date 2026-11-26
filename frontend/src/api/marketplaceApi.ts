@@ -1826,49 +1826,8 @@ class MarketplaceApiClient {
     return updatedItem;
   }
 
-  async getReconciliation(): Promise<ReconciliationSummary> {
-    try {
-      const res = await fetch('/api/v1/finance/reconciliation', {
-        headers: this.headers(),
-      });
-      if (res.ok) {
-        return await res.json();
-      }
-    } catch {
-      // Aggregate directly from persisted operational orders ledger
-    }
-    const allListings = mergeOfflineMediaIntoListings(createCuratedListings());
-    const storedMap = ensureSeededOperationalOrdersMap(allListings);
-    const allOrders = [
-      ...convertStoredTicketsToOrders(allListings),
-      ...Object.values(storedMap).flat(),
-    ];
-    const activeOrders = allOrders.filter((o) => o.status !== 'CANCELLED');
-    const escrowCredits = activeOrders.reduce((s, o) => s + o.paidEscrow, 0);
-    const completedEscrow = activeOrders
-      .filter((o) => o.status === 'COMPLETED')
-      .reduce((s, o) => s + o.paidEscrow, 0);
-    const comm = Math.round(completedEscrow * 0.1);
-    const payable = Math.max(0, completedEscrow - comm);
-    const forfeited = activeOrders
-      .filter((o) => o.status === 'NO_SHOW')
-      .reduce((s, o) => s + o.paidEscrow, 0);
-    const refunded = allOrders
-      .filter((o) => o.status === 'CANCELLED')
-      .reduce((s, o) => s + o.paidEscrow, 0);
-
-    return {
-      tenantId: DEFAULT_TENANT_ID,
-      fromTime: new Date(Date.now() - 14 * 86400_000).toISOString(),
-      toTime: new Date().toISOString(),
-      totalGatewayDebits: escrowCredits,
-      totalEscrowCredits: escrowCredits,
-      totalPlatformCommission: comm,
-      totalVenuePayable: payable,
-      totalCustomerRefunds: refunded,
-      totalForfeitedDeposits: forfeited,
-      doubleEntryBalanced: true,
-    };
+  getReconciliation(signal?: AbortSignal): Promise<ReconciliationSummary> {
+    return this.checkoutRequest('/finance/reconciliation', undefined, signal);
   }
 
   async fetchLessorAnalytics(

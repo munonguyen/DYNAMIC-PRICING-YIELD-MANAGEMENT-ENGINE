@@ -120,8 +120,37 @@ export const MonteCarloAndRoleCenterSection: React.FC<MonteCarloAndRoleCenterSec
   const canReviewKyc = activeRole === 'ADMIN' || activeRole === 'ACCOUNTANT';
 
   useEffect(() => {
+    if (!isInternalAuthorized) {
+      setReconciliation(null);
+      return;
+    }
+    const request = new AbortController();
+    let loading = false;
+    const refresh = async () => {
+      if (loading) return;
+      loading = true;
+      try {
+        const data = await marketplaceApi.getReconciliation(request.signal);
+        if (!request.signal.aborted) setReconciliation(data);
+      } catch {
+        if (!request.signal.aborted) setReconciliation(null);
+      } finally {
+        loading = false;
+      }
+    };
+    setReconciliation(null);
+    void refresh();
+    const timer = window.setInterval(() => {
+      if (document.visibilityState === 'visible') void refresh();
+    }, 15_000);
+    return () => {
+      request.abort();
+      window.clearInterval(timer);
+    };
+  }, [isInternalAuthorized, session?.userId]);
+
+  useEffect(() => {
     if (!isInternalAuthorized) return;
-    marketplaceApi.getReconciliation().then(setReconciliation);
     if (canReviewKyc) {
       marketplaceApi.listLessorApplicationsInternal().then(setKycQueue);
     }

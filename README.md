@@ -143,3 +143,17 @@ Checkout hiện dùng QR MoMo. API chuyển trang VNPay hiện tại vẫn tiế
 - [QR tích hợp trên checkout MoMo](https://developers.momo.vn/v3/vi/docs/payment/api/wallet/onetime/)
 - [Tài khoản và ứng dụng MoMo Test](https://developers.momo.vn/v3/vi/docs/payment/onboarding/test-instructions/)
 - [Thông báo thanh toán của MoMo](https://developers.momo.vn/v3/vi/docs/payment/api/result-handling/notification/)
+
+### Kiểm tra các phương thức khác
+
+| Phương thức | Luồng hiện tại |
+| --- | --- |
+| VNPay QR, thẻ nội địa, thẻ quốc tế | API tạo URL cổng bằng `VNPAYQR`, `VNBANK`, `INTCARD`. Checkout trực tiếp dùng QR MoMo. VNPay chỉ xác nhận thu tiền qua IPN hợp lệ. |
+| VietQR chuyển khoản trực tiếp | Chưa tích hợp dịch vụ xác nhận biến động số dư theo từng đơn. |
+| Thanh toán tại sân | Với ca không yêu cầu cọc, hệ thống xác nhận đặt sân, ghi nhận đã thu online bằng 0 và hiển thị tiền phải trả tại sân. Check-in ghi nhận việc nhận sân. Chưa có bước ghi nhận nhân viên đã thu tiền tại quầy. |
+| Hủy đơn có tiền đã xác minh | Tính khoản hoàn theo chính sách. Tiền chờ hoàn nằm ở tài khoản công nợ khách hàng. Với VNPay, API hoàn của kế toán cần khớp khoản đó và xác minh kết quả từ cổng trước khi chuyển sang đã hoàn. |
+
+Phản hồi VNPay đang xử lý, mất kết nối hoặc thiếu chữ ký hợp lệ vẫn ở trạng thái chờ đối soát. Hệ thống giữ mã yêu cầu hoàn và chặn việc gửi trùng. Tác vụ tự động đối soát các yêu cầu này và hoàn tiền qua MoMo chưa được tích hợp. Báo cáo **Hoàn tiền đã xác minh** chỉ tính các bút toán có bằng chứng hoàn hợp lệ. Dữ liệu đã hạch toán trước đây thiếu xác nhận cần được rà soát riêng.
+
+- [Mã phương thức và xác thực IPN VNPay](https://sandbox.vnpayment.vn/apis/docs/thanh-toan-pay/pay.html)
+- [Chữ ký và trạng thái QueryDR, hoàn tiền VNPay](https://sandbox.vnpayment.vn/apis/docs/truy-van-hoan-tien/querydr%26refund.html)

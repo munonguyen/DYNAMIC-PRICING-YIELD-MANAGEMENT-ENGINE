@@ -93,15 +93,13 @@ public class VnPayPaymentController {
     @Operation(summary = "Get persisted VNPAY transaction summary by vnp_TxnRef")
     @GetMapping("/transactions/{txnRef}")
     public ResponseEntity<VnPayTransactionSummaryDto> getTransaction(@PathVariable String txnRef) {
-        rbacGuard.requireAuthenticated();
-        return ResponseEntity.ok(vnPayPaymentService.getTransactionByTxnRef(txnRef));
+        return ResponseEntity.ok(vnPayPaymentService.getTransactionByTxnRef(txnRef, rbacGuard.requireAuthenticated()));
     }
 
     @Operation(summary = "List VNPAY payment attempts for a booking reservation")
     @GetMapping("/reservations/{reservationId}")
     public ResponseEntity<List<VnPayTransactionSummaryDto>> listByReservation(@PathVariable UUID reservationId) {
-        rbacGuard.requireAuthenticated();
-        return ResponseEntity.ok(vnPayPaymentService.listTransactionsByReservation(reservationId));
+        return ResponseEntity.ok(vnPayPaymentService.listTransactionsByReservation(reservationId, rbacGuard.requireAuthenticated()));
     }
 
     private String resolveClientIp(HttpServletRequest request) {

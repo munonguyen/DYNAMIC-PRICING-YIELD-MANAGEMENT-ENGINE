@@ -37,10 +37,26 @@ public class CheckoutPaymentService {
         BookingOrchestratorService.requireOwner(reservation, userId);
         String bookingStatus = reservation.getStatus();
         UUID bookingId = reservation.getBookingId();
-        var paid = payments.findFirstByBookingIdAndGatewayVerifiedAtIsNotNullAndStatusOrderByGatewayVerifiedAtDesc(
-                bookingId, "SUCCESS");
-        var review = payments.findFirstByBookingIdAndGatewayVerifiedAtIsNotNullAndStatusOrderByGatewayVerifiedAtDesc(
-                bookingId, "REVIEW_REQUIRED");
+        var paid = payments.findFirstByBookingIdAndGatewayVerifiedAtIsNotNullAndPaymentTypeNotAndStatusOrderByGatewayVerifiedAtDesc(
+                bookingId, "REFUND", "SUCCESS");
+        var review = payments.findFirstByBookingIdAndGatewayVerifiedAtIsNotNullAndPaymentTypeNotAndStatusOrderByGatewayVerifiedAtDesc(
+                bookingId, "REFUND", "REVIEW_REQUIRED");
+
+        if ("CANCELLED".equals(bookingStatus) && review.isEmpty()) {
+            var refund = payments.findByProviderAndProviderRef("PLATFORM_REFUND", "REFUND_" + reservationId);
+            State cancelledState = refund.map(record -> {
+                if ("PENDING".equals(record.getStatus())) {
+                    return State.REFUND_PENDING;
+                }
+                return "SUCCESS".equals(record.getStatus()) && record.getGatewayVerifiedAt() != null
+                        ? State.REFUNDED : State.REVIEW_REQUIRED;
+            }).orElse(reservation.getRefundAmount() != null && reservation.getRefundAmount() > 0
+                    ? State.REVIEW_REQUIRED : State.CANCELLED);
+            return new BookingPaymentStatus(reservationId, bookingStatus, cancelledState,
+                    paid.map(Payment::getAmount).orElse(0L), 0, null,
+                    paid.map(Payment::getProvider).orElse(null), paid.map(Payment::getProviderRef).orElse(null),
+                    refund.map(Payment::getGatewayVerifiedAt).orElse(null), null);
+        }
 
         if (paid.isPresent() && List.of("CONFIRMED", "COMPLETED").contains(bookingStatus)) {
             Payment receipt = paid.get();
