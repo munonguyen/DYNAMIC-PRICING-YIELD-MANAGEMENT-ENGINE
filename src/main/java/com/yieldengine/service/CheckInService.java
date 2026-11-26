@@ -2,9 +2,12 @@ package com.yieldengine.service;
 
 import com.yieldengine.dto.ops.BookingOpsDtos.CheckInResponse;
 import com.yieldengine.dto.ops.BookingOpsDtos.QrCodeResponse;
+import com.yieldengine.dto.ops.BookingOpsDtos.QrInspectResponse;
 import com.yieldengine.entity.*;
 import com.yieldengine.enums.ReservationStatus;
+import com.yieldengine.exception.InvalidTokenSignatureException;
 import com.yieldengine.exception.ResourceNotFoundException;
+import com.yieldengine.exception.TokenExpiredException;
 import com.yieldengine.repository.*;
 import com.yieldengine.security.RbacGuard;
 import com.yieldengine.security.SessionPrincipal;
@@ -28,6 +31,7 @@ public class CheckInService {
     private final ResourceGroupRepository resourceGroupRepository;
     private final TimeSlotRepository timeSlotRepository;
     private final CheckInRepository checkInRepository;
+    private final BookingRepository bookingRepository;
     private final PaymentRepository paymentRepository;
     private final PriceLockTokenService priceLockTokenService;
     private final PricingEngineService pricingEngineService;
@@ -67,6 +71,123 @@ public class CheckInService {
         );
 
         return new QrCodeResponse(reservationId, reservation.getQrJti(), qrToken, expiresAt);
+    }
+
+    @Transactional(readOnly = true)
+    public QrInspectResponse inspectQrTicket(String qrToken) {
+        SessionPrincipal scanner = rbacGuard.requireAuthenticated();
+        PriceLockTokenService.QrTokenPayload payload;
+        try {
+            payload = priceLockTokenService.verifyAndExtractQrToken(qrToken);
+        } catch (TokenExpiredException ex) {
+            return new QrInspectResponse(
+                    false, "EXPIRED", "Vé QR đã quá hạn sử dụng (hết giờ chơi + ân hạn 15 phút).",
+                    true, false, false, false,
+                    null, null, null, null, null, null,
+                    null, null, null, null, 0L, 0L, 0L, "EXPIRED", null
+            );
+        } catch (InvalidTokenSignatureException | IllegalArgumentException ex) {
+            return new QrInspectResponse(
+                    false, "INVALID_SIGNATURE", "CẢNH BÁO VÉ GIẢ: Chữ ký HMAC-SHA256 không khớp hoặc mã QR đã bị chỉnh sửa.",
+                    false, false, false, false,
+                    null, null, null, null, null, null,
+                    null, null, null, null, 0L, 0L, 0L, "TAMPERED", null
+            );
+        }
+
+        boolean venueMatched = scanner.hasTenantRole(payload.getTenantId(), "STAFF", "MANAGER")
+                || scanner.hasPlatformRole("ADMIN");
+        Reservation reservation = reservationRepository
+                .findByIdAndSlotStart(payload.getReservationId(), payload.getSlotStart())
+                .orElse(null);
+
+        if (reservation == null) {
+            return new QrInspectResponse(
+                    false, "NOT_FOUND", "Không tìm thấy đơn đặt sân khớp với mã QR trên hệ thống.",
+                    true, true, venueMatched, false,
+                    payload.getReservationId(), payload.getQrJti(), null, null,
+                    payload.getSlotStart(), null,
+                    null, null, null, null, 0L, 0L, 0L, "NOT_FOUND", null
+            );
+        }
+
+        CheckIn existingCheckIn = checkInRepository.findByReservationId(reservation.getReservationId()).orElse(null);
+        boolean alreadyUsed = existingCheckIn != null || checkInRepository.existsByQrJti(payload.getQrJti());
+        boolean unused = !alreadyUsed && !ReservationStatus.COMPLETED.name().equals(reservation.getStatus());
+
+        ResourceGroup group = resourceGroupRepository.findById(reservation.getGroupId()).orElse(null);
+        TimeSlot slot = timeSlotRepository.findById(new SlotId(reservation.getGroupId(), reservation.getSlotStart())).orElse(null);
+        Booking booking = reservation.getBookingId() != null
+                ? bookingRepository.findById(reservation.getBookingId()).orElse(null)
+                : null;
+
+        long paidAmount = reservation.getBookingId() == null
+                ? reservation.getDepositAmount()
+                : Math.max(
+                        reservation.getDepositAmount(),
+                        paymentRepository.findByBookingIdOrderByCreatedAtAsc(reservation.getBookingId()).stream()
+                                .filter(p -> "SUCCESS".equals(p.getStatus()))
+                                .mapToLong(Payment::getAmount)
+                                .sum()
+                );
+        long remainingAtVenue = Math.max(0L, reservation.getLockedPrice() - paidAmount);
+
+        String rawPhone = booking != null && booking.getContactPhone() != null ? booking.getContactPhone().trim() : "";
+        String last4 = rawPhone.length() >= 4 ? rawPhone.substring(rawPhone.length() - 4) : rawPhone;
+        String maskedPhone = rawPhone.length() >= 7
+                ? rawPhone.substring(0, 4) + " ••• " + last4
+                : (rawPhone.isEmpty() ? "Chưa cập nhật" : rawPhone);
+
+        String customerName = booking != null && booking.getContactName() != null
+                ? booking.getContactName()
+                : "Khách đã xác thực tài khoản";
+        String customerEmail = booking != null ? booking.getContactEmail() : null;
+        String unitNumber = reservation.getUnit() != null ? reservation.getUnit().getUnitNumber() : "SAN_01";
+        String groupName = group != null ? group.getName() : "Cụm sân ArenaPulse";
+
+        if (!venueMatched) {
+            return new QrInspectResponse(
+                    false, "WRONG_VENUE", "Vé QR hợp lệ nhưng thuộc cụm sân khác — nhân viên cơ sở này không có quyền mở sân.",
+                    true, true, false, unused,
+                    reservation.getReservationId(), payload.getQrJti(), unitNumber, groupName,
+                    reservation.getSlotStart(), slot != null ? slot.getSlotEnd() : null,
+                    customerName, maskedPhone, last4, customerEmail,
+                    reservation.getLockedPrice(), paidAmount, remainingAtVenue, reservation.getStatus(),
+                    existingCheckIn != null ? existingCheckIn.getScannedAt() : null
+            );
+        }
+        if (alreadyUsed || ReservationStatus.COMPLETED.name().equals(reservation.getStatus())) {
+            return new QrInspectResponse(
+                    false, "ALREADY_USED", "CẢNH BÁO DÙNG LẠI VÉ: Mã QR dùng 1 lần này đã được quét check-in trước đó!",
+                    true, true, true, false,
+                    reservation.getReservationId(), payload.getQrJti(), unitNumber, groupName,
+                    reservation.getSlotStart(), slot != null ? slot.getSlotEnd() : null,
+                    customerName, maskedPhone, last4, customerEmail,
+                    reservation.getLockedPrice(), paidAmount, remainingAtVenue, reservation.getStatus(),
+                    existingCheckIn != null ? existingCheckIn.getScannedAt() : reservation.getCheckedInAt()
+            );
+        }
+        if (!ReservationStatus.CONFIRMED.name().equals(reservation.getStatus())) {
+            return new QrInspectResponse(
+                    false, "CANCELLED_OR_NO_SHOW", "Vé không còn hiệu lực nhận sân (trạng thái: " + reservation.getStatus() + ").",
+                    true, true, true, false,
+                    reservation.getReservationId(), payload.getQrJti(), unitNumber, groupName,
+                    reservation.getSlotStart(), slot != null ? slot.getSlotEnd() : null,
+                    customerName, maskedPhone, last4, customerEmail,
+                    reservation.getLockedPrice(), paidAmount, remainingAtVenue, reservation.getStatus(),
+                    null
+            );
+        }
+
+        return new QrInspectResponse(
+                true, "VALID_READY", "Vé QR hợp lệ (Chữ ký HMAC-SHA256 khớp • Đúng cơ sở • Chưa sử dụng).",
+                true, true, true, true,
+                reservation.getReservationId(), payload.getQrJti(), unitNumber, groupName,
+                reservation.getSlotStart(), slot != null ? slot.getSlotEnd() : null,
+                customerName, maskedPhone, last4, customerEmail,
+                reservation.getLockedPrice(), paidAmount, remainingAtVenue, reservation.getStatus(),
+                null
+        );
     }
 
     @Transactional

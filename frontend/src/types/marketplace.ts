@@ -298,6 +298,38 @@ export interface ReconciliationSummary {
   doubleEntryBalanced: boolean;
 }
 
+export interface QrInspectResult {
+  valid: boolean;
+  verdictCode:
+    | 'VALID_READY'
+    | 'INVALID_SIGNATURE'
+    | 'EXPIRED'
+    | 'WRONG_VENUE'
+    | 'ALREADY_USED'
+    | 'CANCELLED_OR_NO_SHOW'
+    | 'NOT_FOUND';
+  verdictMessage: string;
+  signatureValid: boolean;
+  notExpired: boolean;
+  venueMatched: boolean;
+  unusedAntiReplay: boolean;
+  reservationId?: string | null;
+  qrJti?: string | null;
+  orderId?: string | null;
+  unitNumber?: string | null;
+  groupName?: string | null;
+  slotLabel?: string | null;
+  customerName?: string | null;
+  customerPhoneMasked?: string | null;
+  customerPhoneLast4?: string | null;
+  customerEmail?: string | null;
+  totalPrice?: number;
+  paidAmount?: number;
+  remainingAtVenue?: number;
+  status?: string | null;
+  previousScannedAt?: string | null;
+}
+
 export interface AuthSession {
   accessToken: string;
   expiresAt: string;
@@ -332,6 +364,7 @@ export interface LessorBookingOrder {
   slotLabel: string;
   customerName: string;
   customerPhone: string;
+  customerEmail?: string;
   courtPrice: number;
   addOnSummary?: string;
   addOnTotal: number;
@@ -339,6 +372,8 @@ export interface LessorBookingOrder {
   remainingAtVenue: number;
   paymentGateway: string;
   qrCode: string;
+  qrToken?: string;
+  qrJti?: string;
   status: 'CONFIRMED' | 'HELD' | 'COMPLETED' | 'NO_SHOW' | 'CANCELLED';
   createdAtLabel: string;
   dateIso?: string;

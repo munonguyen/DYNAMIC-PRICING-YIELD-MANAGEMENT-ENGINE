@@ -27,6 +27,12 @@ public class CheckInAndChatController {
     private final CheckInService checkInService;
     private final ChatService chatService;
 
+    @Operation(summary = "Inspect customer QR code and verify anti-counterfeit layers + identity before check-in")
+    @PostMapping("/checkins/inspect")
+    public ResponseEntity<QrInspectResponse> inspectQr(@Valid @RequestBody ScanQrRequest request) {
+        return ResponseEntity.ok(checkInService.inspectQrTicket(request.qrToken()));
+    }
+
     @Operation(summary = "Scan customer QR code to check in once at venue (STAFF/MANAGER - UC-16)")
     @PostMapping("/checkins/scan")
     public ResponseEntity<CheckInResponse> scanQr(@Valid @RequestBody ScanQrRequest request) {

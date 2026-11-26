@@ -34,6 +34,7 @@ import {
 import { ActionButton, PillSelect } from './FairwayControls';
 import { LessorAddOnServicesManager } from './LessorAddOnServicesManager';
 import { LessorAnalyticsDashboard } from './LessorAnalyticsDashboard';
+import { QrCheckInScannerModal } from './QrCheckInScannerModal';
 
 export type LessorPortalTabId =
   | 'OVERVIEW'
@@ -339,29 +340,17 @@ export const LessorPartnerPortal: React.FC<LessorPartnerPortalProps> = ({
     writePersistedOperationalOrdersMap(nextMap);
   };
 
+  const [qrModalOpen, setQrModalOpen] = useState(false);
+  const [qrModalTab, setQrModalTab] = useState<'SCANNER' | 'TICKET_PREVIEW'>('SCANNER');
+  const [qrModalOrder, setQrModalOrder] = useState<LessorBookingOrder | null>(null);
+  const [qrModalQuery, setQrModalQuery] = useState('');
+
   const handleManualQrVerify = (e: React.FormEvent) => {
     e.preventDefault();
-    const query = qrScanInput.trim().toLowerCase();
-    if (!query) return;
-    const matched = providerOrders.find(
-      (o) =>
-        o.qrCode.toLowerCase().includes(query) ||
-        o.orderId.toLowerCase() === query ||
-        o.reservationId.toLowerCase().includes(query)
-    );
-    if (!matched) {
-      flashToast('Không tìm thấy mã vé QR hoặc mã đơn thuộc cơ sở của bạn.');
-      return;
-    }
-    if (matched.status === 'COMPLETED') {
-      flashToast(`Vé ${matched.orderId} đã được sử dụng nhận sân trước đó (Chống quét lại 1 lần).`);
-      return;
-    }
-    updateOrderStatus(matched.orderId, 'COMPLETED');
-    setQrScanInput('');
-    flashToast(
-      `✓ Check-in QR hợp lệ! Đã mở nhận ${matched.unitNumber} cho khách ${matched.customerName}.`
-    );
+    setQrModalOrder(null);
+    setQrModalTab('SCANNER');
+    setQrModalQuery(qrScanInput.trim());
+    setQrModalOpen(true);
   };
 
   // --- CREATE NEW COURT GROUP STATE ---
@@ -955,31 +944,50 @@ export const LessorPartnerPortal: React.FC<LessorPartnerPortalProps> = ({
 
                   {/* Instant One-Time QR Ticket Check-In Bar */}
                   <div className="rounded-[26px] border border-[#16422C]/25 bg-[#F4F8F4] p-5 sm:p-6">
-                    <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-                      <div>
+                    <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
+                      <div className="space-y-1">
                         <span className="text-[11px] font-bold uppercase tracking-wider text-[#16422C]">
-                          Quầy Soát Vé QR 1 Lần Tại Sân (Anti-Replay JTI)
+                          Quầy Soát Vé QR Chống Giả Mạo Tại Sân
                         </span>
-                        <h3 className="mt-0.5 text-base sm:text-lg font-bold text-[#0F172A]">
-                          Nhập hoặc quét mã vé QR khách xuất trình để mở sân &amp; giải ngân tiền cọc
+                        <h3 className="text-base sm:text-lg font-bold text-[#0F172A]">
+                          Quét mã QR từ Email khách để xác thực chữ ký HMAC &amp; đối chiếu đúng chủ vé
                         </h3>
+                        <p className="text-xs text-neutral-600">
+                          Hệ thống tự kiểm tra 4 lớp: chữ ký số chống sửa vé, đúng cụm sân, khóa vé dùng 1 lần và SĐT/Email người đặt trước khi mở sân.
+                        </p>
                       </div>
 
-                      <form
-                        onSubmit={handleManualQrVerify}
-                        className="flex w-full max-w-md items-center gap-2"
-                      >
-                        <input
-                          type="text"
-                          value={qrScanInput}
-                          onChange={(e) => setQrScanInput(e.target.value)}
-                          placeholder="Nhập mã vé QR hoặc mã đơn (VD: 8821)…"
-                          className="flex-1 rounded-full border border-neutral-300 bg-white px-4 py-2.5 text-xs text-[#0F172A] focus:border-[#16422C] focus:outline-none"
-                        />
-                        <ActionButton type="submit" variant="forest" size="sm">
-                          Xác thực QR
+                      <div className="flex flex-wrap items-center gap-2 xl:shrink-0">
+                        <ActionButton
+                          type="button"
+                          variant="forest"
+                          size="sm"
+                          onClick={() => {
+                            setQrModalOrder(null);
+                            setQrModalQuery('');
+                            setQrModalTab('SCANNER');
+                            setQrModalOpen(true);
+                          }}
+                        >
+                          📷 Mở Máy Quét QR / Thử Vé Giả
                         </ActionButton>
-                      </form>
+
+                        <form
+                          onSubmit={handleManualQrVerify}
+                          className="flex w-full sm:w-auto items-center gap-2"
+                        >
+                          <input
+                            type="text"
+                            value={qrScanInput}
+                            onChange={(e) => setQrScanInput(e.target.value)}
+                            placeholder="Nhập mã vé (VD: APQR-HN01-001)…"
+                            className="w-56 rounded-full border border-neutral-300 bg-white px-4 py-2 text-xs text-[#0F172A] focus:border-[#16422C] focus:outline-none"
+                          />
+                          <ActionButton type="submit" variant="outline" size="sm">
+                            Kiểm tra
+                          </ActionButton>
+                        </form>
+                      </div>
                     </div>
                   </div>
 
@@ -1060,7 +1068,18 @@ export const LessorPartnerPortal: React.FC<LessorPartnerPortalProps> = ({
                               <span>
                                 Khách: <strong className="text-neutral-800">{order.customerName}</strong> ({order.customerPhone})
                               </span>
-                              <span>Mã QR: <code className="text-[#0E4F7E]">{order.qrCode}</code></span>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setQrModalOrder(order);
+                                  setQrModalTab('TICKET_PREVIEW');
+                                  setQrModalQuery('');
+                                  setQrModalOpen(true);
+                                }}
+                                className="inline-flex items-center gap-1 rounded-full bg-[#E6F1F8] px-2.5 py-0.5 text-[11px] font-bold text-[#0E4F7E] hover:brightness-95 cursor-pointer"
+                              >
+                                🎟 Xem vé QR ({order.qrCode})
+                              </button>
                               {order.addOnSummary && (
                                 <span className="font-medium text-[#16422C]">
                                   + Dịch vụ kèm: {order.addOnSummary} ({formatVnd(order.addOnTotal)})
@@ -1090,14 +1109,14 @@ export const LessorPartnerPortal: React.FC<LessorPartnerPortalProps> = ({
                                 <button
                                   type="button"
                                   onClick={() => {
-                                    updateOrderStatus(order.orderId, 'COMPLETED');
-                                    flashToast(
-                                      `✓ Đã xác nhận khách ${order.customerName} nhận ${order.unitNumber}!`
-                                    );
+                                    setQrModalOrder(order);
+                                    setQrModalTab('SCANNER');
+                                    setQrModalQuery(order.qrToken || order.qrCode);
+                                    setQrModalOpen(true);
                                   }}
-                                  className="rounded-full bg-[#16422C] px-3.5 py-2 text-xs font-bold text-white hover:bg-[#0F172A]"
+                                  className="rounded-full bg-[#16422C] px-3.5 py-2 text-xs font-bold text-white hover:bg-[#0F172A] cursor-pointer"
                                 >
-                                  ✓ Nhận sân QR
+                                  🔍 Soát QR &amp; Nhận sân
                                 </button>
                                 <button
                                   type="button"
@@ -2201,6 +2220,22 @@ export const LessorPartnerPortal: React.FC<LessorPartnerPortalProps> = ({
           </div>
         </div>
       </div>
+      <QrCheckInScannerModal
+        open={qrModalOpen}
+        initialTab={qrModalTab}
+        initialOrder={qrModalOrder}
+        initialQuery={qrModalQuery}
+        providerOrders={providerOrders}
+        allSystemOrders={Object.values(ordersByProvider).flat()}
+        activeProviderId={activeProvider.providerId}
+        activeVenueName={activeProvider.providerName}
+        onClose={() => setQrModalOpen(false)}
+        onConfirmCheckIn={(orderId) => {
+          updateOrderStatus(orderId, 'COMPLETED');
+          setQrScanInput('');
+          flashToast(`✓ Check-in QR hợp lệ! Đã mở sân & giải ngân ký quỹ cho đơn ${orderId}.`);
+        }}
+      />
     </section>
   );
 };

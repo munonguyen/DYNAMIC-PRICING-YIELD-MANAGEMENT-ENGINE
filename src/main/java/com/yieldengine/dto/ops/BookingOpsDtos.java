@@ -153,6 +153,32 @@ public final class BookingOpsDtos {
     ) {
     }
 
+    public record QrInspectResponse(
+            boolean valid,
+            String verdictCode,
+            String verdictMessage,
+            boolean signatureValid,
+            boolean notExpired,
+            boolean venueMatched,
+            boolean unusedAntiReplay,
+            UUID reservationId,
+            UUID qrJti,
+            String unitNumber,
+            String groupName,
+            Instant slotStart,
+            Instant slotEnd,
+            String customerName,
+            String customerPhoneMasked,
+            String customerPhoneLast4,
+            String customerEmail,
+            long totalPrice,
+            long paidAmount,
+            long remainingAtVenue,
+            String status,
+            Instant previousScannedAt
+    ) {
+    }
+
     public record OpenConversationRequest(
             @NotNull UUID tenantId,
             UUID bookingId
