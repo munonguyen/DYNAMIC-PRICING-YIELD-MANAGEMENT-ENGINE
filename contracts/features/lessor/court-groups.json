@@ -1,0 +1,38 @@
+{
+  "branch": "service/lessor/court-groups",
+  "title": "Quản lý cụm sân",
+  "scope": "Tạo cụm sân và xem danh mục quản lý theo cơ sở.",
+  "operations": [
+    {
+      "method": "GET",
+      "path": "/api/v1/inventory/groups",
+      "operationId": "listManagedGroups"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/inventory/groups",
+      "operationId": "createResourceGroup"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/inventory/groups/{id}",
+      "operationId": "getResourceGroup"
+    }
+  ],
+  "source": [
+    {
+      "file": "src/main/java/com/yieldengine/controller/lessor/LessorInventoryController.java",
+      "anchors": [
+        "listManagedGroups(",
+        "createResourceGroup(",
+        "getResourceGroup("
+      ]
+    },
+    {
+      "file": "frontend/src/components/CreateCourtGroupModal.tsx",
+      "anchors": [
+        "onCreateListing"
+      ]
+    }
+  ]
+}
