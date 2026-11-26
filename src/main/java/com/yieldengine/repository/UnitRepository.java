@@ -23,7 +23,7 @@ public interface UnitRepository extends JpaRepository<Unit, UUID> {
           AND NOT EXISTS (
               SELECT 1 FROM unit_time_locks utl
               WHERE utl.unit_id = u.id
-                AND utl.period && tstzrange(:slotStart, :slotEnd, '[)')
+                AND utl.period && tstzrange(CAST(:slotStart AS timestamptz), CAST(:slotEnd AS timestamptz), '[)')
                 AND (utl.expires_at IS NULL OR utl.expires_at > NOW())
           )
         ORDER BY u.unit_number ASC

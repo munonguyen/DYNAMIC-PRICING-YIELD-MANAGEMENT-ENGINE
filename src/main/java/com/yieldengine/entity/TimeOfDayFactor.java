@@ -35,3 +35,4 @@ public class TimeOfDayFactor {
     @Column(nullable = false, precision = 6, scale = 4)
     private BigDecimal multiplier;
 }
+

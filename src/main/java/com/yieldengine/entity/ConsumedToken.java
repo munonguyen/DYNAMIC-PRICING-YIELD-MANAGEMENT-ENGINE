@@ -26,6 +26,9 @@ public class ConsumedToken {
     @Column(name = "tenant_id", nullable = false)
     private UUID tenantId;
 
+    @Column(name = "user_id")
+    private UUID userId;
+
     @Column(name = "reservation_id")
     private UUID reservationId;
 

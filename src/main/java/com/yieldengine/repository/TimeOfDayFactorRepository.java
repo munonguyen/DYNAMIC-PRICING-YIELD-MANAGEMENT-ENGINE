@@ -25,3 +25,4 @@ public interface TimeOfDayFactorRepository extends JpaRepository<TimeOfDayFactor
             @Param("hour") Short hour
     );
 }
+

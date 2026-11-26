@@ -21,3 +21,4 @@ public class IdempotencyKeyId implements Serializable {
     @Column(name = "idem_key", nullable = false, length = 100)
     private String idemKey;
 }
+

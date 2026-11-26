@@ -8,3 +8,4 @@ import org.springframework.stereotype.Repository;
 @Repository
 public interface SlotPriceHistoryRepository extends JpaRepository<SlotPriceHistory, SlotPriceHistoryId> {
 }
+

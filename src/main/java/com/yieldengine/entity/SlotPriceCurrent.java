@@ -45,3 +45,4 @@ public class SlotPriceCurrent {
     @Builder.Default
     private Instant computedAt = Instant.now();
 }
+

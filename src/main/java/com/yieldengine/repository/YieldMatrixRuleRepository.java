@@ -19,8 +19,8 @@ public interface YieldMatrixRuleRepository extends JpaRepository<YieldMatrixRule
     @Query(value = """
         SELECT * FROM yield_matrix_rules
         WHERE rule_set_id = :ruleSetId
-          AND occupancy_pct @> :occ::numeric
-          AND lead_hours @> :lead::numeric
+          AND occupancy_pct @> CAST(:occ AS numeric)
+          AND lead_hours @> CAST(:lead AS numeric)
         LIMIT 1
         """, nativeQuery = true)
     Optional<YieldMatrixRule> findMatchingRule(

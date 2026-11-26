@@ -38,6 +38,7 @@ public class YieldRuleSet {
     @Builder.Default
     private String status = "DRAFT";
 
+    @org.hibernate.annotations.ColumnTransformer(write = "?::tstzrange")
     @Column(columnDefinition = "tstzrange", nullable = false)
     private String effective;
 
@@ -56,3 +57,4 @@ public class YieldRuleSet {
     @Builder.Default
     private List<TimeOfDayFactor> timeOfDayFactors = new ArrayList<>();
 }
+

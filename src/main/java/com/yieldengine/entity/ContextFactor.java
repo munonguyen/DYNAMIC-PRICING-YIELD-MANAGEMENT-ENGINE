@@ -31,6 +31,7 @@ public class ContextFactor {
     @Column(nullable = false, length = 30)
     private String kind;
 
+    @org.hibernate.annotations.ColumnTransformer(write = "?::tstzrange")
     @Column(columnDefinition = "tstzrange", nullable = false)
     private String period;
 
@@ -44,3 +45,4 @@ public class ContextFactor {
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
 }
+

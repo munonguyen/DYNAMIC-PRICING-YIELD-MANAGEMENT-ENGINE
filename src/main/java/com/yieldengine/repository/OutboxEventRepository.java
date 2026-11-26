@@ -19,3 +19,4 @@ public interface OutboxEventRepository extends JpaRepository<OutboxEvent, Long> 
         """, nativeQuery = true)
     List<OutboxEvent> findPendingEventsForRelay();
 }
+

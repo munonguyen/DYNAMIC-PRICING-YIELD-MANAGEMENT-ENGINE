@@ -14,6 +14,7 @@ spring:
       connection-timeout: 30000
       idle-timeout: 600000
       max-lifetime: 1800000
+      connection-init-sql: "SET lock_timeout = '2s'; SET statement_timeout = '5s'; SET idle_in_transaction_session_timeout = '10s';"
 
   jpa:
     open-in-view: false
@@ -42,6 +43,61 @@ spring:
     virtual:
       enabled: false # Set to true when running on Java 21+
 
+  servlet:
+    multipart:
+      enabled: true
+      max-file-size: 10MB
+      max-request-size: 25MB
+
+  mail:
+    host: ${MAIL_HOST:smtp.gmail.com}
+    port: ${MAIL_PORT:587}
+    username: ${MAIL_USERNAME:}
+    password: ${MAIL_PASSWORD:}
+    default-encoding: UTF-8
+    properties:
+      mail:
+        smtp:
+          auth: ${MAIL_SMTP_AUTH:true}
+          starttls:
+            enable: ${MAIL_SMTP_STARTTLS:true}
+            required: ${MAIL_SMTP_STARTTLS:true}
+          connectiontimeout: 5000
+          timeout: 5000
+          writetimeout: 5000
+
+storage:
+  media:
+    base-dir: ${MEDIA_STORAGE_DIR:./data/uploads/courts}
+    max-files-per-group: 12
+  kyc:
+    base-dir: ${KYC_STORAGE_DIR:./data/uploads/kyc}
+
+momo:
+  gateway:
+    endpoint: ${MOMO_ENDPOINT:https://test-payment.momo.vn/v2/gateway/api/create}
+    partner-code: ${MOMO_PARTNER_CODE:MOMOBKUN20180529}
+    access-key: ${MOMO_ACCESS_KEY:klm05TvNBzhg7h7j}
+    secret-key: ${MOMO_SECRET_KEY:at67qH6mk8w5Y1nAyMoYKMWACiEi2bsa}
+    redirect-url: ${MOMO_REDIRECT_URL:http://127.0.0.1:5174/checkout}
+    ipn-url: ${MOMO_IPN_URL:http://localhost:8080/api/v1/payments/momo/ipn}
+    live-http-enabled: ${MOMO_LIVE_HTTP_ENABLED:true}
+    sandbox-auto-approve: ${MOMO_SANDBOX_AUTO_APPROVE:true}
+
+vnpay:
+  pay-url: ${VNPAY_PAY_URL:https://sandbox.vnpayment.vn/paymentv2/vpcpay.html}
+  api-url: ${VNPAY_API_URL:https://sandbox.vnpayment.vn/merchant_webapi/api/transaction}
+  tmn-code: ${VNPAY_TMN_CODE:ARENAPULSE}
+  hash-secret: ${VNPAY_HASH_SECRET:VNPAY_SANDBOX_HASH_SECRET_KEY_CONFIGURE_IN_ENV}
+  version: ${VNPAY_VERSION:2.1.0}
+  command-pay: ${VNPAY_COMMAND_PAY:pay}
+  curr-code: ${VNPAY_CURR_CODE:VND}
+  default-order-type: ${VNPAY_ORDER_TYPE:other}
+  default-locale: ${VNPAY_LOCALE:vn}
+  return-url: ${VNPAY_RETURN_URL:http://127.0.0.1:5174/checkout}
+  ipn-url: ${VNPAY_IPN_URL:http://localhost:8080/api/v1/payments/vnpay/ipn}
+  expire-minutes: ${VNPAY_EXPIRE_MINUTES:15}
+
 server:
   port: ${SERVER_PORT:8080}
   shutdown: graceful
@@ -49,9 +105,13 @@ server:
 pricing:
   token:
     secret-key: ${PRICING_TOKEN_SECRET:YieldEngineDeterministicSecretKeyHMACSHA256SecretValueMustBe256BitsMinimum!}
+    qr-secret-key: ${QR_TOKEN_SECRET:YieldEngineQrCheckInDistinctSecretKeyHMACSHA256MustBe256BitsMinimum!}
     ttl-minutes: 10
   hold:
     ttl-minutes: 10
+    sweep-ms: 15000
+  outbox:
+    poll-ms: 5000
   cache:
     caffeine-spec: "maximumSize=10000,expireAfterWrite=60s"
 

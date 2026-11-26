@@ -4,7 +4,9 @@ import io.hypersistence.utils.hibernate.type.json.JsonType;
 import jakarta.persistence.*;
 import lombok.*;
 import org.hibernate.annotations.CreationTimestamp;
+import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.annotations.Type;
+import org.hibernate.type.SqlTypes;
 
 import java.time.Instant;
 import java.util.Map;
@@ -21,7 +23,8 @@ public class IdempotencyKey {
     @EmbeddedId
     private IdempotencyKeyId id;
 
-    @Column(name = "request_hash", nullable = false, length = 64)
+    @JdbcTypeCode(SqlTypes.CHAR)
+    @Column(name = "request_hash", columnDefinition = "bpchar(64)", nullable = false, length = 64)
     private String requestHash;
 
     @Column(name = "response_code", nullable = false)

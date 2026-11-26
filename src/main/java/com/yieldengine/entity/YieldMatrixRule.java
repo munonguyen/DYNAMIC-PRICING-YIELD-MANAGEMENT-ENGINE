@@ -26,9 +26,11 @@ public class YieldMatrixRule {
     @Column(name = "rule_name", nullable = false, length = 100)
     private String ruleName;
 
+    @org.hibernate.annotations.ColumnTransformer(write = "?::numrange")
     @Column(name = "occupancy_pct", columnDefinition = "numrange", nullable = false)
     private String occupancyPct;
 
+    @org.hibernate.annotations.ColumnTransformer(write = "?::numrange")
     @Column(name = "lead_hours", columnDefinition = "numrange", nullable = false)
     private String leadHours;
 

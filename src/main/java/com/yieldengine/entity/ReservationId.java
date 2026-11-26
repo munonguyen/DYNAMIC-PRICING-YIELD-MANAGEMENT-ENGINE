@@ -23,3 +23,4 @@ public class ReservationId implements Serializable {
     @Column(name = "slot_start", nullable = false)
     private Instant slotStart;
 }
+

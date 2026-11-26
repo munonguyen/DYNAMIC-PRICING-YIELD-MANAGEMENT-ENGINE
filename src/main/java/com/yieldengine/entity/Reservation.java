@@ -27,13 +27,16 @@ public class Reservation {
     @Column(name = "tenant_id", nullable = false)
     private UUID tenantId;
 
+    @Column(name = "user_id")
+    private UUID userId;
+
     @Column(name = "booking_id")
     private UUID bookingId;
 
     @Column(name = "group_id", nullable = false)
     private UUID groupId;
 
-    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @ManyToOne(fetch = FetchType.EAGER, optional = false)
     @JoinColumn(name = "unit_id", nullable = false)
     private Unit unit;
 
@@ -44,13 +47,33 @@ public class Reservation {
     @Column(name = "locked_price", nullable = false)
     private Long lockedPrice;
 
+    @Column(name = "deposit_amount", nullable = false)
+    @Builder.Default
+    private Long depositAmount = 0L;
+
+    @Column(name = "refund_amount", nullable = false)
+    @Builder.Default
+    private Long refundAmount = 0L;
+
+    @Column(name = "forfeited_amount", nullable = false)
+    @Builder.Default
+    private Long forfeitedAmount = 0L;
+
     @Type(JsonType.class)
     @Column(name = "pricing_audit", columnDefinition = "jsonb", nullable = false)
     @Builder.Default
     private Map<String, Object> pricingAudit = new HashMap<>();
 
+    @Type(JsonType.class)
+    @Column(name = "policy_snapshot", columnDefinition = "jsonb", nullable = false)
+    @Builder.Default
+    private Map<String, Object> policySnapshot = new HashMap<>();
+
     @Column(name = "token_jti")
     private UUID tokenJti;
+
+    @Column(name = "qr_jti")
+    private UUID qrJti;
 
     @Column(name = "hold_expires_at")
     private Instant holdExpiresAt;
@@ -58,8 +81,20 @@ public class Reservation {
     @Column(name = "confirmed_at")
     private Instant confirmedAt;
 
+    @Column(name = "checked_in_at")
+    private Instant checkedInAt;
+
+    @Column(name = "no_show_marked_at")
+    private Instant noShowMarkedAt;
+
     @Column(name = "cancelled_at")
     private Instant cancelledAt;
+
+    @Column(name = "cancelled_by")
+    private UUID cancelledBy;
+
+    @Column(name = "cancelled_by_role")
+    private String cancelledByRole;
 
     @Column(name = "cancel_reason", length = 100)
     private String cancelReason;

@@ -18,8 +18,14 @@ public interface ReservationRepository extends JpaRepository<Reservation, Reserv
     @Query("SELECT r FROM Reservation r WHERE r.id.id = :id")
     Optional<Reservation> findByReservationId(@Param("id") UUID id);
 
+    @Query("SELECT r FROM Reservation r WHERE r.id.id = :id AND r.id.slotStart = :slotStart")
+    Optional<Reservation> findByIdAndSlotStart(@Param("id") UUID id, @Param("slotStart") Instant slotStart);
+
     @Query("SELECT r FROM Reservation r WHERE r.bookingId = :bookingId")
     List<Reservation> findByBookingId(@Param("bookingId") UUID bookingId);
+
+    @Query("SELECT r FROM Reservation r WHERE r.userId = :userId ORDER BY r.id.slotStart DESC")
+    List<Reservation> findByUserIdOrderBySlotStartDesc(@Param("userId") UUID userId);
 
     @Query("SELECT r FROM Reservation r WHERE r.groupId = :groupId AND r.id.slotStart = :slotStart")
     List<Reservation> findByGroupIdAndSlotStart(@Param("groupId") UUID groupId, @Param("slotStart") Instant slotStart);

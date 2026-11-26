@@ -3,11 +3,10 @@ package com.yieldengine.entity;
 import io.hypersistence.utils.hibernate.type.json.JsonType;
 import jakarta.persistence.*;
 import lombok.*;
-import org.hibernate.annotations.CreationTimestamp;
+import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.annotations.Type;
-import org.hibernate.annotations.UpdateTimestamp;
+import org.hibernate.type.SqlTypes;
 
-import java.time.Instant;
 import java.util.Map;
 import java.util.UUID;
 
@@ -20,11 +19,7 @@ import java.util.UUID;
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
-public class Payment {
-
-    @Id
-    @GeneratedValue(strategy = GenerationType.UUID)
-    private UUID id;
+public class Payment extends BaseEntity {
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "tenant_id", nullable = false)
@@ -40,10 +35,18 @@ public class Payment {
     @Column(name = "provider_ref", nullable = false, length = 100)
     private String providerRef;
 
+    @Column(name = "payment_type", nullable = false)
+    @Builder.Default
+    private String paymentType = "DEPOSIT";
+
+    @Column(name = "related_payment_id")
+    private UUID relatedPaymentId;
+
     @Column(nullable = false)
     private Long amount;
 
-    @Column(nullable = false, length = 3)
+    @JdbcTypeCode(SqlTypes.CHAR)
+    @Column(columnDefinition = "bpchar(3)", nullable = false, length = 3)
     @Builder.Default
     private String currency = "VND";
 
@@ -54,12 +57,4 @@ public class Payment {
     @Type(JsonType.class)
     @Column(name = "raw_payload", columnDefinition = "jsonb")
     private Map<String, Object> rawPayload;
-
-    @CreationTimestamp
-    @Column(name = "created_at", nullable = false, updatable = false)
-    private Instant createdAt;
-
-    @UpdateTimestamp
-    @Column(name = "updated_at", nullable = false)
-    private Instant updatedAt;
 }

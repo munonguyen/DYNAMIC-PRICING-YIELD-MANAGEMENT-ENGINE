@@ -50,3 +50,4 @@ public class SlotInventory {
         return (double) occupied / totalCapacity * 100.0;
     }
 }
+

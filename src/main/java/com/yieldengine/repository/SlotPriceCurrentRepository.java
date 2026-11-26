@@ -35,3 +35,4 @@ public interface SlotPriceCurrentRepository extends JpaRepository<SlotPriceCurre
             @Param("newSeq") Long newSeq
     );
 }
+

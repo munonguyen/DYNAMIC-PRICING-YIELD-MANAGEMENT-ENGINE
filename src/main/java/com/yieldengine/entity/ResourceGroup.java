@@ -2,11 +2,10 @@ package com.yieldengine.entity;
 
 import jakarta.persistence.*;
 import lombok.*;
-import org.hibernate.annotations.CreationTimestamp;
-import org.hibernate.annotations.UpdateTimestamp;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
 import java.time.Instant;
-import java.util.UUID;
 
 @Entity
 @Table(name = "resource_groups", uniqueConstraints = {
@@ -18,15 +17,15 @@ import java.util.UUID;
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
-public class ResourceGroup {
+public class ResourceGroup extends BaseEntity {
 
-    @Id
-    @GeneratedValue(strategy = GenerationType.UUID)
-    private UUID id;
-
-    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @ManyToOne(fetch = FetchType.EAGER, optional = false)
     @JoinColumn(name = "tenant_id", nullable = false)
     private Tenant tenant;
+
+    @ManyToOne(fetch = FetchType.EAGER, optional = false)
+    @JoinColumn(name = "sport_type_id", nullable = false)
+    private SportType sportType;
 
     @Column(nullable = false, length = 50)
     private String code;
@@ -38,7 +37,8 @@ public class ResourceGroup {
     @Builder.Default
     private String timezone = "Asia/Ho_Chi_Minh";
 
-    @Column(nullable = false, length = 3)
+    @JdbcTypeCode(SqlTypes.CHAR)
+    @Column(columnDefinition = "bpchar(3)", nullable = false, length = 3)
     @Builder.Default
     private String currency = "VND";
 
@@ -59,6 +59,26 @@ public class ResourceGroup {
     @Column(name = "max_price", nullable = false)
     private Long maxPrice;
 
+    @Column(name = "publish_status", nullable = false)
+    @Builder.Default
+    private String publishStatus = "DRAFT";
+
+    @Column(name = "deposit_percent", nullable = false)
+    @Builder.Default
+    private Short depositPercent = 0;
+
+    @ManyToOne(fetch = FetchType.EAGER)
+    @JoinColumn(name = "cancellation_policy_id")
+    private CancellationPolicy cancellationPolicy;
+
+    @Column(name = "noshow_grace_minutes", nullable = false)
+    @Builder.Default
+    private Integer noshowGraceMinutes = 15;
+
+    @Column(name = "balance_payment_mode", nullable = false)
+    @Builder.Default
+    private String balancePaymentMode = "AT_VENUE";
+
     @Column(nullable = false)
     @Builder.Default
     private String status = "ACTIVE";
@@ -67,14 +87,6 @@ public class ResourceGroup {
     @Column(nullable = false)
     @Builder.Default
     private Long version = 0L;
-
-    @CreationTimestamp
-    @Column(name = "created_at", nullable = false, updatable = false)
-    private Instant createdAt;
-
-    @UpdateTimestamp
-    @Column(name = "updated_at", nullable = false)
-    private Instant updatedAt;
 
     @Column(name = "deleted_at")
     private Instant deletedAt;

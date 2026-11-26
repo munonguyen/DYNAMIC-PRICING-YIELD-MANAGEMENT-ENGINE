@@ -24,6 +24,10 @@ public class TokenSigningKey {
 
     @Column(nullable = false)
     @Builder.Default
+    private String purpose = "PRICE_LOCK";
+
+    @Column(nullable = false)
+    @Builder.Default
     private String status = "ACTIVE";
 
     @CreationTimestamp

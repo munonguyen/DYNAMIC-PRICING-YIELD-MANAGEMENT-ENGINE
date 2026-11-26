@@ -17,7 +17,7 @@ public interface YieldRuleSetRepository extends JpaRepository<YieldRuleSet, UUID
         SELECT * FROM yield_rule_sets
         WHERE group_id = :groupId
           AND status = 'ACTIVE'
-          AND effective @> :slotTime::timestamptz
+          AND effective @> CAST(:slotTime AS timestamptz)
         LIMIT 1
         """, nativeQuery = true)
     Optional<YieldRuleSet> findActiveRuleSetForTime(

@@ -9,7 +9,6 @@ import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
 import java.time.Instant;
-import java.util.Optional;
 import java.util.UUID;
 
 @Repository
@@ -24,6 +23,19 @@ public interface SlotInventoryRepository extends JpaRepository<SlotInventory, Sl
           AND (held_count + confirmed_count) < total_capacity
         """, nativeQuery = true)
     int incrementHeldCountIfAvailable(
+            @Param("groupId") UUID groupId,
+            @Param("slotStart") Instant slotStart
+    );
+
+    @Modifying
+    @Query(value = """
+        UPDATE slot_inventory
+        SET confirmed_count = confirmed_count + 1, updated_at = NOW()
+        WHERE group_id = :groupId
+          AND slot_start = :slotStart
+          AND (held_count + confirmed_count) < total_capacity
+        """, nativeQuery = true)
+    int incrementConfirmedCountIfAvailable(
             @Param("groupId") UUID groupId,
             @Param("slotStart") Instant slotStart
     );
@@ -49,6 +61,18 @@ public interface SlotInventoryRepository extends JpaRepository<SlotInventory, Sl
           AND slot_start = :slotStart
         """, nativeQuery = true)
     int releaseHold(
+            @Param("groupId") UUID groupId,
+            @Param("slotStart") Instant slotStart
+    );
+
+    @Modifying
+    @Query(value = """
+        UPDATE slot_inventory
+        SET confirmed_count = GREATEST(0, confirmed_count - 1), updated_at = NOW()
+        WHERE group_id = :groupId
+          AND slot_start = :slotStart
+        """, nativeQuery = true)
+    int releaseConfirmed(
             @Param("groupId") UUID groupId,
             @Param("slotStart") Instant slotStart
     );

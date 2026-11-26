@@ -16,7 +16,7 @@ public interface ContextFactorRepository extends JpaRepository<ContextFactor, UU
     @Query(value = """
         SELECT * FROM context_factors
         WHERE group_id = :groupId
-          AND period @> :slotTime::timestamptz
+          AND period @> CAST(:slotTime AS timestamptz)
         """, nativeQuery = true)
     List<ContextFactor> findActiveContextFactors(
             @Param("groupId") UUID groupId,

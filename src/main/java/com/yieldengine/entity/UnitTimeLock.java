@@ -27,6 +27,10 @@ public class UnitTimeLock {
     @JoinColumn(name = "unit_id", nullable = false)
     private Unit unit;
 
+    @Column(name = "slot_start")
+    private Instant slotStart;
+
+    @org.hibernate.annotations.ColumnTransformer(write = "?::tstzrange")
     @Column(columnDefinition = "tstzrange", nullable = false)
     private String period;
 

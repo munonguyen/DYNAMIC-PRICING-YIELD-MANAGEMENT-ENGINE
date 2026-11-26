@@ -19,6 +19,7 @@ public class PricingProperties {
     @Setter
     public static class Token {
         private String secretKey = "DefaultSecretKeyHMACSHA256SecretValueMustBe256BitsMinimum!";
+        private String qrSecretKey = "DefaultQrCheckInSecretKeyHMACSHA256DistinctPurpose256Bits!";
         private int ttlMinutes = 10;
     }
 
@@ -34,4 +35,3 @@ public class PricingProperties {
         private String caffeineSpec = "maximumSize=10000,expireAfterWrite=60s";
     }
 }
-

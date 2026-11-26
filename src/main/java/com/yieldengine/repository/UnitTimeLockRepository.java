@@ -25,3 +25,4 @@ public interface UnitTimeLockRepository extends JpaRepository<UnitTimeLock, UUID
         """, nativeQuery = true)
     int deleteExpiredHoldLocksForUnit(@Param("unitId") UUID unitId);
 }
+

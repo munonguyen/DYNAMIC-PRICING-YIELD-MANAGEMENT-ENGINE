@@ -48,3 +48,4 @@ public class SlotPriceHistory {
     @Column(name = "trigger_event", nullable = false)
     private String triggerEvent;
 }
+

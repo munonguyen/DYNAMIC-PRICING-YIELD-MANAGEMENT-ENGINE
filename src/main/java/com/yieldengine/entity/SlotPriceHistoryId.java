@@ -22,3 +22,4 @@ public class SlotPriceHistoryId implements Serializable {
     @Column(name = "computed_at", nullable = false)
     private Instant computedAt;
 }
+

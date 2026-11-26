@@ -9,4 +9,5 @@ import java.util.Optional;
 @Repository
 public interface TokenSigningKeyRepository extends JpaRepository<TokenSigningKey, String> {
     Optional<TokenSigningKey> findFirstByStatusOrderByNotBeforeDesc(String status);
+    Optional<TokenSigningKey> findFirstByPurposeAndStatusOrderByNotBeforeDesc(String purpose, String status);
 }
