@@ -227,16 +227,25 @@ export const AdminExecutivePortal: React.FC<AdminExecutivePortalProps> = ({
   }, []);
 
   useEffect(() => {
+    if (activeTab !== 'OPERATIONS') return;
     let active = true;
-    marketplaceApi.fetchPlatformAnalytics(platformDays, listings).then((data) => {
-      if (active) setPlatformAnalytics(data);
-    }).catch(() => {
-      if (active) setPlatformAnalytics(null);
-    });
-    return () => {
-      active = false;
+    let loading = false;
+    const poll = async () => {
+      if (loading || document.hidden) return;
+      loading = true;
+      try {
+        const data = await marketplaceApi.fetchPlatformAnalytics(platformDays, listings);
+        if (active) setPlatformAnalytics(data);
+      } catch {
+        if (active) setPlatformAnalytics(null);
+      } finally {
+        loading = false;
+      }
     };
-  }, [platformDays, listings]);
+    void poll();
+    const timer = window.setInterval(poll, 20_000);
+    return () => { active = false; window.clearInterval(timer); };
+  }, [activeTab, platformDays, listings]);
 
   useEffect(() => {
     void loadAdminAccounts();

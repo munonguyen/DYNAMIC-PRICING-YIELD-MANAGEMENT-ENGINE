@@ -228,8 +228,27 @@ export const LessorPartnerPortal: React.FC<LessorPartnerPortalProps> = ({
 
   useEffect(() => {
     setAnalyticsData(null);
-    void loadAnalyticsFromDbOrEs();
-  }, [analyticsDays, tenantId, isStaffOnly, orderRevision]);
+    if (!tenantId || isStaffOnly || (activeTab !== 'OVERVIEW' && activeTab !== 'ESCROW_WALLET')) return;
+    let live = true;
+    let loading = false;
+    const poll = async () => {
+      if (loading || document.hidden) return;
+      loading = true;
+      setAnalyticsLoading(true);
+      try {
+        const data = await marketplaceApi.fetchLessorAnalytics(analyticsDays, tenantId);
+        if (live) setAnalyticsData(data);
+      } catch (error) {
+        if (live) setToastMsg(error instanceof Error ? error.message : 'Không tải được báo cáo.');
+      } finally {
+        loading = false;
+        if (live) setAnalyticsLoading(false);
+      }
+    };
+    void poll();
+    const timer = window.setInterval(poll, 20_000);
+    return () => { live = false; window.clearInterval(timer); };
+  }, [activeTab, analyticsDays, tenantId, isStaffOnly, orderRevision]);
 
   const updateOrderStatus = async (orderId: string, status: 'COMPLETED' | 'NO_SHOW') => {
     const order = providerOrders.find((item) => item.orderId === orderId);

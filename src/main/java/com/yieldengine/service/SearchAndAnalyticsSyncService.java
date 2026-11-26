@@ -3,7 +3,6 @@ package com.yieldengine.service;
 import com.yieldengine.utils.CommonTextAndPageUtils;
 
 import com.fasterxml.jackson.databind.JsonNode;
-import com.yieldengine.dto.SlotOccupancyChangedEvent;
 import com.yieldengine.record.analytics.IndexDoc;
 import com.yieldengine.record.analytics.*;
 import lombok.RequiredArgsConstructor;
@@ -11,9 +10,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.ApplicationArguments;
 import org.springframework.boot.ApplicationRunner;
 import org.springframework.context.annotation.Profile;
-import org.springframework.context.event.EventListener;
 import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.scheduling.annotation.Async;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -63,17 +60,6 @@ public class SearchAndAnalyticsSyncService implements ApplicationRunner {
             syncAllFromDatabase();
         } catch (Exception ex) {
             log.debug("Scheduled ES sync skipped: {}", ex.getMessage());
-        }
-    }
-
-    @Async
-    @EventListener
-    public void onBookingOccupancyChanged(SlotOccupancyChangedEvent event) {
-        if (!esGateway.isEnabled() || !esGateway.isHealthy()) return;
-        try {
-            syncAllFromDatabase();
-        } catch (Exception ex) {
-            log.debug("Async ES event sync failed: {}", ex.getMessage());
         }
     }
 
