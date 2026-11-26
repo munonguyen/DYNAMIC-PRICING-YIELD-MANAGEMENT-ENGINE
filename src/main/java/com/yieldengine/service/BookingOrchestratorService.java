@@ -695,9 +695,8 @@ public class BookingOrchestratorService {
                 : null;
         String paymentProvider = primaryPayment != null ? primaryPayment.getProvider() : null;
         String providerReference = primaryPayment != null ? primaryPayment.getProviderRef() : null;
-        Instant paidAt = primaryPayment != null
-                ? (primaryPayment.getGatewayVerifiedAt() != null ? primaryPayment.getGatewayVerifiedAt() : primaryPayment.getCreatedAt())
-                : null;
+        Instant paidAt = primaryPayment != null && "SUCCESS".equals(primaryPayment.getStatus())
+                ? primaryPayment.getGatewayVerifiedAt() : null;
         return new com.yieldengine.record.ops.MyTicketResponse(
                 res.getReservationId(),
                 pass.venueName(),
