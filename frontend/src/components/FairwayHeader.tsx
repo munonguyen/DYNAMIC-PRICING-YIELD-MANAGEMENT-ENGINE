@@ -569,6 +569,56 @@ export const FairwayHeader: React.FC<FairwayHeaderProps> = ({
                                   )}
                                 </>
                               )}
+                              {(activeRole === 'ADMIN' || activeRole === 'ACCOUNTANT') && (
+                                <>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setAccountMenuOpen(false);
+                                      onSelectAdminTab('OPERATIONS');
+                                      onNavigate('governance');
+                                    }}
+                                    className="flex w-full items-center justify-between rounded-xl px-3 py-2 text-left font-medium hover:bg-[#F8FAFC]"
+                                  >
+                                    <span>📊 Tổng quan &amp; Biểu đồ Toàn Sàn</span>
+                                  </button>
+                                  {activeRole === 'ADMIN' && (
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setAccountMenuOpen(false);
+                                        onSelectAdminTab('LESSOR_INSPECTOR');
+                                        onNavigate('governance');
+                                      }}
+                                      className="flex w-full items-center justify-between rounded-xl px-3 py-2 text-left font-medium hover:bg-[#F8FAFC]"
+                                    >
+                                      <span>🏢 Giám sát Đối tác Cho thuê</span>
+                                    </button>
+                                  )}
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setAccountMenuOpen(false);
+                                      onSelectAdminTab('ADMIN_KYC');
+                                      onNavigate('governance');
+                                    }}
+                                    className="flex w-full items-center justify-between rounded-xl px-3 py-2 text-left font-medium hover:bg-[#F8FAFC]"
+                                  >
+                                    <span>✅ Hàng đợi Duyệt Hồ sơ KYC</span>
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setAccountMenuOpen(false);
+                                      onSelectAdminTab('FINANCE_LEDGER');
+                                      onNavigate('governance');
+                                    }}
+                                    className="flex w-full items-center justify-between rounded-xl px-3 py-2 text-left font-medium hover:bg-[#F8FAFC]"
+                                  >
+                                    <span>⚖ Sổ cái Kép &amp; Đối soát</span>
+                                  </button>
+                                </>
+                              )}
                               {onOpenChatDrawer && (
                                 <button
                                   type="button"
