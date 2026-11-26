@@ -1,0 +1,26 @@
+{
+  "branch": "service/staff/pin-check-in",
+  "title": "Nhận sân bằng PIN",
+  "scope": "Xác nhận nhận sân bằng mã PIN dùng một lần.",
+  "operations": [
+    {
+      "method": "POST",
+      "path": "/api/v1/checkins/verify-pin",
+      "operationId": "verifyPin"
+    }
+  ],
+  "source": [
+    {
+      "file": "src/main/java/com/yieldengine/controller/staff/StaffCheckInController.java",
+      "anchors": [
+        "verifyPin("
+      ]
+    },
+    {
+      "file": "src/main/java/com/yieldengine/service/CheckInService.java",
+      "anchors": [
+        "verifyPinCheckIn("
+      ]
+    }
+  ]
+}
