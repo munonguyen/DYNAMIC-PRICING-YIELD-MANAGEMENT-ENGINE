@@ -371,6 +371,7 @@ export interface LessorBookingOrder {
   courtPrice: number;
   addOnSummary?: string;
   addOnTotal: number;
+  addOnQuantities?: Record<string, number>;
   paidEscrow: number;
   remainingAtVenue: number;
   paymentGateway: string;

@@ -2,8 +2,10 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import {
   Camera,
+  ChevronRight,
   ExternalLink,
   KeyRound,
+  Package,
   PauseCircle,
   PlayCircle,
   Plus,
@@ -48,6 +50,8 @@ import { LessorAddOnServicesManager } from './LessorAddOnServicesManager';
 import { LessorAnalyticsDashboard } from './LessorAnalyticsDashboard';
 import { QrCheckInScannerModal, type QrModalTabId } from './QrCheckInScannerModal';
 import { CreateCourtGroupModal } from './CreateCourtGroupModal';
+import { BookingOrderDetailModal } from './BookingOrderDetailModal';
+import { getActiveLessorServices } from '../data/courtServicesData';
 
 export type LessorPortalTabId =
   | 'OVERVIEW'
@@ -377,6 +381,45 @@ export const LessorPartnerPortal: React.FC<LessorPartnerPortalProps> = ({
   ]);
   const [qrModalOrder, setQrModalOrder] = useState<LessorBookingOrder | null>(null);
   const [qrModalQuery, setQrModalQuery] = useState('');
+  const [detailOrderId, setDetailOrderId] = useState<string | null>(null);
+
+  const selectedDetailOrder = useMemo<LessorBookingOrder | null>(
+    () => (detailOrderId ? providerOrders.find((o) => o.orderId === detailOrderId) ?? null : null),
+    [detailOrderId, providerOrders]
+  );
+
+  const selectedDetailCourt = useMemo<PublishedListing | null>(
+    () =>
+      selectedDetailOrder
+        ? myListings.find((l) => l.groupId === selectedDetailOrder.groupId) ??
+          listings.find((l) => l.groupId === selectedDetailOrder.groupId) ??
+          null
+        : null,
+    [selectedDetailOrder, myListings, listings]
+  );
+
+  const handleUpdateOrderAddOns = (
+    orderId: string,
+    nextSummary: string | undefined,
+    nextAddOnTotal: number,
+    nextQuantities: Record<string, number>
+  ) => {
+    const updatedList = providerOrders.map((o) => {
+      if (o.orderId !== orderId) return o;
+      const nextRemaining = Math.max(0, o.courtPrice + nextAddOnTotal - o.paidEscrow);
+      return {
+        ...o,
+        addOnSummary: nextSummary,
+        addOnTotal: nextAddOnTotal,
+        addOnQuantities: nextQuantities,
+        remainingAtVenue: nextRemaining,
+      };
+    });
+    const nextMap = { ...ordersByProvider, [activeProvider.providerId]: updatedList };
+    setOrdersByProvider(nextMap);
+    writePersistedOperationalOrdersMap(nextMap);
+    flashToast(`✓ Đã cập nhật dịch vụ đi kèm cho đơn ${orderId}!`);
+  };
 
   const venueSupportsQr = myListings.some((l) => l.checkinMode === 'QR_STAFF');
   const venueSupportsPin = myListings.some(
@@ -1308,149 +1351,182 @@ export const LessorPartnerPortal: React.FC<LessorPartnerPortalProps> = ({
 
                     <div className="divide-y divide-neutral-100">
                       {paginatedOrders.map((order) => {
+                        const matchedListing =
+                          myListings.find((l) => l.groupId === order.groupId) ?? null;
                         const orderListingMode =
-                          myListings.find((l) => l.groupId === order.groupId)?.checkinMode ??
-                          order.checkinMode ??
-                          'QR_STAFF';
+                          matchedListing?.checkinMode ?? order.checkinMode ?? 'QR_STAFF';
                         const usesPinCounter =
                           orderListingMode === 'PIN_COUNTER' || orderListingMode === 'MANUAL';
+                        const courtServiceCount = getActiveLessorServices(matchedListing).length;
+                        const maskedPhone =
+                          order.customerPhone.replace(/\s+/g, '').length >= 4
+                            ? `${order.customerPhone.replace(/\s+/g, '').slice(0, 4)} ••• •••`
+                            : 'Đã bảo mật';
 
                         return (
-                        <div
-                          key={order.orderId}
-                          className="flex flex-col gap-4 p-5 transition hover:bg-[#F8FAFC] xl:flex-row xl:items-center xl:justify-between"
-                        >
-                          <div className="space-y-1.5">
-                            <div className="flex flex-wrap items-center gap-2">
-                              <span className="tabular-nums rounded-lg bg-[#0F172A] px-2.5 py-0.5 text-[11px] font-bold text-white">
-                                {order.orderId}
-                              </span>
-                              <span className="rounded-full bg-[#E7F7D4] px-2.5 py-0.5 text-[11px] font-bold text-[#16422C]">
-                                {order.unitNumber} • {order.sportName}
-                              </span>
-                              <span
-                                className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[10.5px] font-bold ${
-                                  usesPinCounter
-                                    ? 'bg-[#E6F1F8] text-[#0E4F7E]'
-                                    : 'bg-neutral-100 text-neutral-700'
-                                }`}
-                              >
-                                {usesPinCounter ? (
-                                  <>
-                                    <KeyRound className="h-3 w-3" /> Mã PIN 6 số (Không máy quét)
-                                  </>
+                          <div
+                            key={order.orderId}
+                            onClick={() => setDetailOrderId(order.orderId)}
+                            className="group cursor-pointer p-4 sm:px-6 sm:py-4 transition hover:bg-[#F8FAFC]"
+                          >
+                            <div className="grid grid-cols-1 gap-4 lg:grid-cols-12 lg:items-center">
+                              {/* COL 1 (5/12): ORDER ID + STATUS + COURT & SLOT */}
+                              <div className="lg:col-span-5 min-w-0 space-y-1.5">
+                                <div className="flex flex-wrap items-center gap-2">
+                                  <span className="tabular-nums rounded-lg bg-[#0F172A] px-2.5 py-0.5 text-[11px] font-bold text-white">
+                                    {order.orderId}
+                                  </span>
+                                  <span
+                                    className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[10.5px] font-bold ${
+                                      order.status === 'CONFIRMED'
+                                        ? 'bg-amber-100 text-amber-900'
+                                        : order.status === 'COMPLETED'
+                                          ? 'bg-emerald-100 text-emerald-900'
+                                          : 'bg-rose-100 text-rose-800'
+                                    }`}
+                                  >
+                                    {order.status === 'CONFIRMED'
+                                      ? usesPinCounter
+                                        ? 'Chờ đối chiếu PIN'
+                                        : 'Chờ quét QR'
+                                      : order.status === 'COMPLETED'
+                                        ? 'Đã nhận sân'
+                                        : 'Bỏ lịch'}
+                                  </span>
+                                  <span
+                                    className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10.5px] font-semibold ${
+                                      usesPinCounter
+                                        ? 'bg-[#E6F1F8] text-[#0E4F7E]'
+                                        : 'bg-[#F4F8F4] text-[#16422C]'
+                                    }`}
+                                  >
+                                    {usesPinCounter ? (
+                                      <>
+                                        <KeyRound className="h-3 w-3" /> PIN 6 số
+                                      </>
+                                    ) : (
+                                      <>
+                                        <QrCode className="h-3 w-3" /> Quét QR
+                                      </>
+                                    )}
+                                  </span>
+                                </div>
+
+                                <div className="truncate text-sm font-bold text-[#0F172A] group-hover:text-[#16422C]">
+                                  {order.groupName}
+                                </div>
+
+                                <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-neutral-500">
+                                  <span className="font-semibold text-[#16422C]">
+                                    {order.unitNumber} • {order.sportName}
+                                  </span>
+                                  <span>·</span>
+                                  <span className="font-medium text-neutral-700">
+                                    {order.slotLabel}
+                                  </span>
+                                </div>
+                              </div>
+
+                              {/* COL 2 (3/12): CUSTOMER + ADD-ON SERVICES */}
+                              <div className="lg:col-span-3 min-w-0 space-y-1.5 text-xs">
+                                <div>
+                                  <div className="truncate font-semibold text-[#0F172A]">
+                                    {order.customerName}
+                                  </div>
+                                  <div className="text-[11px] text-neutral-500 tabular-nums">
+                                    {maskedPhone}
+                                  </div>
+                                </div>
+
+                                {order.addOnSummary ? (
+                                  <div className="inline-flex max-w-full items-center gap-1 rounded-lg bg-[#E7F7D4]/75 px-2.5 py-1 text-[11px] font-semibold text-[#16422C]">
+                                    <Package className="h-3 w-3 shrink-0" />
+                                    <span className="truncate">
+                                      {order.addOnSummary} ({formatVnd(order.addOnTotal)})
+                                    </span>
+                                  </div>
                                 ) : (
-                                  <>
-                                    <QrCode className="h-3 w-3" /> Quét QR tại quầy
-                                  </>
+                                  <div className="inline-flex items-center gap-1 rounded-lg bg-neutral-100 px-2.5 py-1 text-[11px] font-medium text-neutral-600">
+                                    <Package className="h-3 w-3 shrink-0 text-neutral-400" />
+                                    <span>
+                                      {courtServiceCount > 0
+                                        ? `${courtServiceCount} dịch vụ sân sẵn có`
+                                        : 'Không kèm dịch vụ'}
+                                    </span>
+                                  </div>
                                 )}
-                              </span>
-                              <span className="text-xs font-semibold text-[#0F172A]">
-                                {order.slotLabel}
-                              </span>
-                              <span
-                                className={`rounded-full px-2.5 py-0.5 text-[10.5px] font-bold ${
-                                  order.status === 'CONFIRMED'
-                                    ? 'bg-amber-100 text-amber-900'
-                                    : order.status === 'COMPLETED'
-                                      ? 'bg-emerald-100 text-emerald-900'
-                                      : 'bg-rose-100 text-rose-800'
-                                }`}
+                              </div>
+
+                              {/* COL 3 (4/12): PAYMENT SUMMARY + CLEAN ACTIONS */}
+                              <div
+                                className="lg:col-span-4 flex flex-wrap items-center justify-between gap-3 lg:justify-end"
+                                onClick={(e) => e.stopPropagation()}
                               >
-                                {order.status === 'CONFIRMED'
-                                  ? usesPinCounter
-                                    ? 'CHỜ NHẬP PIN'
-                                    : 'CHỜ QUÉT QR'
-                                  : order.status === 'COMPLETED'
-                                    ? 'ĐÃ NHẬN SÂN'
-                                    : 'KHÁCH BỎ LỊCH'}
-                              </span>
-                            </div>
+                                <div className="text-left lg:text-right text-xs whitespace-nowrap">
+                                  <div className="font-bold text-[#0F172A] tabular-nums">
+                                    Thu tại sân:{' '}
+                                    <span
+                                      className={
+                                        order.remainingAtVenue > 0
+                                          ? 'text-[#B45309]'
+                                          : 'text-[#16422C]'
+                                      }
+                                    >
+                                      {formatVnd(order.remainingAtVenue)}
+                                    </span>
+                                  </div>
+                                  <div className="mt-0.5 text-[11px] text-neutral-500 tabular-nums">
+                                    Đã cọc{' '}
+                                    <strong className="text-[#16422C]">
+                                      {formatVnd(order.paidEscrow)}
+                                    </strong>{' '}
+                                    • {order.paymentGateway}
+                                  </div>
+                                </div>
 
-                            <div className="text-sm font-semibold text-[#0F172A]">
-                              {order.groupName}
-                            </div>
+                                <div className="flex flex-wrap items-center gap-1.5">
+                                  <button
+                                    type="button"
+                                    onClick={() => setDetailOrderId(order.orderId)}
+                                    className="inline-flex items-center gap-1 rounded-full border border-neutral-200 bg-white px-3 py-1.5 text-xs font-semibold text-[#0F172A] transition hover:border-[#16422C] hover:text-[#16422C] cursor-pointer"
+                                  >
+                                    Chi tiết
+                                    <ChevronRight className="h-3.5 w-3.5 text-neutral-400" />
+                                  </button>
 
-                            <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-neutral-500">
-                              <span>
-                                Khách: <strong className="text-neutral-800">{order.customerName}</strong> (
-                                {order.customerPhone.replace(/\s+/g, '').length >= 4
-                                  ? `${order.customerPhone.replace(/\s+/g, '').slice(0, 4)} ••• •••`
-                                  : 'Đã bảo mật'}
-                                )
-                              </span>
-                              <span className="inline-flex items-center gap-1 rounded-full bg-[#F1F5F9] px-2.5 py-0.5 text-[11px] font-semibold text-neutral-700">
-                                {usesPinCounter ? 'Xác thực qua Mã PIN Email' : `Mã vé QR: ${order.qrCode}`}
-                              </span>
-                              {order.addOnSummary && (
-                                <span className="font-medium text-[#16422C]">
-                                  + Dịch vụ kèm: {order.addOnSummary} ({formatVnd(order.addOnTotal)})
-                                </span>
-                              )}
-                            </div>
-                          </div>
-
-                          <div className="flex flex-wrap items-center justify-between gap-4 xl:justify-end">
-                            <div className="text-left xl:text-right text-xs">
-                              <div className="text-neutral-500">
-                                Đã thu ký quỹ:{' '}
-                                <strong className="tabular-nums text-[#16422C]">
-                                  {formatVnd(order.paidEscrow)}
-                                </strong>
-                              </div>
-                              <div className="mt-0.5 font-semibold text-[#0F172A] tabular-nums">
-                                Cần thu thêm tại sân: {formatVnd(order.remainingAtVenue)}
-                              </div>
-                              <div className="text-[11px] text-neutral-400">
-                                {order.paymentGateway} • {order.createdAtLabel}
-                              </div>
-                            </div>
-
-                            {order.status === 'CONFIRMED' && (
-                              <div className="flex items-center gap-2">
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    setQrModalOrder(order);
-                                    if (usesPinCounter) {
-                                      setQrModalTab('PIN_VERIFY');
-                                      setQrModalAllowedModes(['PIN_VERIFY']);
-                                      setQrModalQuery('');
-                                    } else {
-                                      setQrModalTab('SCANNER');
-                                      setQrModalAllowedModes(['SCANNER']);
-                                      setQrModalQuery(order.qrToken || order.qrCode);
-                                    }
-                                    setQrModalOpen(true);
-                                  }}
-                                  className="inline-flex items-center gap-1.5 rounded-full bg-[#16422C] px-3.5 py-2 text-xs font-bold text-white hover:bg-[#0F172A] cursor-pointer"
-                                >
-                                  {usesPinCounter ? (
-                                    <>
-                                      <KeyRound className="h-3.5 w-3.5" /> Nhập PIN 6 số
-                                    </>
-                                  ) : (
-                                    <>
-                                      <QrCode className="h-3.5 w-3.5" /> Quét QR nhận sân
-                                    </>
+                                  {order.status === 'CONFIRMED' && (
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setQrModalOrder(order);
+                                        if (usesPinCounter) {
+                                          setQrModalTab('PIN_VERIFY');
+                                          setQrModalAllowedModes(['PIN_VERIFY']);
+                                          setQrModalQuery('');
+                                        } else {
+                                          setQrModalTab('SCANNER');
+                                          setQrModalAllowedModes(['SCANNER']);
+                                          setQrModalQuery(order.qrToken || order.qrCode);
+                                        }
+                                        setQrModalOpen(true);
+                                      }}
+                                      className="inline-flex items-center gap-1.5 rounded-full bg-[#16422C] px-3.5 py-1.5 text-xs font-bold text-white transition hover:bg-[#0F172A] cursor-pointer"
+                                    >
+                                      {usesPinCounter ? (
+                                        <>
+                                          <KeyRound className="h-3.5 w-3.5" /> Nhập PIN
+                                        </>
+                                      ) : (
+                                        <>
+                                          <QrCode className="h-3.5 w-3.5" /> Quét QR
+                                        </>
+                                      )}
+                                    </button>
                                   )}
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    updateOrderStatus(order.orderId, 'NO_SHOW');
-                                    flashToast(
-                                      `Đã đánh dấu đơn ${order.orderId} bỏ lịch quá 15 phút ân hạn.`
-                                    );
-                                  }}
-                                  className="rounded-full border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-700 hover:bg-rose-100"
-                                >
-                                  Bỏ lịch
-                                </button>
+                                </div>
                               </div>
-                            )}
+                            </div>
                           </div>
-                        </div>
                         );
                       })}
 
@@ -2491,6 +2567,34 @@ export const LessorPartnerPortal: React.FC<LessorPartnerPortalProps> = ({
           </div>
         </div>
       </div>
+      <BookingOrderDetailModal
+        order={selectedDetailOrder}
+        courtListing={selectedDetailCourt}
+        isStaffOnly={isStaffOnly}
+        onClose={() => setDetailOrderId(null)}
+        onStartCheckIn={(order, mode) => {
+          setQrModalOrder(order);
+          if (mode === 'PIN_COUNTER' || mode === 'MANUAL') {
+            setQrModalTab('PIN_VERIFY');
+            setQrModalAllowedModes(['PIN_VERIFY']);
+            setQrModalQuery('');
+          } else {
+            setQrModalTab('SCANNER');
+            setQrModalAllowedModes(['SCANNER']);
+            setQrModalQuery(order.qrToken || order.qrCode);
+          }
+          setQrModalOpen(true);
+        }}
+        onMarkNoShow={(orderId) => {
+          updateOrderStatus(orderId, 'NO_SHOW');
+          flashToast(`Đã đánh dấu đơn ${orderId} bỏ lịch quá 15 phút ân hạn.`);
+        }}
+        onUpdateOrderAddOns={handleUpdateOrderAddOns}
+        onOpenManageCourtServices={(groupId) => {
+          setFocusedServiceGroupId(groupId);
+          setActiveTab('ADDON_PRODUCTS');
+        }}
+      />
       <CreateCourtGroupModal
         open={showCreateCourtForm && !isStaffOnly}
         onClose={() => setShowCreateCourtForm(false)}
