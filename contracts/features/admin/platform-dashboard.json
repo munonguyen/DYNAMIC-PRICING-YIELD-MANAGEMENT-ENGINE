@@ -1,0 +1,26 @@
+{
+  "branch": "service/admin/platform-dashboard",
+  "title": "Dashboard toàn sàn",
+  "scope": "Xem báo cáo vận hành và chỉ số toàn nền tảng.",
+  "operations": [
+    {
+      "method": "GET",
+      "path": "/api/v1/analytics/platform",
+      "operationId": "getPlatformAnalytics"
+    }
+  ],
+  "source": [
+    {
+      "file": "src/main/java/com/yieldengine/controller/admin/AdminPlatformAnalyticsController.java",
+      "anchors": [
+        "getPlatformAnalytics("
+      ]
+    },
+    {
+      "file": "frontend/src/components/AdminPlatformDashboard.tsx",
+      "anchors": [
+        "AdminPlatformDashboard"
+      ]
+    }
+  ]
+}
