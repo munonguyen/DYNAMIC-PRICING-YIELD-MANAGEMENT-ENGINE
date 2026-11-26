@@ -1,0 +1,54 @@
+{
+  "branch": "service/shared/payments/vnpay-gateway",
+  "title": "Cổng VNPAY",
+  "scope": "Khởi tạo thanh toán VNPAY và ghi nhận kết quả qua callback và IPN.",
+  "operations": [
+    {
+      "method": "POST",
+      "path": "/api/v1/payments/vnpay/create-payment",
+      "operationId": "createVnPayPayment"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/payments/vnpay/transactions/{txnRef}",
+      "operationId": "getVnPayTransaction"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/payments/vnpay/reservations/{reservationId}",
+      "operationId": "listVnPayByReservation"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/payments/vnpay/return",
+      "operationId": "handleVnPayReturn"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/payments/vnpay/ipn",
+      "operationId": "handleVnPayIpn"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/payments/vnpay/ipn",
+      "operationId": "handleVnPayIpn"
+    }
+  ],
+  "source": [
+    {
+      "file": "src/main/java/com/yieldengine/controller/customer/CustomerPaymentController.java",
+      "anchors": [
+        "createVnPayPayment(",
+        "getVnPayTransaction(",
+        "listVnPayByReservation("
+      ]
+    },
+    {
+      "file": "src/main/java/com/yieldengine/controller/publicapi/PaymentWebhookController.java",
+      "anchors": [
+        "handleVnPayReturn(",
+        "handleVnPayIpn("
+      ]
+    }
+  ]
+}
