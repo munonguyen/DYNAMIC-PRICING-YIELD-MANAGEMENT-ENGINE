@@ -5,7 +5,8 @@ import com.yieldengine.dto.request.CreateTimeSlotRequest;
 import com.yieldengine.dto.request.ResourceGroupRequest;
 import com.yieldengine.entity.ResourceGroup;
 import com.yieldengine.entity.TimeSlot;
-import com.yieldengine.security.AuthContext;
+import com.yieldengine.record.marketplace.PublishedListingResponse;
+import com.yieldengine.record.marketplace.UpdateCourtGroupRequest;
 import com.yieldengine.security.RbacGuard;
 import com.yieldengine.service.InventoryService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -33,43 +34,48 @@ public class LessorInventoryController {
     @Operation(summary = "[MANAGER] Create a court group and auto-generate physical courts (UC-07)")
     @PostMapping("/groups")
     public ResponseEntity<ResourceGroup> createResourceGroup(@Valid @RequestBody ResourceGroupRequest request) {
-        if (AuthContext.current().isPresent()) {
-            UUID authorizedTenantId = rbacGuard.resolveAuthorizedTenantId(request.getTenantId(), SystemConstant.ROLE_MANAGER);
-            request.setTenantId(authorizedTenantId);
-        }
+        request.setTenantId(rbacGuard.resolveAuthorizedTenantId(request.getTenantId(), SystemConstant.ROLE_MANAGER));
         ResourceGroup group = inventoryService.createResourceGroup(request);
         return ResponseEntity.status(HttpStatus.CREATED).body(group);
+    }
+
+    @GetMapping("/groups")
+    public List<PublishedListingResponse> listManagedGroups(@RequestParam(required = false) UUID tenantId) {
+        return inventoryService.listManagedGroups(rbacGuard.resolveAuthorizedTenantId(
+                tenantId, SystemConstant.ROLE_MANAGER, SystemConstant.ROLE_STAFF));
+    }
+
+    @PatchMapping("/groups/{id}/settings")
+    public ResponseEntity<Void> updateGroup(@PathVariable UUID id, @Valid @RequestBody UpdateCourtGroupRequest request) {
+        requireGroupManager(id);
+        inventoryService.updateGroup(id, request);
+        return ResponseEntity.noContent().build();
     }
 
     @Operation(summary = "[MANAGER / PUBLIC] Get court group details by ID")
     @GetMapping("/groups/{id}")
     public ResponseEntity<ResourceGroup> getResourceGroup(@PathVariable UUID id) {
-        return ResponseEntity.ok(inventoryService.getResourceGroup(id));
+        return ResponseEntity.ok(inventoryService.getVisibleResourceGroup(id));
     }
 
     @Operation(summary = "[MANAGER] Publish a court group to Marketplace listings (UC-08)")
     @PostMapping("/groups/{id}/publish")
     public ResponseEntity<ResourceGroup> publishGroup(@PathVariable UUID id) {
-        ResourceGroup group = inventoryService.getResourceGroup(id);
-        if (AuthContext.current().isPresent()) {
-            rbacGuard.requireTenantRoleOrAdmin(group.getTenant().getId(), SystemConstant.ROLE_MANAGER);
-        }
+        requireGroupManager(id);
         return ResponseEntity.ok(inventoryService.updatePublishStatus(id, true));
     }
 
     @Operation(summary = "[MANAGER] Unpublish a court group from Marketplace listings (UC-08)")
     @PostMapping("/groups/{id}/unpublish")
     public ResponseEntity<ResourceGroup> unpublishGroup(@PathVariable UUID id) {
-        ResourceGroup group = inventoryService.getResourceGroup(id);
-        if (AuthContext.current().isPresent()) {
-            rbacGuard.requireTenantRoleOrAdmin(group.getTenant().getId(), SystemConstant.ROLE_MANAGER);
-        }
+        requireGroupManager(id);
         return ResponseEntity.ok(inventoryService.updatePublishStatus(id, false));
     }
 
     @Operation(summary = "[MANAGER] Generate a business time slot and snapshot initial dynamic price")
     @PostMapping("/slots")
     public ResponseEntity<TimeSlot> createTimeSlot(@Valid @RequestBody CreateTimeSlotRequest request) {
+        requireGroupManager(request.getGroupId());
         TimeSlot slot = inventoryService.createTimeSlot(request);
         return ResponseEntity.status(HttpStatus.CREATED).body(slot);
     }
@@ -81,7 +87,14 @@ public class LessorInventoryController {
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) Instant start,
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) Instant end
     ) {
+        inventoryService.getVisibleResourceGroup(groupId);
         return ResponseEntity.ok(inventoryService.getSlots(groupId, start, end));
+    }
+
+    private void requireGroupManager(UUID groupId) {
+        rbacGuard.requireAuthenticated();
+        ResourceGroup group = inventoryService.getResourceGroup(groupId);
+        rbacGuard.requireTenantRoleOrAdmin(group.getTenant().getId(), SystemConstant.ROLE_MANAGER);
     }
 }
 
