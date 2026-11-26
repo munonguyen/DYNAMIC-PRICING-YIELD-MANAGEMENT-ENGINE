@@ -196,7 +196,6 @@ export const CourtDetailView: React.FC<CourtDetailViewProps> = ({
   };
 
   const provider = listing.provider;
-  const commissionPct = provider?.commissionRatePct ?? 10;
 
   const selectedSlotObj: SlotListingQuote | undefined =
     listing.upcomingSlots.find((s) => s.slotStart === activeSlotStart) ??
@@ -209,7 +208,6 @@ export const CourtDetailView: React.FC<CourtDetailViewProps> = ({
       ? activeQuote.currentPrice
       : selectedSlotObj?.currentDynamicPrice ?? listing.basePrice;
   const depositAmount = Math.floor((effectivePrice * listing.depositPercent) / 100);
-  const platformFeeFromPartner = Math.floor((effectivePrice * commissionPct) / 100);
 
   const availableServices = getActiveLessorServices(listing);
   const filteredServices =
@@ -462,12 +460,11 @@ export const CourtDetailView: React.FC<CourtDetailViewProps> = ({
                   {provider.badge}
                 </span>
               )}
-              <span className="inline-flex items-center gap-1 font-semibold text-amber-600 tabular-nums">
-                ★ {(listing.rating ?? 4.9).toFixed(1)}
-                <span className="text-neutral-400 font-normal">
-                  ({listing.reviewCount ?? 120} đánh giá)
+              {listing.rating != null && Boolean(listing.reviewCount) && (
+                <span className="inline-flex items-center gap-1 font-semibold text-amber-600 tabular-nums">
+                  ★ {listing.rating.toFixed(1)} ({listing.reviewCount} đánh giá)
                 </span>
-              </span>
+              )}
               <span
                 className={`rounded-full px-2.5 py-0.5 text-[11px] font-semibold ${
                   hasAnyAvailable
@@ -621,22 +618,7 @@ export const CourtDetailView: React.FC<CourtDetailViewProps> = ({
               </div>
             </div>
 
-            {/* 3rd-Party Platform Commission & Accountability Card */}
-            <div className="mt-5 rounded-2xl border border-[#0E4F7E]/25 bg-[#F4F8FB] p-4 text-xs">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <span className="font-semibold text-[#0E4F7E]">
-                  Minh bạch Sàn trung gian &amp; Trách nhiệm bảo lãnh ArenaPulse
-                </span>
-                <span className="rounded-full bg-white border border-[#0E4F7E]/20 px-2.5 py-0.5 tabular-nums text-[11px] font-semibold text-[#0E4F7E]">
-                  Chiết khấu đối tác: {commissionPct}% ({formatVnd(platformFeeFromPartner)})
-                </span>
-              </div>
-              <p className="mt-1.5 leading-relaxed text-neutral-600">
-                {provider?.platformGuarantee ??
-                  'ArenaPulse chịu trách nhiệm giữ hộ tiền cọc ký quỹ, hoàn trả 100% nếu sân lỗi/mưa và hỗ trợ đối soát 2 chiều.'}{' '}
-                Người thuê sân được <strong>miễn phí 0₫</strong> phí nền tảng.
-              </p>
-            </div>
+
           </div>
 
           {/* Primary Transaction CTA */}
@@ -998,33 +980,6 @@ export const CourtDetailView: React.FC<CourtDetailViewProps> = ({
                 <p className="text-xs text-neutral-500">
                   Cơ sở: {listing.venueName} • {provider.district}, {provider.city}
                 </p>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-2 gap-4 sm:grid-cols-4 text-xs border-y lg:border-y-0 lg:border-x border-neutral-200/80 py-3 lg:py-0 lg:px-6">
-              <div>
-                <div className="text-neutral-400">Số sân quản lý</div>
-                <div className="mt-0.5 tabular-nums font-semibold text-[#0F172A]">
-                  {provider.totalManagedCourts} sân
-                </div>
-              </div>
-              <div>
-                <div className="text-neutral-400">Tỷ lệ phản hồi</div>
-                <div className="mt-0.5 tabular-nums font-semibold text-[#16422C]">
-                  {provider.responseRatePct}%
-                </div>
-              </div>
-              <div>
-                <div className="text-neutral-400">Thâm niên đối tác</div>
-                <div className="mt-0.5 tabular-nums font-semibold text-[#0F172A]">
-                  {provider.yearsPartner} năm
-                </div>
-              </div>
-              <div>
-                <div className="text-neutral-400">Chiết khấu sàn</div>
-                <div className="mt-0.5 tabular-nums font-semibold text-[#0E4F7E]">
-                  {provider.commissionRatePct}% / đơn
-                </div>
               </div>
             </div>
 

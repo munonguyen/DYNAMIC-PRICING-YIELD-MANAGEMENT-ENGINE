@@ -886,16 +886,6 @@ export const BookingPipelineAndQrSection: React.FC<BookingPipelineAndQrSectionPr
                         {activeListing.provider.providerName}
                       </span>
                     </div>
-                    <div className="flex justify-between text-[11px]">
-                      <span className="text-neutral-500">
-                        Chiết khấu đối tác ({activeListing.provider.commissionRatePct}% trừ từ chủ sân)
-                      </span>
-                      <span className="tabular-nums font-semibold text-[#0E4F7E]">
-                        {formatVnd(
-                          Math.floor((lockedPrice * activeListing.provider.commissionRatePct) / 100)
-                        )}
-                      </span>
-                    </div>
                     <div className="text-[10.5px] text-neutral-500">
                       Mức hoàn cọc áp dụng theo chính sách của ca đã đặt.
                     </div>

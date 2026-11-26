@@ -90,7 +90,7 @@ export const MarketplaceExplorerSection: React.FC<MarketplaceExplorerSectionProp
   const [availabilityFilter, setAvailabilityFilter] = useState<'ALL' | 'AVAILABLE' | 'PLENTY'>('ALL');
   const [timePeriodFilter, setTimePeriodFilter] = useState<'ALL' | 'MORNING' | 'AFTERNOON' | 'EVENING'>('ALL');
   const [durationFilter, setDurationFilter] = useState<'ALL' | '60' | '90'>('ALL');
-  const [sortBy, setSortBy] = useState<'RECOMMENDED' | 'PRICE_ASC' | 'CAPACITY_DESC' | 'RATING_DESC'>('RECOMMENDED');
+  const [sortBy, setSortBy] = useState<'RECOMMENDED' | 'PRICE_ASC' | 'CAPACITY_DESC'>('RECOMMENDED');
   const [detailListingId, setDetailListingId] = useState<string | null>(null);
   const [esSearchInfo, setEsSearchInfo] = useState<CourtSearchResponseData | null>(null);
 
@@ -160,7 +160,6 @@ export const MarketplaceExplorerSection: React.FC<MarketplaceExplorerSectionProp
     })
     .sort((a, b) => {
       if (sortBy === 'PRICE_ASC') return a.basePrice - b.basePrice;
-      if (sortBy === 'RATING_DESC') return (b.rating ?? 4.8) - (a.rating ?? 4.8);
       if (sortBy === 'CAPACITY_DESC') {
         const capA = a.upcomingSlots.reduce((sum, s) => sum + s.availableCourts, 0);
         const capB = b.upcomingSlots.reduce((sum, s) => sum + s.availableCourts, 0);
@@ -499,7 +498,6 @@ export const MarketplaceExplorerSection: React.FC<MarketplaceExplorerSectionProp
                     { value: 'RECOMMENDED', label: 'Đề xuất nổi bật' },
                     { value: 'PRICE_ASC', label: 'Giá thấp → cao' },
                     { value: 'CAPACITY_DESC', label: 'Còn nhiều sân trống nhất' },
-                    { value: 'RATING_DESC', label: 'Đánh giá cao nhất' },
                   ]}
                 />
               </div>
@@ -611,9 +609,11 @@ export const MarketplaceExplorerSection: React.FC<MarketplaceExplorerSectionProp
                             >
                               {listing.provider?.providerName ?? listing.venueName}
                             </button>
-                            <span className="shrink-0 tabular-nums font-semibold text-amber-600">
-                              ★ {(listing.rating ?? 4.9).toFixed(1)}
-                            </span>
+                            {listing.rating != null && Boolean(listing.reviewCount) && (
+                              <span className="shrink-0 tabular-nums font-semibold text-amber-600">
+                                ★ {listing.rating.toFixed(1)}
+                              </span>
+                            )}
                           </div>
 
                           <button
@@ -637,7 +637,6 @@ export const MarketplaceExplorerSection: React.FC<MarketplaceExplorerSectionProp
                               </strong>
                             </span>
                             <span className="tabular-nums text-[11px] font-medium text-[#16422C]">
-                              Hoa hồng sàn {listing.provider?.commissionRatePct ?? 10}% •{' '}
                               {listing.slotMinutes}p/ca
                             </span>
                           </div>
