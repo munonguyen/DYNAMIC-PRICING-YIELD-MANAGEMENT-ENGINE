@@ -7,7 +7,7 @@ import type {
 } from '../types/marketplace';
 import { formatVnd } from '../api/marketplaceApi';
 import { EXPO_EASE } from './motionPrimitives';
-import { CircleArrowButton } from './FairwayControls';
+import { CircleArrowButton, PillSelect } from './FairwayControls';
 
 interface FairwayHeroProps {
   sports: SportTypeItem[];
@@ -356,19 +356,18 @@ export const FairwayHero: React.FC<FairwayHeroProps> = ({
                   >
                     Bộ môn thi đấu
                   </label>
-                  <select
+                  <PillSelect
                     id="hero-quick-sport"
+                    variant="hero"
+                    menuAlign="left"
+                    ariaLabel="Chọn bộ môn thi đấu"
                     value={quickSport}
-                    onChange={(e) => setQuickSport(e.target.value)}
-                    className="mt-0.5 w-full bg-transparent text-xs sm:text-[13px] font-semibold text-[#0F172A] focus:outline-none"
-                  >
-                    <option value="ALL">Tất cả 5 bộ môn</option>
-                    {sports.map((s) => (
-                      <option key={s.code} value={s.code}>
-                        {s.name}
-                      </option>
-                    ))}
-                  </select>
+                    onChange={setQuickSport}
+                    options={[
+                      { value: 'ALL', label: 'Tất cả 5 bộ môn' },
+                      ...sports.map((s) => ({ value: s.code, label: s.name })),
+                    ]}
+                  />
                 </div>
 
                 <div className="flex-1 px-3.5 py-1.5">
@@ -378,17 +377,20 @@ export const FairwayHero: React.FC<FairwayHeroProps> = ({
                   >
                     Thành phố / Khu vực
                   </label>
-                  <select
+                  <PillSelect
                     id="hero-quick-city"
+                    variant="hero"
+                    menuAlign="left"
+                    ariaLabel="Chọn thành phố hoặc khu vực"
                     value={quickCity}
-                    onChange={(e) => setQuickCity(e.target.value)}
-                    className="mt-0.5 w-full bg-transparent text-xs sm:text-[13px] font-semibold text-[#0F172A] focus:outline-none"
-                  >
-                    <option value="ALL">Toàn quốc (HN • HCM • ĐN)</option>
-                    <option value="Hà Nội">Hà Nội (Mỹ Đình, Bách Khoa, Tây Hồ)</option>
-                    <option value="TP. Hồ Chí Minh">TP. Hồ Chí Minh (Thủ Thiêm, Q.7)</option>
-                    <option value="Đà Nẵng">Đà Nẵng (Hải Châu)</option>
-                  </select>
+                    onChange={setQuickCity}
+                    options={[
+                      { value: 'ALL', label: 'Toàn quốc (HN • HCM • ĐN)' },
+                      { value: 'Hà Nội', label: 'Hà Nội (Mỹ Đình, Bách Khoa, Tây Hồ)' },
+                      { value: 'TP. Hồ Chí Minh', label: 'TP. Hồ Chí Minh (Thủ Thiêm, Q.7)' },
+                      { value: 'Đà Nẵng', label: 'Đà Nẵng (Hải Châu)' },
+                    ]}
+                  />
                 </div>
 
                 <button

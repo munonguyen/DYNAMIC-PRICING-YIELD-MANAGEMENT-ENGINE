@@ -16,7 +16,7 @@ import {
 } from 'lucide-react';
 import type { LessorBookingOrder, QrInspectResult } from '../types/marketplace';
 import { formatVnd, marketplaceApi } from '../api/marketplaceApi';
-import { ActionButton } from './FairwayControls';
+import { ActionButton, PillSelect } from './FairwayControls';
 import { EXPO_EASE } from './motionPrimitives';
 
 export type QrModalTabId = 'SCANNER' | 'PIN_VERIFY';
@@ -708,23 +708,23 @@ export const QrCheckInScannerModal: React.FC<QrCheckInScannerModalProps> = ({
                         <label className="mb-1.5 block text-[11px] font-bold uppercase tracking-wider text-neutral-500">
                           Đơn đặt sân cần đối chiếu
                         </label>
-                        <select
+                        <PillSelect
+                          variant="soft"
+                          ariaLabel="Chọn đơn đặt sân cần đối chiếu"
                           value={selectedPinOrder.orderId}
-                          onChange={(e) => {
-                            setPinTargetOrderId(e.target.value);
+                          onChange={(v) => {
+                            setPinTargetOrderId(v);
                             setPinCodeInput('');
                             setPinPhoneLast4Input('');
                             setPinFeedback(null);
                           }}
-                          className="w-full rounded-xl border border-neutral-300 bg-[#F8FAFC] px-3 py-2.5 text-xs font-semibold text-[#0F172A] focus:border-[#16422C] focus:outline-none"
-                        >
-                          {providerOrders.slice(0, 25).map((o) => (
-                            <option key={o.orderId} value={o.orderId}>
-                              {o.orderId} • {o.customerName} ({o.unitNumber}) —{' '}
-                              {o.status === 'CONFIRMED' ? 'Chờ nhận sân' : o.status}
-                            </option>
-                          ))}
-                        </select>
+                          options={providerOrders.slice(0, 25).map((o) => ({
+                            value: o.orderId,
+                            label: `${o.orderId} • ${o.customerName} (${o.unitNumber}) — ${
+                              o.status === 'CONFIRMED' ? 'Chờ nhận sân' : o.status
+                            }`,
+                          }))}
+                        />
                       </div>
 
                       <div className="rounded-xl bg-[#F8FAFC] p-4 space-y-2 border border-neutral-200/70">

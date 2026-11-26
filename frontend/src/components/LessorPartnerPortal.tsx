@@ -1271,18 +1271,16 @@ export const LessorPartnerPortal: React.FC<LessorPartnerPortalProps> = ({
                         </div>
 
                         <div className="md:col-span-4">
-                          <select
+                          <PillSelect
+                            variant="soft"
+                            ariaLabel="Lọc đơn theo cụm sân"
                             value={orderCourtFilter}
-                            onChange={(e) => setOrderCourtFilter(e.target.value)}
-                            className="w-full rounded-xl border border-neutral-200 bg-[#F8FAFC] px-3 py-2 text-xs font-medium text-[#0F172A] focus:border-[#16422C] focus:bg-white focus:outline-none"
-                          >
-                            <option value="ALL">Tất cả cụm sân ({myListings.length})</option>
-                            {myListings.map((l) => (
-                              <option key={l.groupId} value={l.groupId}>
-                                {l.groupName}
-                              </option>
-                            ))}
-                          </select>
+                            onChange={setOrderCourtFilter}
+                            options={[
+                              { value: 'ALL', label: `Tất cả cụm sân (${myListings.length})` },
+                              ...myListings.map((l) => ({ value: l.groupId, label: l.groupName })),
+                            ]}
+                          />
                         </div>
 
                         <div className="md:col-span-3 flex items-center gap-1 rounded-xl border border-neutral-200 bg-[#F8FAFC] p-1">

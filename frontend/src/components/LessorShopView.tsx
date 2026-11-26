@@ -6,7 +6,7 @@ import type {
 } from '../types/marketplace';
 import { formatSlotWindow, formatVnd } from '../api/marketplaceApi';
 import { EXPO_EASE, ScrollReveal } from './motionPrimitives';
-import { ActionButton } from './FairwayControls';
+import { ActionButton, PillSelect } from './FairwayControls';
 
 interface LessorShopViewProps {
   listings: PublishedListing[];
@@ -452,17 +452,19 @@ export const LessorShopView: React.FC<LessorShopViewProps> = ({
                   aria-label="Tìm cụm sân trong hồ sơ chủ sân"
                   className="w-full sm:w-56 rounded-full border border-neutral-200 bg-[#F8F9FA] px-3.5 py-1.5 text-xs text-[#0F172A] placeholder:text-neutral-400 focus:border-[#16422C] focus:bg-white focus:outline-none"
                 />
-                <select
-                  aria-label="Sắp xếp cụm sân"
+                <PillSelect
+                  variant="pill"
+                  menuAlign="right"
+                  ariaLabel="Sắp xếp cụm sân"
                   value={shopSort}
-                  onChange={(e) => setShopSort(e.target.value as ShopSortId)}
-                  className="rounded-full border border-neutral-200 bg-[#F8F9FA] px-3 py-1.5 text-xs font-medium text-[#0F172A] focus:border-[#16422C] focus:outline-none"
-                >
-                  <option value="POPULAR">Phổ biến</option>
-                  <option value="PRICE_ASC">Giá thấp → cao</option>
-                  <option value="AVAILABILITY">Nhiều sân trống</option>
-                  <option value="RATING_DESC">Đánh giá cao nhất</option>
-                </select>
+                  onChange={(v) => setShopSort(v as ShopSortId)}
+                  options={[
+                    { value: 'POPULAR', label: 'Phổ biến' },
+                    { value: 'PRICE_ASC', label: 'Giá thấp → cao' },
+                    { value: 'AVAILABILITY', label: 'Nhiều sân trống' },
+                    { value: 'RATING_DESC', label: 'Đánh giá cao nhất' },
+                  ]}
+                />
               </div>
             )}
           </div>

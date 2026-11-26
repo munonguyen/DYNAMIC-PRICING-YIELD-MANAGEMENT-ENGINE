@@ -8,7 +8,7 @@ import type {
   VenueProviderInfo,
 } from '../types/marketplace';
 import { buildFreshListingSlots, formatVnd } from '../api/marketplaceApi';
-import { ActionButton } from './FairwayControls';
+import { ActionButton, PillSelect } from './FairwayControls';
 import { EXPO_EASE } from './motionPrimitives';
 
 interface CreateCourtGroupModalProps {
@@ -216,17 +216,13 @@ export const CreateCourtGroupModal: React.FC<CreateCourtGroupModalProps> = ({
                     <label className="mb-1 block font-semibold text-neutral-700">
                       Bộ môn *
                     </label>
-                    <select
+                    <PillSelect
+                      variant="soft"
+                      ariaLabel="Chọn bộ môn"
                       value={sportCode}
-                      onChange={(e) => setSportCode(e.target.value)}
-                      className="w-full rounded-xl border border-neutral-200 bg-[#F8FAFC] px-3 py-2.5 text-[#0F172A] focus:border-[#16422C] focus:bg-white focus:outline-none"
-                    >
-                      {sports.map((sp) => (
-                        <option key={sp.code} value={sp.code}>
-                          {sp.name}
-                        </option>
-                      ))}
-                    </select>
+                      onChange={setSportCode}
+                      options={sports.map((sp) => ({ value: sp.code, label: sp.name }))}
+                    />
                   </div>
 
                   <div>
@@ -335,15 +331,17 @@ export const CreateCourtGroupModal: React.FC<CreateCourtGroupModalProps> = ({
                     <label className="mb-1 block font-semibold text-neutral-700">
                       Thời lượng 1 ca
                     </label>
-                    <select
-                      value={durationMinutes}
-                      onChange={(e) => setDurationMinutes(Number(e.target.value))}
-                      className="w-full rounded-xl border border-neutral-200 bg-[#F8FAFC] px-3 py-2.5 text-[#0F172A]"
-                    >
-                      <option value={60}>60 phút / ca</option>
-                      <option value={90}>90 phút / ca</option>
-                      <option value={120}>120 phút / ca</option>
-                    </select>
+                    <PillSelect
+                      variant="soft"
+                      ariaLabel="Chọn thời lượng ca"
+                      value={String(durationMinutes)}
+                      onChange={(v) => setDurationMinutes(Number(v))}
+                      options={[
+                        { value: '60', label: '60 phút / ca' },
+                        { value: '90', label: '90 phút / ca' },
+                        { value: '120', label: '120 phút / ca' },
+                      ]}
+                    />
                   </div>
 
                   <div>
@@ -526,3 +524,4 @@ export const CreateCourtGroupModal: React.FC<CreateCourtGroupModalProps> = ({
     </AnimatePresence>
   );
 };
+

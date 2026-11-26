@@ -136,7 +136,9 @@ interface PillSelectProps {
   prefix?: string;
   ariaLabel?: string;
   id?: string;
-  variant?: 'pill' | 'field' | 'dark';
+  variant?: 'pill' | 'field' | 'soft' | 'compact' | 'hero' | 'dark';
+  menuAlign?: 'left' | 'right' | 'full';
+  disabled?: boolean;
   className?: string;
 }
 
@@ -148,6 +150,8 @@ export const PillSelect: React.FC<PillSelectProps> = ({
   ariaLabel,
   id,
   variant = 'pill',
+  menuAlign,
+  disabled = false,
   className = '',
 }) => {
   const [open, setOpen] = useState(false);
@@ -179,19 +183,38 @@ export const PillSelect: React.FC<PillSelectProps> = ({
       ? 'w-full justify-between rounded-xl border border-white/15 bg-white/10 px-3 py-1.5 text-sm font-semibold text-white hover:bg-white/16'
       : variant === 'field'
         ? 'w-full justify-between rounded-xl border border-neutral-200 bg-white px-3.5 py-2.5 text-xs font-medium text-[#0F172A] hover:border-[#16422C]'
-        : 'justify-between gap-2.5 rounded-full border border-neutral-200/90 bg-white px-4 py-2 text-xs font-semibold text-[#0F172A] shadow-[0_2px_10px_rgba(15,23,42,0.04)] hover:border-[#16422C]';
+        : variant === 'soft'
+          ? 'w-full justify-between rounded-xl border border-neutral-200 bg-[#F8FAFC] px-3.5 py-2.5 text-xs font-semibold text-[#0F172A] hover:border-[#16422C] hover:bg-white'
+          : variant === 'compact'
+            ? 'justify-between gap-1.5 rounded-lg border border-neutral-200 bg-white px-2.5 py-1.5 text-[11px] font-medium text-neutral-700 hover:border-[#16422C]'
+            : variant === 'hero'
+              ? 'w-full justify-between gap-2 bg-transparent py-0.5 text-xs sm:text-[13px] font-semibold text-[#0F172A]'
+              : 'justify-between gap-2.5 rounded-full border border-neutral-200/90 bg-white px-4 py-2 text-xs font-semibold text-[#0F172A] shadow-[0_2px_10px_rgba(15,23,42,0.04)] hover:border-[#16422C]';
+
+  const isFullWidth =
+    variant === 'field' || variant === 'soft' || variant === 'dark' || variant === 'hero';
+  const resolvedMenuAlign = menuAlign ?? (variant === 'pill' || variant === 'compact' ? 'right' : 'full');
+  const menuAlignClass =
+    resolvedMenuAlign === 'right'
+      ? 'right-0'
+      : resolvedMenuAlign === 'left'
+        ? 'left-0'
+        : 'inset-x-0';
 
   return (
-    <div ref={rootRef} className={`relative inline-block ${variant !== 'pill' ? 'w-full' : ''} ${className}`}>
+    <div ref={rootRef} className={`relative inline-block ${isFullWidth ? 'w-full' : ''} ${className}`}>
       <button
         id={id}
         type="button"
+        disabled={disabled}
         aria-label={ariaLabel}
         aria-haspopup="listbox"
         aria-expanded={open}
         aria-controls={listId}
-        onClick={() => setOpen((v) => !v)}
-        className={`fairway-interactive inline-flex items-center transition-colors focus:outline-none ${triggerStyles}`}
+        onClick={() => {
+          if (!disabled) setOpen((v) => !v);
+        }}
+        className={`fairway-interactive inline-flex items-center transition-colors focus:outline-none disabled:cursor-not-allowed disabled:opacity-55 ${triggerStyles}`}
       >
         <span className="flex items-center gap-1.5 truncate">
           {prefix && (
@@ -225,9 +248,7 @@ export const PillSelect: React.FC<PillSelectProps> = ({
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: 4, scale: 0.97 }}
             transition={{ duration: 0.16, ease: EXPO_EASE }}
-            className={`absolute z-50 mt-2 min-w-[210px] max-h-64 overflow-y-auto rounded-2xl border border-neutral-200/90 bg-white/98 p-1.5 text-left shadow-[0_18px_48px_rgba(15,23,42,0.14)] backdrop-blur-xl ${
-              variant === 'pill' ? 'right-0 sm:left-0' : 'inset-x-0'
-            }`}
+            className={`absolute z-[80] mt-2 min-w-[200px] max-h-64 overflow-y-auto rounded-2xl border border-neutral-200/90 bg-white/98 p-1.5 text-left shadow-[0_18px_48px_rgba(15,23,42,0.16)] backdrop-blur-xl ${menuAlignClass}`}
           >
             {options.map((opt) => {
               const selected = opt.value === value;

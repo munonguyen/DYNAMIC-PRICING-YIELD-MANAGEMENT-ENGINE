@@ -23,7 +23,7 @@ import { formatSlotWindow, formatVnd, marketplaceApi } from '../api/marketplaceA
 import { getActiveLessorServices } from '../data/courtServicesData';
 import { isValidVietnamTaxCode } from '../utils/lessorLegalValidator';
 import { EXPO_EASE, ScrollReveal } from './motionPrimitives';
-import { ActionButton } from './FairwayControls';
+import { ActionButton, PillSelect } from './FairwayControls';
 
 interface BookingPipelineAndQrSectionProps {
   activeListing: PublishedListing | null;
@@ -881,18 +881,21 @@ export const BookingPipelineAndQrSection: React.FC<BookingPipelineAndQrSectionPr
 
                     {!paymentLocked && (
                       <div className="flex flex-wrap items-center gap-2.5">
-                        <select
-                          aria-label="Chọn kênh VNPAY"
-                          value={vnpayBankCode}
-                          onChange={(e) => setVnpayBankCode(e.target.value)}
-                          className="rounded-xl border border-neutral-200 bg-white px-3 py-2 text-xs text-[#0F172A]"
-                        >
-                          <option value="">Chọn trên cổng VNPAY (Tất cả)</option>
-                          <option value="VNPAYQR">Ứng dụng hỗ trợ VNPAYQR</option>
-                          <option value="NCB">Ngân hàng Test NCB (ATM)</option>
-                          <option value="VNBANK">Thẻ nội địa / Tài khoản NH</option>
-                          <option value="INTCARD">Thẻ quốc tế Visa/Master/JCB</option>
-                        </select>
+                        <div className="w-full sm:w-72">
+                          <PillSelect
+                            variant="field"
+                            ariaLabel="Chọn kênh VNPAY"
+                            value={vnpayBankCode}
+                            onChange={setVnpayBankCode}
+                            options={[
+                              { value: '', label: 'Chọn trên cổng VNPAY (Tất cả)' },
+                              { value: 'VNPAYQR', label: 'Ứng dụng hỗ trợ VNPAYQR' },
+                              { value: 'NCB', label: 'Ngân hàng Test NCB (ATM)' },
+                              { value: 'VNBANK', label: 'Thẻ nội địa / Tài khoản NH' },
+                              { value: 'INTCARD', label: 'Thẻ quốc tế Visa/Master/JCB' },
+                            ]}
+                          />
+                        </div>
 
                         <button
                           type="button"

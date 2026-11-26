@@ -10,6 +10,7 @@ import type {
 } from '../types/marketplace';
 import { formatVnd } from '../api/marketplaceApi';
 import { EXPO_EASE } from './motionPrimitives';
+import { PillSelect } from './FairwayControls';
 
 interface FloatingChatWidgetProps {
   open: boolean;
@@ -382,15 +383,18 @@ export const FloatingChatWidget: React.FC<FloatingChatWidgetProps> = ({
                       className="w-full rounded-lg border border-neutral-200 bg-[#F8F9FA] py-1.5 pl-2.5 pr-2 text-xs text-[#0F172A] placeholder:text-neutral-400 focus:border-[#16422C] focus:outline-none"
                     />
                   </div>
-                  <select
-                    aria-label="Lọc tin nhắn"
+                  <PillSelect
+                    variant="compact"
+                    menuAlign="right"
+                    ariaLabel="Lọc tin nhắn"
                     value={threadFilter}
-                    onChange={(e) => setThreadFilter(e.target.value as 'ALL' | 'UNREAD')}
-                    className="shrink-0 rounded-lg border border-neutral-200 bg-white px-2 py-1.5 text-[11px] font-medium text-neutral-700 focus:border-[#16422C] focus:outline-none"
-                  >
-                    <option value="ALL">Tất cả</option>
-                    <option value="UNREAD">Chưa đọc</option>
-                  </select>
+                    onChange={(v) => setThreadFilter(v as 'ALL' | 'UNREAD')}
+                    options={[
+                      { value: 'ALL', label: 'Tất cả' },
+                      { value: 'UNREAD', label: 'Chưa đọc' },
+                    ]}
+                    className="shrink-0"
+                  />
                 </div>
 
                 {/* Conversation Rows */}

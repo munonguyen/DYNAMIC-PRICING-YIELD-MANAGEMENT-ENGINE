@@ -235,16 +235,18 @@ export const LessorAddOnServicesManager: React.FC<LessorAddOnServicesManagerProp
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <label className="mb-1 block font-semibold text-neutral-700">Nhóm dịch vụ</label>
-                <select
+                <PillSelect
+                  variant="soft"
+                  ariaLabel="Chọn nhóm dịch vụ"
                   value={category}
-                  onChange={(e) => setCategory(e.target.value as CourtServiceCategory)}
-                  className="w-full rounded-xl border border-neutral-200 bg-[#F8FAFC] px-3 py-2.5 text-[#0F172A]"
-                >
-                  <option value="DRINKS">Nước &amp; Điện giải</option>
-                  <option value="EQUIPMENT">Dụng cụ thi đấu</option>
-                  <option value="SUPPORT">Hỗ trợ trận đấu</option>
-                  <option value="FACILITY">Tiện ích &amp; Hậu cần</option>
-                </select>
+                  onChange={(v) => setCategory(v as CourtServiceCategory)}
+                  options={[
+                    { value: 'DRINKS', label: 'Nước & Điện giải' },
+                    { value: 'EQUIPMENT', label: 'Dụng cụ thi đấu' },
+                    { value: 'SUPPORT', label: 'Hỗ trợ trận đấu' },
+                    { value: 'FACILITY', label: 'Tiện ích & Hậu cần' },
+                  ]}
+                />
               </div>
 
               <div>
@@ -322,25 +324,25 @@ export const LessorAddOnServicesManager: React.FC<LessorAddOnServicesManagerProp
                   alt="Xem trước sản phẩm"
                   className="h-14 w-20 shrink-0 rounded-xl object-cover border border-neutral-200 bg-white"
                 />
-                <select
-                  aria-label="Chọn ảnh mẫu có sẵn"
+                <PillSelect
+                  variant="field"
+                  ariaLabel="Chọn ảnh mẫu có sẵn"
                   value={
                     PRESET_SERVICE_IMAGES.some((p) => p.url === imageUrl) ? imageUrl : 'CUSTOM'
                   }
-                  onChange={(e) => {
-                    if (e.target.value !== 'CUSTOM') setImageUrl(e.target.value);
+                  onChange={(v) => {
+                    if (v !== 'CUSTOM') setImageUrl(v);
                   }}
-                  className="w-full rounded-xl border border-neutral-200 bg-white px-3 py-2 text-xs text-[#0F172A]"
-                >
-                  {!PRESET_SERVICE_IMAGES.some((p) => p.url === imageUrl) && (
-                    <option value="CUSTOM">Ảnh riêng đã tải lên từ máy</option>
-                  )}
-                  {PRESET_SERVICE_IMAGES.map((img) => (
-                    <option key={img.url} value={img.url}>
-                      Ảnh mẫu: {img.label}
-                    </option>
-                  ))}
-                </select>
+                  options={[
+                    ...(!PRESET_SERVICE_IMAGES.some((p) => p.url === imageUrl)
+                      ? [{ value: 'CUSTOM', label: 'Ảnh riêng đã tải lên từ máy' }]
+                      : []),
+                    ...PRESET_SERVICE_IMAGES.map((img) => ({
+                      value: img.url,
+                      label: `Ảnh mẫu: ${img.label}`,
+                    })),
+                  ]}
+                />
               </div>
             </div>
 
