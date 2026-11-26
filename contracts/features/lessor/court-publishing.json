@@ -1,0 +1,32 @@
+{
+  "branch": "service/lessor/court-publishing",
+  "title": "Công bố cụm sân",
+  "scope": "Đưa cụm sân đủ điều kiện lên danh mục hoặc ngừng công bố.",
+  "operations": [
+    {
+      "method": "POST",
+      "path": "/api/v1/inventory/groups/{id}/publish",
+      "operationId": "publishGroup"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/inventory/groups/{id}/unpublish",
+      "operationId": "unpublishGroup"
+    }
+  ],
+  "source": [
+    {
+      "file": "src/main/java/com/yieldengine/controller/lessor/LessorInventoryController.java",
+      "anchors": [
+        "publishGroup(",
+        "unpublishGroup("
+      ]
+    },
+    {
+      "file": "src/main/java/com/yieldengine/validate/InventoryAndPolicyValidator.java",
+      "anchors": [
+        "validateGroupPublishable("
+      ]
+    }
+  ]
+}
