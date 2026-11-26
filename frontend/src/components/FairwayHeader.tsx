@@ -161,48 +161,48 @@ export const FairwayHeader: React.FC<FairwayHeaderProps> = ({
       ? [
           {
             key: 'lessor-overview',
-            label: 'Tổng quan & Biểu đồ',
+            label: 'Tổng quan',
             targetPage: 'governance',
             lessorTab: 'OVERVIEW',
           },
           {
             key: 'lessor-orders',
-            label: 'Đơn Đặt & Soát QR',
+            label: 'Đơn đặt sân',
             targetPage: 'governance',
             lessorTab: 'ORDERS_CHECKIN',
           },
           {
             key: 'lessor-live-courts',
-            label: 'Sân Đang Dùng & Vị Trí',
+            label: 'Sân đang dùng',
             targetPage: 'governance',
             lessorTab: 'LIVE_COURTS',
           },
           {
             key: 'lessor-courts',
-            label: 'Quản lý Cụm Sân',
+            label: 'Cụm sân',
             targetPage: 'governance',
             lessorTab: 'COURTS_INVENTORY',
           },
           {
             key: 'lessor-addons',
-            label: 'Nước & Dịch vụ',
+            label: 'Dịch vụ',
             targetPage: 'governance',
             lessorTab: 'ADDON_PRODUCTS',
           },
           {
             key: 'lessor-pricing',
-            label: 'Định giá Động',
+            label: 'Định giá',
             targetPage: 'pricing',
           },
           {
             key: 'lessor-shop',
-            label: 'Gian hàng & Nhân sự',
+            label: 'Gian hàng',
             targetPage: 'governance',
             lessorTab: 'SHOP_AND_STAFF',
           },
           {
             key: 'lessor-wallet',
-            label: 'Ví & Đối soát',
+            label: 'Ví đối soát',
             targetPage: 'governance',
             lessorTab: 'ESCROW_WALLET',
           },
@@ -217,19 +217,19 @@ export const FairwayHeader: React.FC<FairwayHeaderProps> = ({
             },
             {
               key: 'staff-live-courts',
-              label: 'Sân Đang Dùng & Vị Trí',
+              label: 'Sân đang dùng',
               targetPage: 'governance',
               lessorTab: 'LIVE_COURTS',
             },
             {
               key: 'staff-courts',
-              label: 'Tình trạng Cụm Sân',
+              label: 'Cụm sân',
               targetPage: 'governance',
               lessorTab: 'COURTS_INVENTORY',
             },
             {
               key: 'staff-notices',
-              label: 'Thông báo Cơ sở',
+              label: 'Thông báo',
               targetPage: 'announcements',
             },
           ]
@@ -353,7 +353,7 @@ export const FairwayHeader: React.FC<FairwayHeaderProps> = ({
         <div
           className={`relative mx-auto overflow-visible rounded-full border transition-all duration-500 ease-[cubic-bezier(0.22,1,0.36,1)] ${
             isCompact
-              ? 'max-w-[1180px] border-[#16422C]/14 bg-white/88 px-3.5 py-1.5 sm:px-4 shadow-[0_18px_46px_rgba(15,23,42,0.13)] backdrop-blur-2xl'
+              ? 'max-w-[1320px] border-[#16422C]/14 bg-white/88 px-3.5 py-1.5 sm:px-4 shadow-[0_18px_46px_rgba(15,23,42,0.13)] backdrop-blur-2xl'
               : 'max-w-[1440px] border-neutral-200/90 bg-white/95 px-4 py-2.5 sm:px-6 shadow-[0_12px_32px_rgba(15,23,42,0.07)] backdrop-blur-xl'
           }`}
         >
@@ -372,7 +372,11 @@ export const FairwayHeader: React.FC<FairwayHeaderProps> = ({
                 showDomain={!isCompact && !isInternalWorkspaceMode}
               />
               {isInternalWorkspaceMode && (
-                <span className="hidden md:inline-flex rounded-full bg-[#16422C]/10 border border-[#16422C]/20 px-2.5 py-0.5 text-[10.5px] font-bold uppercase tracking-wider text-[#16422C]">
+                <span
+                  className={`rounded-full bg-[#16422C]/10 border border-[#16422C]/20 px-2.5 py-0.5 text-[10.5px] font-bold uppercase tracking-wider text-[#16422C] ${
+                    isCompact ? 'hidden 2xl:inline-flex' : 'hidden lg:inline-flex'
+                  }`}
+                >
                   {activeRole === 'ADMIN'
                     ? 'Admin Sàn'
                     : activeRole === 'ACCOUNTANT'
@@ -389,10 +393,10 @@ export const FairwayHeader: React.FC<FairwayHeaderProps> = ({
                   ? 'Điều hướng Hệ thống Nội bộ'
                   : 'Điều hướng Sàn Đặt Sân'
               }
-              className={`hidden xl:flex flex-1 mx-auto items-center justify-center gap-0.5 rounded-full border transition-all duration-500 ease-[cubic-bezier(0.22,1,0.36,1)] ${
+              className={`hidden xl:flex min-w-0 max-w-full items-center gap-0.5 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden rounded-full border transition-all duration-500 ease-[cubic-bezier(0.22,1,0.36,1)] ${
                 isCompact
-                  ? 'max-w-[780px] bg-[#F3F4F6]/80 border-neutral-200/60 p-0.5'
-                  : 'max-w-[860px] bg-[#F3F4F6] border-neutral-200/70 p-1'
+                  ? 'bg-[#F3F4F6]/80 border-neutral-200/60 p-0.5'
+                  : 'bg-[#F3F4F6] border-neutral-200/70 p-1'
               }`}
             >
               {isInternalWorkspaceMode
@@ -403,7 +407,7 @@ export const FairwayHeader: React.FC<FairwayHeaderProps> = ({
                         key={opt.key}
                         type="button"
                         onClick={() => handleInternalNavClick(opt)}
-                        className={`relative whitespace-nowrap rounded-full text-center font-medium transition-all duration-300 ${
+                        className={`relative shrink-0 whitespace-nowrap rounded-full text-center font-medium transition-all duration-300 ${
                           isCompact ? 'px-2.5 py-1 text-[11.5px]' : 'px-3 py-1.5 text-[12px]'
                         } ${
                           isActive
@@ -431,7 +435,7 @@ export const FairwayHeader: React.FC<FairwayHeaderProps> = ({
                         key={item.id}
                         type="button"
                         onClick={() => onNavigate(item.id)}
-                        className={`relative whitespace-nowrap rounded-full text-center font-medium transition-all duration-300 ${
+                        className={`relative shrink-0 whitespace-nowrap rounded-full text-center font-medium transition-all duration-300 ${
                           isCompact ? 'px-2.5 py-1 text-[11.5px]' : 'px-3 py-1.5 text-[12px]'
                         } ${
                           isActive
@@ -469,7 +473,7 @@ export const FairwayHeader: React.FC<FairwayHeaderProps> = ({
                     <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-[#16422C] text-[11px] font-bold text-[#E7F7D4]">
                       {session.fullName.charAt(0).toUpperCase()}
                     </span>
-                    <span className="hidden sm:inline max-w-[200px] truncate text-xs font-semibold text-[#0F172A]">
+                    <span className="hidden sm:inline max-w-[130px] 2xl:max-w-[190px] truncate text-xs font-semibold text-[#0F172A]">
                       {session.fullName}
                     </span>
                     <span
