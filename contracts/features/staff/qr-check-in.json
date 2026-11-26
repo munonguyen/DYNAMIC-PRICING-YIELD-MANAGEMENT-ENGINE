@@ -1,0 +1,32 @@
+{
+  "branch": "service/staff/qr-check-in",
+  "title": "Quét QR nhận sân",
+  "scope": "Xem thông tin vé và xác nhận nhận sân bằng QR.",
+  "operations": [
+    {
+      "method": "POST",
+      "path": "/api/v1/checkins/inspect",
+      "operationId": "inspectQr"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/checkins/scan",
+      "operationId": "scanQr"
+    }
+  ],
+  "source": [
+    {
+      "file": "src/main/java/com/yieldengine/controller/staff/StaffCheckInController.java",
+      "anchors": [
+        "inspectQr(",
+        "scanQr("
+      ]
+    },
+    {
+      "file": "frontend/src/components/QrCheckInScannerModal.tsx",
+      "anchors": [
+        "QrCheckInScannerModal"
+      ]
+    }
+  ]
+}
