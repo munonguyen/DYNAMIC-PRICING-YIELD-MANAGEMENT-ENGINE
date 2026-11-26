@@ -91,7 +91,7 @@ const PROVIDERS: Record<string, VenueProviderInfo> = {
     onlineStatusLabel: 'Online 5 phút trước',
     joinedLabel: '5 Năm Trước',
     legalEntityType: 'Công ty Cổ phần (KYC #0107721)',
-    coverImageUrl: '/images/real-football-night.jpg',
+    coverImageUrl: '/images/court-football-night.jpg',
     shopSlogan: 'Sân cỏ FIFA Quality Pro & đèn 450 Lux chống lóa, đặt lịch QR không chờ quầy.',
     voucherLabel: 'Tặng 2 chai nước/ca 7v7',
     platformGuarantee:
@@ -114,7 +114,7 @@ const PROVIDERS: Record<string, VenueProviderInfo> = {
     onlineStatusLabel: 'Đang hoạt động',
     joinedLabel: '3 Năm Trước',
     legalEntityType: 'CLB Thể thao Độc quyền (KYC)',
-    coverImageUrl: '/images/real-tennis-pro.jpg',
+    coverImageUrl: '/images/court-tennis-pro.jpg',
     shopSlogan: 'Mặt sân Acrylic US Open ven Hồ Tây, phòng thay đồ tiêu chuẩn resort & hỗ trợ HLV.',
     voucherLabel: 'Miễn phí mượn máy bắn bóng',
     platformGuarantee:
@@ -137,7 +137,7 @@ const PROVIDERS: Record<string, VenueProviderInfo> = {
     onlineStatusLabel: 'Đang hoạt động',
     joinedLabel: '4 Năm Trước',
     legalEntityType: 'Công ty Cổ phần (KYC #0315219)',
-    coverImageUrl: '/images/real-basketball-riverside.jpg',
+    coverImageUrl: '/images/court-basketball-riverside.jpg',
     shopSlogan: 'Tổ hợp thể thao ven sông Thủ Thiêm — sàn gỗ Maple FIBA & Pickleball mái che hiện đại.',
     voucherLabel: 'Combo CLB đặt cố định tuần -12%',
     platformGuarantee:
