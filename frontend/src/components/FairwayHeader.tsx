@@ -9,6 +9,7 @@ import {
   ShieldCheck,
   Store,
   Ticket,
+  Users,
   Zap,
 } from 'lucide-react';
 import {
@@ -48,6 +49,7 @@ export const PAGE_NAV_ITEMS: PageNavItem[] = [
 
 export type AdminHeaderTabId =
   | 'OPERATIONS'
+  | 'USER_ACCOUNTS'
   | 'LESSOR_INSPECTOR'
   | 'RBAC_MATRIX'
   | 'FINANCE_LEDGER'
@@ -261,13 +263,19 @@ export const FairwayHeader: React.FC<FairwayHeaderProps> = ({
           ? [
               {
                 key: 'admin-ops',
-                label: 'Tổng quan & Biểu đồ',
+                label: 'Tổng quan',
                 targetPage: 'governance',
                 adminTab: 'OPERATIONS',
               },
               {
+                key: 'admin-accounts',
+                label: 'Tài khoản',
+                targetPage: 'governance',
+                adminTab: 'USER_ACCOUNTS',
+              },
+              {
                 key: 'admin-lessors',
-                label: 'Giám sát Cho thuê',
+                label: 'Đối tác',
                 targetPage: 'governance',
                 adminTab: 'LESSOR_INSPECTOR',
               },
@@ -287,11 +295,6 @@ export const FairwayHeader: React.FC<FairwayHeaderProps> = ({
                 key: 'admin-pricing',
                 label: 'Định giá Sàn',
                 targetPage: 'pricing',
-              },
-              {
-                key: 'admin-news',
-                label: 'Thông báo & Tin',
-                targetPage: 'announcements',
               },
             ]
           : [
@@ -647,20 +650,36 @@ export const FairwayHeader: React.FC<FairwayHeaderProps> = ({
                                     </span>
                                   </button>
                                   {activeRole === 'ADMIN' && (
-                                    <button
-                                      type="button"
-                                      onClick={() => {
-                                        setAccountMenuOpen(false);
-                                        onSelectAdminTab('LESSOR_INSPECTOR');
-                                        onNavigate('governance');
-                                      }}
-                                      className="flex w-full items-center justify-between rounded-xl px-3 py-2 text-left font-medium hover:bg-[#F8FAFC]"
-                                    >
-                                      <span className="inline-flex items-center gap-2.5">
-                                        <ShieldCheck className="h-4 w-4 text-[#0E4F7E]" />
-                                        Giám sát Đối tác Cho thuê
-                                      </span>
-                                    </button>
+                                    <>
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          setAccountMenuOpen(false);
+                                          onSelectAdminTab('USER_ACCOUNTS');
+                                          onNavigate('governance');
+                                        }}
+                                        className="flex w-full items-center justify-between rounded-xl px-3 py-2 text-left font-medium hover:bg-[#F8FAFC]"
+                                      >
+                                        <span className="inline-flex items-center gap-2.5">
+                                          <Users className="h-4 w-4 text-[#0E4F7E]" />
+                                          Quản lý Tài khoản Hệ thống
+                                        </span>
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          setAccountMenuOpen(false);
+                                          onSelectAdminTab('LESSOR_INSPECTOR');
+                                          onNavigate('governance');
+                                        }}
+                                        className="flex w-full items-center justify-between rounded-xl px-3 py-2 text-left font-medium hover:bg-[#F8FAFC]"
+                                      >
+                                        <span className="inline-flex items-center gap-2.5">
+                                          <ShieldCheck className="h-4 w-4 text-[#0E4F7E]" />
+                                          Giám sát Đối tác Cho thuê
+                                        </span>
+                                      </button>
+                                    </>
                                   )}
                                   <button
                                     type="button"

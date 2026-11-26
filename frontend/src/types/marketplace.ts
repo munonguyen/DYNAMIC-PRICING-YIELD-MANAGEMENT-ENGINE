@@ -737,3 +737,118 @@ export interface LessorApplicationRecord {
   reviewedAt?: string | null;
 }
 
+export interface AdminTenantOverview {
+  id: string;
+  code: string;
+  name: string;
+  address: string;
+  phone: string;
+  checkinMode: string;
+  staffChatEnabled: boolean;
+  status: 'ACTIVE' | 'SUSPEND' | string;
+  createdAt: string;
+  groupCount: number;
+  publishedGroupCount: number;
+  unitCount: number;
+  reservationCount: number;
+  grossRevenueVnd: number;
+  commissionRatePercent: number;
+}
+
+export interface AdminVenueGroup {
+  groupId: string;
+  tenantId: string;
+  tenantName: string;
+  code: string;
+  name: string;
+  sportCode: string;
+  sportName: string;
+  basePrice: number;
+  minPrice: number;
+  maxPrice: number;
+  depositPercent: number;
+  slotMinutes: number;
+  publishStatus: string;
+  unitCount: number;
+  reservationCount: number;
+}
+
+export interface AdminUserAccount {
+  id: string;
+  username: string;
+  email: string;
+  fullName: string;
+  phone: string;
+  status: 'ACTIVE' | 'INACTIVE' | string;
+  failedLoginAttempts: number;
+  lockedUntil?: string | null;
+  lastLoginAt?: string | null;
+  createdAt: string;
+  roles: {
+    roleCode: RoleCode;
+    scope: 'PLATFORM' | 'TENANT';
+    tenantId?: string | null;
+  }[];
+}
+
+export interface AdminPermissionItem {
+  code: string;
+  description: string;
+}
+
+export interface AdminRoleSummary {
+  id: number;
+  code: RoleCode;
+  name: string;
+  scope: 'PLATFORM' | 'TENANT';
+  userCount: number;
+  permissionCodes: string[];
+}
+
+export interface AdminRbacMatrix {
+  permissions: AdminPermissionItem[];
+  roles: AdminRoleSummary[];
+}
+
+export interface AdminCommissionRule {
+  id: string;
+  tenantId?: string | null;
+  tenantName: string;
+  sportTypeId?: number | null;
+  sportName: string;
+  ratePercent: number;
+  commissionBasis: string;
+  appliesToForfeit: boolean;
+  effectivePeriod: string;
+  status: string;
+  createdAt: string;
+}
+
+export interface AdminLedgerEntry {
+  entryId: string;
+  journalId: string;
+  tenantId: string;
+  tenantName: string;
+  reservationId?: string | null;
+  accountCode: string;
+  entryType: string;
+  direction: 'DEBIT' | 'CREDIT' | string;
+  amount: number;
+  currency: string;
+  occurredAt: string;
+}
+
+export interface AdminAuditLogEntry {
+  auditId: string;
+  actorUserId?: string | null;
+  actorUsername: string;
+  actorRole: string;
+  tenantId?: string | null;
+  tenantName: string;
+  action: string;
+  entityType: string;
+  entityId: string;
+  detailsJson: string;
+  createdAt: string;
+}
+

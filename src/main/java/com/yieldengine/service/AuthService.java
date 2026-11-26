@@ -142,6 +142,51 @@ public class AuthService {
     }
 
     @Transactional
+    public UserSummaryResponse adminCreateUser(AdminCreateUserRequest request, SessionPrincipal actor) {
+        authValidator.validateUniqueRegistrationCredentials(request.username(), request.email());
+
+        String roleCode = CommonTextAndPageUtils.normalizeUpperCode(request.roleCode());
+        Role role = roleRepository.findByCode(roleCode)
+                .orElseThrow(() -> new ResourceNotFoundException("Role not found: " + roleCode));
+
+        UUID effectiveTenantId = SystemConstant.SCOPE_TENANT.equals(role.getScope())
+                ? request.tenantId()
+                : null;
+        if (SystemConstant.SCOPE_TENANT.equals(role.getScope())) {
+            if (effectiveTenantId == null) {
+                throw new IllegalArgumentException("Tenant ID is required for TENANT-scoped role: " + roleCode);
+            }
+            authValidator.validateVenueExists(effectiveTenantId);
+        }
+
+        User created = createActiveUserEntity(
+                request.username(), request.email(), request.password(),
+                request.firstName(), request.lastName(), request.phone()
+        );
+
+        UserRole assignment = UserRole.builder()
+                .user(created)
+                .role(role)
+                .roleScope(role.getScope())
+                .tenantId(effectiveTenantId)
+                .grantedBy(actor.userId())
+                .build();
+        userRoleRepository.save(assignment);
+
+        auditLogService.record(
+                actor.userId(),
+                actor.primaryRoleCode(),
+                effectiveTenantId,
+                "ADMIN_USER_CREATED",
+                "USER",
+                created.getId().toString(),
+                Map.of("username", created.getUsername(), "roleCode", role.getCode())
+        );
+
+        return toSummary(created, List.of(assignment));
+    }
+
+    @Transactional
     public UserSummaryResponse changeAccountStatus(UUID targetUserId, String newStatus, SessionPrincipal actor) {
         User target = userRepository.findById(targetUserId)
                 .orElseThrow(() -> new ResourceNotFoundException("User not found: " + targetUserId));

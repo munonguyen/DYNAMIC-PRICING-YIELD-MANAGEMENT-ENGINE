@@ -699,3 +699,4 @@ export const WeeklyScheduleGrid: React.FC<WeeklyScheduleGridProps> = ({
     </div>
   );
 };
+

@@ -1,4 +1,4 @@
-package com.yieldengine.controller;
+package com.yieldengine.controller.lessor;
 
 import com.yieldengine.constant.SystemConstant;
 import com.yieldengine.dto.request.SimulationRequest;
@@ -14,26 +14,25 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
-@Tag(name = "4. Simulation Sandbox (Lessor & Admin)", description = "Internal Monte Carlo simulation strictly restricted to Venue Managers (Lessors) and Platform Admins")
+@Tag(name = "[ROLE: MANAGER / ADMIN] Yield Simulation Sandbox", description = "Internal Monte Carlo revenue simulation restricted to Lessors and Admins")
 @RestController
 @RequestMapping("/api/v1/simulations")
 @RequiredArgsConstructor
-public class SimulationController {
+public class LessorSimulationController {
 
     private final SimulationService simulationService;
     private final RbacGuard rbacGuard;
 
-    @Operation(
-            summary = "Run Monte Carlo Revenue Simulation (MANAGER / ADMIN only)",
-            description = "Simulates 1,500 customer bookings over 7 days across 10 courts. Restricted to verified Lessors (MANAGER) and Platform ADMIN."
-    )
+    @Operation(summary = "[MANAGER / ADMIN] Run Monte Carlo Revenue Simulation")
     @PostMapping("/run")
-    public ResponseEntity<SimulationResultResponse> runSimulation(@RequestBody(required = false) SimulationRequest request) {
+    public ResponseEntity<SimulationResultResponse> runSimulation(
+            @RequestBody(required = false) SimulationRequest request
+    ) {
         rbacGuard.requireAnyRole(SystemConstant.ROLE_MANAGER, SystemConstant.ROLE_ADMIN);
         if (request == null) {
             request = new SimulationRequest();
         }
-        SimulationResultResponse result = simulationService.runMonteCarloSimulation(request);
-        return ResponseEntity.ok(result);
+        return ResponseEntity.ok(simulationService.runMonteCarloSimulation(request));
     }
 }
+

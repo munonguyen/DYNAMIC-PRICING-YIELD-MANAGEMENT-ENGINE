@@ -8,6 +8,7 @@ interface AmbientVideoLayerProps {
   mp4Src: string;
   startSec?: number;
   endSec?: number;
+  paused?: boolean;
   className?: string;
   videoOpacityClass?: string;
 }
@@ -33,6 +34,7 @@ export const AmbientVideoLayer: React.FC<AmbientVideoLayerProps> = ({
   mp4Src,
   startSec,
   endSec,
+  paused = false,
   className = '',
   videoOpacityClass = 'opacity-100',
 }) => {
@@ -43,6 +45,10 @@ export const AmbientVideoLayer: React.FC<AmbientVideoLayerProps> = ({
   const [ready, setReady] = useState(false);
 
   const allowVideo = !prefersReduced && !shouldSkipAutoVideo();
+
+  useEffect(() => {
+    setReady(false);
+  }, [mp4Src, webmSrc]);
 
   useEffect(() => {
     const el = containerRef.current;
@@ -64,7 +70,7 @@ export const AmbientVideoLayer: React.FC<AmbientVideoLayerProps> = ({
     if (!video || !allowVideo) return;
 
     const syncPlayback = () => {
-      if (inViewport && !document.hidden) {
+      if (inViewport && !paused && !document.hidden) {
         if (typeof startSec === 'number' && video.currentTime < startSec) {
           video.currentTime = startSec;
         }
@@ -77,7 +83,7 @@ export const AmbientVideoLayer: React.FC<AmbientVideoLayerProps> = ({
     document.addEventListener('visibilitychange', syncPlayback);
     syncPlayback();
     return () => document.removeEventListener('visibilitychange', syncPlayback);
-  }, [inViewport, allowVideo, startSec]);
+  }, [inViewport, paused, allowVideo, startSec]);
 
   const handleLoadedMetadata = () => {
     const video = videoRef.current;
@@ -107,6 +113,7 @@ export const AmbientVideoLayer: React.FC<AmbientVideoLayerProps> = ({
       />
       {allowVideo && inViewport && (
         <video
+          key={`${mp4Src}|${webmSrc}`}
           ref={videoRef}
           poster={posterSrc}
           muted
@@ -128,3 +135,4 @@ export const AmbientVideoLayer: React.FC<AmbientVideoLayerProps> = ({
     </div>
   );
 };
+

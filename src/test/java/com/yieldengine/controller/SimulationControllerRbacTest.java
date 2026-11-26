@@ -1,5 +1,6 @@
 package com.yieldengine.controller;
 
+import com.yieldengine.controller.lessor.LessorSimulationController;
 import com.yieldengine.dto.request.SimulationRequest;
 import com.yieldengine.dto.response.SimulationResultResponse;
 import com.yieldengine.exception.ForbiddenAccessException;
@@ -38,7 +39,7 @@ class SimulationControllerRbacTest {
                 .revParUpliftPct(java.math.BigDecimal.valueOf(24.5))
                 .build());
 
-        SimulationController controller = new SimulationController(mockSim, new RbacGuard());
+        LessorSimulationController controller = new LessorSimulationController(mockSim, new RbacGuard());
 
         // 1. Unauthenticated guest -> UnauthorizedException
         assertThrows(UnauthorizedException.class, () -> controller.runSimulation(new SimulationRequest()));

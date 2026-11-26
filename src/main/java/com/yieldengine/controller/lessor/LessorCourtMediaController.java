@@ -1,44 +1,32 @@
-package com.yieldengine.controller;
+package com.yieldengine.controller.lessor;
 
 import com.yieldengine.constant.SystemConstant;
 import com.yieldengine.entity.ResourceGroup;
 import com.yieldengine.record.marketplace.CourtMediaDto;
-import com.yieldengine.record.marketplace.MediaBinaryPayload;
 import com.yieldengine.record.security.SessionPrincipal;
 import com.yieldengine.security.RbacGuard;
 import com.yieldengine.service.CourtMediaStorageService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
-import org.springframework.core.io.Resource;
-import org.springframework.http.CacheControl;
-import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
-import java.time.Duration;
-import java.util.List;
 import java.util.UUID;
 
+@Tag(name = "[ROLE: MANAGER / STAFF] Court Photo Management", description = "Upload, promote cover photo and delete court gallery images")
 @RestController
 @RequestMapping("/api/v1")
 @RequiredArgsConstructor
-@Tag(name = "Court Media Storage", description = "Lessor real court photo upload, gallery listing, and binary serving")
-public class CourtMediaController {
+public class LessorCourtMediaController {
 
     private final CourtMediaStorageService courtMediaStorageService;
     private final RbacGuard rbacGuard;
 
-    @Operation(summary = "List real photos attached to a court group (Public)")
-    @GetMapping("/listings/{groupId}/media")
-    public ResponseEntity<List<CourtMediaDto>> listCourtMedia(@PathVariable UUID groupId) {
-        return ResponseEntity.ok(courtMediaStorageService.listMediaForGroup(groupId));
-    }
-
-    @Operation(summary = "Upload authentic venue-owner court photo (MANAGER / STAFF / ADMIN)")
+    @Operation(summary = "[MANAGER / STAFF / ADMIN] Upload authentic venue-owner court photo")
     @PostMapping(value = "/listings/{groupId}/media", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ResponseEntity<CourtMediaDto> uploadCourtMedia(
             @PathVariable UUID groupId,
@@ -56,7 +44,7 @@ public class CourtMediaController {
         return ResponseEntity.status(HttpStatus.CREATED).body(saved);
     }
 
-    @Operation(summary = "Promote an uploaded photo to cover image (MANAGER / STAFF / ADMIN)")
+    @Operation(summary = "[MANAGER / STAFF / ADMIN] Promote an uploaded photo to cover image")
     @PatchMapping("/listings/{groupId}/media/{mediaId}/cover")
     public ResponseEntity<CourtMediaDto> setCoverCourtMedia(
             @PathVariable UUID groupId,
@@ -71,7 +59,7 @@ public class CourtMediaController {
         return ResponseEntity.ok(courtMediaStorageService.setCoverPhoto(groupId, mediaId, actor));
     }
 
-    @Operation(summary = "Delete an uploaded court photo (MANAGER / STAFF / ADMIN)")
+    @Operation(summary = "[MANAGER / STAFF / ADMIN] Delete an uploaded court photo")
     @DeleteMapping("/listings/{groupId}/media/{mediaId}")
     public ResponseEntity<Void> deleteCourtMedia(
             @PathVariable UUID groupId,
@@ -86,15 +74,5 @@ public class CourtMediaController {
         courtMediaStorageService.deleteCourtMedia(groupId, mediaId, actor);
         return ResponseEntity.noContent().build();
     }
-
-    @Operation(summary = "Serve stored court photo binary bytes (Public)")
-    @GetMapping("/media/{mediaId}/content")
-    public ResponseEntity<Resource> serveMediaContent(@PathVariable UUID mediaId) {
-        MediaBinaryPayload payload = courtMediaStorageService.loadMediaContent(mediaId);
-        return ResponseEntity.ok()
-                .contentType(MediaType.parseMediaType(payload.contentType()))
-                .cacheControl(CacheControl.maxAge(Duration.ofDays(1)).cachePublic())
-                .header(HttpHeaders.CONTENT_DISPOSITION, "inline; filename=\"" + payload.fileName() + "\"")
-                .body(payload.resource());
-    }
 }
+

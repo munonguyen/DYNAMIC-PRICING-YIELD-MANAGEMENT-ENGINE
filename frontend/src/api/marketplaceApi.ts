@@ -1,4 +1,11 @@
 import type {
+  AdminAuditLogEntry,
+  AdminCommissionRule,
+  AdminLedgerEntry,
+  AdminRbacMatrix,
+  AdminTenantOverview,
+  AdminUserAccount,
+  AdminVenueGroup,
   AnalyticsDashboardData,
   AuthSession,
   CancelBookingResult,
@@ -2035,12 +2042,50 @@ class MarketplaceApiClient {
       return regSession;
     }
 
-    // 1. Check Official Provisioned Accounts (Lessor, Staff, Admin, Accountant, Player)
+    // 1. Check Admin-managed local overrides / newly created accounts
+    const adminManagedList = readAdminAccountsStore();
+    const statusOverride = readAdminStatusOverrides();
+    const adminCreated = adminManagedList.find((u) => u.username.toLowerCase() === lower);
+    if (adminCreated) {
+      const effectiveStatus = statusOverride[adminCreated.id] ?? adminCreated.status;
+      if (effectiveStatus !== 'ACTIVE') {
+        throw new Error('Tài khoản này hiện đang bị khóa bởi Quản trị viên.');
+      }
+      if (password !== adminCreated.passwordPlain) {
+        throw new Error('Mật khẩu tài khoản không chính xác.');
+      }
+      const primaryRole = adminCreated.roles[0];
+      const customSession: AuthSession = {
+        accessToken: `redis_sess_${crypto.randomUUID().slice(0, 12)}`,
+        expiresAt: new Date(Date.now() + 8 * 3600_000).toISOString(),
+        userId: adminCreated.id,
+        username: adminCreated.username,
+        email: adminCreated.email,
+        fullName: adminCreated.fullName,
+        managedProviderId: adminCreated.providerId ?? null,
+        roles: adminCreated.roles.map((r) => ({
+          roleCode: r.roleCode,
+          scope: r.scope,
+          tenantId: r.tenantId ?? null,
+        })),
+      };
+      if (!primaryRole) {
+        customSession.roles = [{ roleCode: 'USER', scope: 'PLATFORM', tenantId: null }];
+      }
+      this.setAccessToken(customSession.accessToken);
+      return customSession;
+    }
+
+    // 2. Check Official Provisioned Accounts (Lessor, Staff, Admin, Accountant, Player)
     const official = findProvisionedAccount(lower);
     if (official) {
+      if ((statusOverride[official.userId] ?? 'ACTIVE') !== 'ACTIVE') {
+        throw new Error('Tài khoản này đang bị tạm khóa bởi Quản trị viên.');
+      }
       if (password !== official.password) {
         throw new Error('Mật khẩu không chính xác. Vui lòng kiểm tra lại thông tin tài khoản được cấp.');
       }
+      const rolesOverride = readAdminRoleOverrides()[official.userId];
       const session: AuthSession = {
         accessToken: `redis_sess_${crypto.randomUUID().slice(0, 12)}`,
         expiresAt: new Date(Date.now() + 8 * 3600_000).toISOString(),
@@ -2049,13 +2094,16 @@ class MarketplaceApiClient {
         email: official.email,
         fullName: official.fullName,
         managedProviderId: official.providerId ?? null,
-        roles: [
-          {
-            roleCode: official.roleCode,
-            scope: official.scope,
-            tenantId: official.tenantId,
-          },
-        ],
+        roles:
+          rolesOverride && rolesOverride.length > 0
+            ? rolesOverride
+            : [
+                {
+                  roleCode: official.roleCode,
+                  scope: official.scope,
+                  tenantId: official.tenantId,
+                },
+              ],
       };
       this.setAccessToken(session.accessToken);
       return session;
@@ -2495,6 +2543,377 @@ class MarketplaceApiClient {
       message:
         'Dữ liệu đang đồng bộ ở chế độ ngoại tuyến. Kết nối máy chủ hệ thống để cập nhật báo cáo thời gian thực.',
     };
+  }
+
+  private async fetchStrictJson<T>(url: string, init?: RequestInit): Promise<T> {
+    let res: Response;
+    try {
+      res = await fetch(url, {
+        ...init,
+        headers: this.headers(init?.headers as Record<string, string> | undefined),
+      });
+    } catch {
+      throw new Error(
+        'Không thể kết nối tới Backend Spring Boot / PostgreSQL DB. Vui lòng khởi động máy chủ API.'
+      );
+    }
+
+    if (res.status === 401) {
+      throw new Error(
+        'Phiên làm việc hiện tại chưa xác thực trên Backend DB (401). Vui lòng đăng nhập lại bằng tài khoản Admin khi Backend đã chạy.'
+      );
+    }
+    if (res.status === 403) {
+      throw new Error('Tài khoản hiện tại không đủ quyền PLATFORM ADMIN/ACCOUNTANT trên Backend (403).');
+    }
+    if (!res.ok) {
+      const errBody = await res.json().catch(() => ({}));
+      throw new Error(
+        (errBody as { message?: string }).message ||
+          `Lỗi truy vấn dữ liệu từ PostgreSQL (${res.status}).`
+      );
+    }
+    this.backendConnected = true;
+    return (await res.json()) as T;
+  }
+
+  async fetchPlatformAnalyticsStrict(days: number): Promise<AnalyticsDashboardData> {
+    return this.fetchStrictJson<AnalyticsDashboardData>(`/api/v1/analytics/platform?days=${days}`);
+  }
+
+  async getReconciliationStrict(tenantId?: string): Promise<ReconciliationSummary> {
+    const qs = tenantId ? `?tenantId=${encodeURIComponent(tenantId)}` : '';
+    return this.fetchStrictJson<ReconciliationSummary>(`/api/v1/finance/reconciliation${qs}`);
+  }
+
+  async listLessorApplicationsStrict(): Promise<LessorApplicationRecord[]> {
+    return this.fetchStrictJson<LessorApplicationRecord[]>('/api/v1/internal/lessor-applications');
+  }
+
+  async reviewLessorApplicationStrict(
+    applicationId: string,
+    decision: 'APPROVED' | 'REJECTED',
+    reviewNote: string
+  ): Promise<LessorApplicationRecord> {
+    return this.fetchStrictJson<LessorApplicationRecord>(
+      `/api/v1/internal/lessor-applications/${encodeURIComponent(applicationId)}/review`,
+      {
+        method: 'POST',
+        body: JSON.stringify({ decision, reviewNote }),
+      }
+    );
+  }
+
+  async fetchAdminTenantsStrict(): Promise<AdminTenantOverview[]> {
+    return this.fetchStrictJson<AdminTenantOverview[]>('/api/v1/admin/tenants');
+  }
+
+  async updateAdminTenantStatusStrict(
+    tenantId: string,
+    status: 'ACTIVE' | 'SUSPEND'
+  ): Promise<AdminTenantOverview> {
+    return this.fetchStrictJson<AdminTenantOverview>(
+      `/api/v1/admin/tenants/${encodeURIComponent(tenantId)}/status`,
+      {
+        method: 'PATCH',
+        body: JSON.stringify({ status }),
+      }
+    );
+  }
+
+  async fetchAdminVenueGroupsStrict(tenantId?: string): Promise<AdminVenueGroup[]> {
+    const qs = tenantId ? `?tenantId=${encodeURIComponent(tenantId)}` : '';
+    return this.fetchStrictJson<AdminVenueGroup[]>(`/api/v1/admin/resource-groups${qs}`);
+  }
+
+  async fetchAdminUsersStrict(q?: string, status?: string): Promise<AdminUserAccount[]> {
+    const params = new URLSearchParams();
+    if (q?.trim()) params.set('q', q.trim());
+    if (status && status !== 'ALL') params.set('status', status);
+    const qs = params.toString() ? `?${params.toString()}` : '';
+    return this.fetchStrictJson<AdminUserAccount[]>(`/api/v1/admin/users${qs}`);
+  }
+
+  async updateAdminUserStatusStrict(
+    userId: string,
+    status: 'ACTIVE' | 'INACTIVE'
+  ): Promise<void> {
+    await this.fetchStrictJson(`/api/v1/admin/users/${encodeURIComponent(userId)}/status`, {
+      method: 'PATCH',
+      body: JSON.stringify({ status }),
+    });
+  }
+
+  async assignAdminUserRoleStrict(
+    userId: string,
+    roleCode: string,
+    tenantId?: string | null
+  ): Promise<void> {
+    await this.fetchStrictJson(`/api/v1/admin/users/${encodeURIComponent(userId)}/roles`, {
+      method: 'POST',
+      body: JSON.stringify({ roleCode, tenantId: tenantId || null }),
+    });
+  }
+
+  async fetchAdminRbacMatrixStrict(): Promise<AdminRbacMatrix> {
+    return this.fetchStrictJson<AdminRbacMatrix>('/api/v1/admin/rbac-matrix');
+  }
+
+  async fetchAdminCommissionRulesStrict(): Promise<AdminCommissionRule[]> {
+    return this.fetchStrictJson<AdminCommissionRule[]>('/api/v1/admin/commission-rules');
+  }
+
+  async createCommissionRuleStrict(payload: {
+    tenantId?: string | null;
+    sportTypeId?: number | null;
+    ratePercent: number;
+    appliesToForfeit?: boolean;
+    effectiveFrom: string;
+    effectiveTo: string;
+  }): Promise<void> {
+    await this.fetchStrictJson('/api/v1/finance/commission-rules', {
+      method: 'POST',
+      body: JSON.stringify({
+        tenantId: payload.tenantId || null,
+        sportTypeId: payload.sportTypeId || null,
+        ratePercent: payload.ratePercent,
+        commissionBasis: 'COLLECTED_DEPOSIT',
+        appliesToForfeit: payload.appliesToForfeit ?? true,
+        effectiveFrom: payload.effectiveFrom,
+        effectiveTo: payload.effectiveTo,
+      }),
+    });
+  }
+
+  async fetchAdminLedgerEntriesStrict(
+    tenantId?: string,
+    limit = 80
+  ): Promise<AdminLedgerEntry[]> {
+    const params = new URLSearchParams({ limit: String(limit) });
+    if (tenantId) params.set('tenantId', tenantId);
+    return this.fetchStrictJson<AdminLedgerEntry[]>(
+      `/api/v1/admin/ledger-entries?${params.toString()}`
+    );
+  }
+
+  async fetchAdminAuditLogsStrict(
+    action?: string,
+    tenantId?: string,
+    limit = 80
+  ): Promise<AdminAuditLogEntry[]> {
+    const params = new URLSearchParams({ limit: String(limit) });
+    if (action && action !== 'ALL') params.set('action', action);
+    if (tenantId) params.set('tenantId', tenantId);
+    return this.fetchStrictJson<AdminAuditLogEntry[]>(
+      `/api/v1/admin/audit-logs?${params.toString()}`
+    );
+  }
+
+  async createSportTypeStrict(code: string, name: string): Promise<SportTypeItem> {
+    return this.fetchStrictJson<SportTypeItem>('/api/v1/sport-types', {
+      method: 'POST',
+      body: JSON.stringify({ code, name }),
+    });
+  }
+
+  // Hybrid DB-first + local persistent Account Management for Admin Portal
+  async listAdminAccounts(): Promise<{ live: boolean; accounts: AdminUserAccount[] }> {
+    try {
+      const res = await fetch('/api/v1/admin/users', { headers: this.headers() });
+      if (res.ok) {
+        this.backendConnected = true;
+        const accounts = (await res.json()) as AdminUserAccount[];
+        return { live: true, accounts };
+      }
+    } catch {
+      // Backend offline -> build complete merged account directory
+    }
+    return { live: false, accounts: buildMergedLocalAccounts() };
+  }
+
+  async createAdminAccount(payload: {
+    username: string;
+    email: string;
+    password: string;
+    firstName: string;
+    lastName: string;
+    phone?: string;
+    roleCode: RoleCode;
+    tenantId?: string | null;
+    providerId?: string | null;
+  }): Promise<{ live: boolean; account: AdminUserAccount }> {
+    const cleanUsername = payload.username.trim();
+    const cleanEmail = payload.email.trim();
+    const fullName = `${payload.firstName.trim()} ${payload.lastName.trim()}`.trim();
+    const scope: 'PLATFORM' | 'TENANT' =
+      payload.roleCode === 'MANAGER' || payload.roleCode === 'STAFF' ? 'TENANT' : 'PLATFORM';
+    const effectiveTenantId = scope === 'TENANT' ? payload.tenantId || DEFAULT_TENANT_ID : null;
+
+    try {
+      const res = await fetch('/api/v1/admin/users', {
+        method: 'POST',
+        headers: this.headers(),
+        body: JSON.stringify({
+          username: cleanUsername,
+          email: cleanEmail,
+          password: payload.password,
+          firstName: payload.firstName.trim(),
+          lastName: payload.lastName.trim(),
+          phone: payload.phone?.trim() || '',
+          roleCode: payload.roleCode,
+          tenantId: effectiveTenantId,
+        }),
+      });
+      if (res.ok) {
+        this.backendConnected = true;
+        const created = (await res.json()) as {
+          id: string;
+          username: string;
+          email: string;
+          firstName: string;
+          lastName: string;
+          status: string;
+          lastLoginAt?: string | null;
+          roles: { roleCode: RoleCode; scope: 'PLATFORM' | 'TENANT'; tenantId?: string | null }[];
+        };
+        return {
+          live: true,
+          account: {
+            id: created.id,
+            username: created.username,
+            email: created.email,
+            fullName: `${created.firstName} ${created.lastName}`.trim(),
+            phone: payload.phone?.trim() || '',
+            status: created.status,
+            failedLoginAttempts: 0,
+            lastLoginAt: created.lastLoginAt ?? null,
+            createdAt: new Date().toISOString(),
+            roles: created.roles,
+          },
+        };
+      }
+      if (res.status >= 400 && res.status < 500 && res.status !== 401 && res.status !== 403) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error((err as { message?: string }).message || 'Thông tin tài khoản chưa hợp lệ.');
+      }
+    } catch (e) {
+      if (e instanceof Error && e.message && !e.message.includes('Failed to fetch')) {
+        throw e;
+      }
+    }
+
+    const existing = buildMergedLocalAccounts();
+    if (
+      existing.some(
+        (u) =>
+          u.username.toLowerCase() === cleanUsername.toLowerCase() ||
+          u.email.toLowerCase() === cleanEmail.toLowerCase()
+      )
+    ) {
+      throw new Error('Username hoặc Email đã tồn tại trong hệ thống.');
+    }
+
+    const newLocal: StoredAdminAccountRecord = {
+      id: crypto.randomUUID(),
+      username: cleanUsername,
+      email: cleanEmail,
+      passwordPlain: payload.password,
+      fullName,
+      phone: payload.phone?.trim() || '',
+      status: 'ACTIVE',
+      createdAt: new Date().toISOString(),
+      providerId: payload.providerId ?? null,
+      roles: [{ roleCode: payload.roleCode, scope, tenantId: effectiveTenantId }],
+    };
+    writeAdminAccountsStore([newLocal, ...readAdminAccountsStore()]);
+    return {
+      live: false,
+      account: {
+        id: newLocal.id,
+        username: newLocal.username,
+        email: newLocal.email,
+        fullName: newLocal.fullName,
+        phone: newLocal.phone,
+        status: newLocal.status,
+        failedLoginAttempts: 0,
+        lastLoginAt: null,
+        createdAt: newLocal.createdAt,
+        roles: newLocal.roles,
+      },
+    };
+  }
+
+  async toggleAdminAccountStatus(
+    userId: string,
+    nextStatus: 'ACTIVE' | 'INACTIVE'
+  ): Promise<{ live: boolean }> {
+    try {
+      const res = await fetch(`/api/v1/admin/users/${encodeURIComponent(userId)}/status`, {
+        method: 'PATCH',
+        headers: this.headers(),
+        body: JSON.stringify({ status: nextStatus }),
+      });
+      if (res.ok) {
+        this.backendConnected = true;
+        return { live: true };
+      }
+    } catch {
+      // Fallback to local status override
+    }
+    const overrides = readAdminStatusOverrides();
+    overrides[userId] = nextStatus;
+    writeAdminStatusOverrides(overrides);
+
+    const createdList = readAdminAccountsStore().map((u) =>
+      u.id === userId ? { ...u, status: nextStatus } : u
+    );
+    writeAdminAccountsStore(createdList);
+    return { live: false };
+  }
+
+  async assignAdminAccountRole(
+    userId: string,
+    roleCode: RoleCode,
+    tenantId?: string | null
+  ): Promise<{ live: boolean }> {
+    const scope: 'PLATFORM' | 'TENANT' =
+      roleCode === 'MANAGER' || roleCode === 'STAFF' ? 'TENANT' : 'PLATFORM';
+    const effectiveTenant = scope === 'TENANT' ? tenantId || DEFAULT_TENANT_ID : null;
+
+    try {
+      const res = await fetch(`/api/v1/admin/users/${encodeURIComponent(userId)}/roles`, {
+        method: 'POST',
+        headers: this.headers(),
+        body: JSON.stringify({ roleCode, tenantId: effectiveTenant }),
+      });
+      if (res.ok) {
+        this.backendConnected = true;
+        return { live: true };
+      }
+    } catch {
+      // Fallback to local role store
+    }
+    const roleMap = readAdminRoleOverrides();
+    const current = roleMap[userId] ?? [];
+    const exists = current.some(
+      (r) => r.roleCode === roleCode && (r.tenantId ?? null) === effectiveTenant
+    );
+    roleMap[userId] = exists
+      ? current
+      : [...current, { roleCode, scope, tenantId: effectiveTenant }];
+    writeAdminRoleOverrides(roleMap);
+
+    const createdList = readAdminAccountsStore().map((u) => {
+      if (u.id !== userId) return u;
+      const has = u.roles.some(
+        (r) => r.roleCode === roleCode && (r.tenantId ?? null) === effectiveTenant
+      );
+      return has
+        ? u
+        : { ...u, roles: [...u.roles, { roleCode, scope, tenantId: effectiveTenant }] };
+    });
+    writeAdminAccountsStore(createdList);
+    return { live: false };
   }
 }
 
@@ -2949,6 +3368,163 @@ const MY_TICKETS_STORAGE_KEY = 'arenapulse_my_tickets_v1';
 const SAVED_SESSION_STORAGE_KEY = 'arenapulse_auth_session_v1';
 const REGISTERED_USERS_STORAGE_KEY = 'arenapulse_registered_users_v1';
 export const CUSTOM_STAFF_STORAGE_KEY = 'arenapulse_custom_staff_accounts_v1';
+const ADMIN_ACCOUNTS_STORAGE_KEY = 'arenapulse_admin_created_accounts_v1';
+const ADMIN_STATUS_OVERRIDES_KEY = 'arenapulse_admin_account_status_overrides_v1';
+const ADMIN_ROLE_OVERRIDES_KEY = 'arenapulse_admin_account_role_overrides_v1';
+
+interface StoredAdminAccountRecord {
+  id: string;
+  username: string;
+  email: string;
+  passwordPlain: string;
+  fullName: string;
+  phone: string;
+  status: 'ACTIVE' | 'INACTIVE';
+  createdAt: string;
+  providerId?: string | null;
+  roles: { roleCode: RoleCode; scope: 'PLATFORM' | 'TENANT'; tenantId?: string | null }[];
+}
+
+function readAdminAccountsStore(): StoredAdminAccountRecord[] {
+  if (typeof window === 'undefined') return [];
+  try {
+    const raw = window.localStorage.getItem(ADMIN_ACCOUNTS_STORAGE_KEY);
+    return raw ? (JSON.parse(raw) as StoredAdminAccountRecord[]) : [];
+  } catch {
+    return [];
+  }
+}
+
+function writeAdminAccountsStore(items: StoredAdminAccountRecord[]): void {
+  if (typeof window === 'undefined') return;
+  try {
+    window.localStorage.setItem(ADMIN_ACCOUNTS_STORAGE_KEY, JSON.stringify(items));
+  } catch {
+    // ignore
+  }
+}
+
+function readAdminStatusOverrides(): Record<string, 'ACTIVE' | 'INACTIVE'> {
+  if (typeof window === 'undefined') return {};
+  try {
+    const raw = window.localStorage.getItem(ADMIN_STATUS_OVERRIDES_KEY);
+    return raw ? (JSON.parse(raw) as Record<string, 'ACTIVE' | 'INACTIVE'>) : {};
+  } catch {
+    return {};
+  }
+}
+
+function writeAdminStatusOverrides(map: Record<string, 'ACTIVE' | 'INACTIVE'>): void {
+  if (typeof window === 'undefined') return;
+  try {
+    window.localStorage.setItem(ADMIN_STATUS_OVERRIDES_KEY, JSON.stringify(map));
+  } catch {
+    // ignore
+  }
+}
+
+function readAdminRoleOverrides(): Record<
+  string,
+  { roleCode: RoleCode; scope: 'PLATFORM' | 'TENANT'; tenantId?: string | null }[]
+> {
+  if (typeof window === 'undefined') return {};
+  try {
+    const raw = window.localStorage.getItem(ADMIN_ROLE_OVERRIDES_KEY);
+    return raw ? JSON.parse(raw) : {};
+  } catch {
+    return {};
+  }
+}
+
+function writeAdminRoleOverrides(
+  map: Record<string, { roleCode: RoleCode; scope: 'PLATFORM' | 'TENANT'; tenantId?: string | null }[]>
+): void {
+  if (typeof window === 'undefined') return;
+  try {
+    window.localStorage.setItem(ADMIN_ROLE_OVERRIDES_KEY, JSON.stringify(map));
+  } catch {
+    // ignore
+  }
+}
+
+function buildMergedLocalAccounts(): AdminUserAccount[] {
+  const statusMap = readAdminStatusOverrides();
+  const roleOverrides = readAdminRoleOverrides();
+
+  const provisioned: AdminUserAccount[] = PROVISIONED_ACCOUNTS.map((a) => ({
+    id: a.userId,
+    username: a.username,
+    email: a.email,
+    fullName: a.fullName,
+    phone: '',
+    status: statusMap[a.userId] ?? 'ACTIVE',
+    failedLoginAttempts: 0,
+    lastLoginAt: null,
+    createdAt: new Date(Date.now() - 30 * 86400_000).toISOString(),
+    roles:
+      roleOverrides[a.userId]?.length
+        ? roleOverrides[a.userId]
+        : [{ roleCode: a.roleCode, scope: a.scope, tenantId: a.tenantId }],
+  }));
+
+  const createdByAdmin: AdminUserAccount[] = readAdminAccountsStore().map((u) => ({
+    id: u.id,
+    username: u.username,
+    email: u.email,
+    fullName: u.fullName,
+    phone: u.phone,
+    status: statusMap[u.id] ?? u.status,
+    failedLoginAttempts: 0,
+    lastLoginAt: null,
+    createdAt: u.createdAt,
+    roles: roleOverrides[u.id]?.length ? roleOverrides[u.id] : u.roles,
+  }));
+
+  let customStaff: AdminUserAccount[] = [];
+  if (typeof window !== 'undefined') {
+    try {
+      const raw = window.localStorage.getItem(CUSTOM_STAFF_STORAGE_KEY);
+      if (raw) {
+        const list = JSON.parse(raw) as {
+          id: string;
+          providerId: string;
+          username: string;
+          fullName: string;
+          active: boolean;
+        }[];
+        customStaff = list.map((s) => ({
+          id: s.id,
+          username: s.username,
+          email: `${s.username}@arenapulse.vn`,
+          fullName: s.fullName,
+          phone: '',
+          status: statusMap[s.id] ?? (s.active ? 'ACTIVE' : 'INACTIVE'),
+          failedLoginAttempts: 0,
+          lastLoginAt: null,
+          createdAt: new Date().toISOString(),
+          roles: [{ roleCode: 'STAFF', scope: 'TENANT', tenantId: DEFAULT_TENANT_ID }],
+        }));
+      }
+    } catch {
+      // ignore
+    }
+  }
+
+  const registered: AdminUserAccount[] = readRegisteredAccounts().map((r, i) => ({
+    id: `reg-user-${i}-${r.username}`,
+    username: r.username,
+    email: r.email,
+    fullName: r.fullName,
+    phone: '',
+    status: statusMap[`reg-user-${i}-${r.username}`] ?? 'ACTIVE',
+    failedLoginAttempts: 0,
+    lastLoginAt: null,
+    createdAt: new Date().toISOString(),
+    roles: [{ roleCode: 'USER', scope: 'PLATFORM', tenantId: null }],
+  }));
+
+  return [...createdByAdmin, ...provisioned, ...customStaff, ...registered];
+}
 
 interface ProvisionedCredentialRecord {
   userId: string;

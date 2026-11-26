@@ -1,4 +1,4 @@
-package com.yieldengine.controller;
+package com.yieldengine.controller.lessor;
 
 import com.yieldengine.constant.SystemConstant;
 import com.yieldengine.dto.request.CreateTimeSlotRequest;
@@ -21,16 +21,16 @@ import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
 
-@Tag(name = "1A. Inventory & Listing Publishing", description = "Manage court groups, physical courts, publishing state, and time slots")
+@Tag(name = "[ROLE: MANAGER] Court Groups, Slots & Publishing", description = "Create court groups, manage time slots and toggle marketplace visibility")
 @RestController
 @RequestMapping("/api/v1/inventory")
 @RequiredArgsConstructor
-public class InventoryController {
+public class LessorInventoryController {
 
     private final InventoryService inventoryService;
     private final RbacGuard rbacGuard;
 
-    @Operation(summary = "Create a court group and auto-generate physical courts (UC-07)")
+    @Operation(summary = "[MANAGER] Create a court group and auto-generate physical courts (UC-07)")
     @PostMapping("/groups")
     public ResponseEntity<ResourceGroup> createResourceGroup(@Valid @RequestBody ResourceGroupRequest request) {
         if (AuthContext.current().isPresent()) {
@@ -41,13 +41,13 @@ public class InventoryController {
         return ResponseEntity.status(HttpStatus.CREATED).body(group);
     }
 
-    @Operation(summary = "Get court group details by ID")
+    @Operation(summary = "[MANAGER / PUBLIC] Get court group details by ID")
     @GetMapping("/groups/{id}")
     public ResponseEntity<ResourceGroup> getResourceGroup(@PathVariable UUID id) {
         return ResponseEntity.ok(inventoryService.getResourceGroup(id));
     }
 
-    @Operation(summary = "Publish a court group to Marketplace listings (MANAGER - UC-08)")
+    @Operation(summary = "[MANAGER] Publish a court group to Marketplace listings (UC-08)")
     @PostMapping("/groups/{id}/publish")
     public ResponseEntity<ResourceGroup> publishGroup(@PathVariable UUID id) {
         ResourceGroup group = inventoryService.getResourceGroup(id);
@@ -57,7 +57,7 @@ public class InventoryController {
         return ResponseEntity.ok(inventoryService.updatePublishStatus(id, true));
     }
 
-    @Operation(summary = "Unpublish a court group from Marketplace listings (MANAGER - UC-08)")
+    @Operation(summary = "[MANAGER] Unpublish a court group from Marketplace listings (UC-08)")
     @PostMapping("/groups/{id}/unpublish")
     public ResponseEntity<ResourceGroup> unpublishGroup(@PathVariable UUID id) {
         ResourceGroup group = inventoryService.getResourceGroup(id);
@@ -67,19 +67,21 @@ public class InventoryController {
         return ResponseEntity.ok(inventoryService.updatePublishStatus(id, false));
     }
 
-    @Operation(summary = "Generate a business time slot and snapshot initial dynamic price")
+    @Operation(summary = "[MANAGER] Generate a business time slot and snapshot initial dynamic price")
     @PostMapping("/slots")
     public ResponseEntity<TimeSlot> createTimeSlot(@Valid @RequestBody CreateTimeSlotRequest request) {
         TimeSlot slot = inventoryService.createTimeSlot(request);
         return ResponseEntity.status(HttpStatus.CREATED).body(slot);
     }
 
-    @Operation(summary = "Query time slots for a group within a time range")
+    @Operation(summary = "[MANAGER / PUBLIC] Query time slots for a group within a time range")
     @GetMapping("/groups/{groupId}/slots")
     public ResponseEntity<List<TimeSlot>> getSlots(
             @PathVariable UUID groupId,
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) Instant start,
-            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) Instant end) {
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) Instant end
+    ) {
         return ResponseEntity.ok(inventoryService.getSlots(groupId, start, end));
     }
 }
+

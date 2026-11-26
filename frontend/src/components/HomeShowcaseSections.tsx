@@ -1,5 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
+import { Pause, Play } from 'lucide-react';
 import type {
   AppPageId,
   PublishedListing,
@@ -59,10 +60,8 @@ const SPORT_SPOTLIGHTS: SportSpotlightItem[] = [
     priceFrom: 'Từ 280.000₫/ca',
     image: '/images/sport-football-pitch.jpg',
     video: {
-      webm: '/videos/hero-multisport.webm',
-      mp4: '/videos/hero-multisport.mp4',
-      startSec: 4.0,
-      endSec: 8.5,
+      webm: '/videos/showcase-football.webm?v=2',
+      mp4: '/videos/showcase-football.mp4?v=2',
     },
     highlights: [
       'Cụm 6 sân liên hoàn tại Mỹ Đình hỗ trợ ghép sân 11v11 cho giải doanh nghiệp',
@@ -84,10 +83,8 @@ const SPORT_SPOTLIGHTS: SportSpotlightItem[] = [
     priceFrom: 'Từ 120.000₫/ca',
     image: '/images/court-pickleball-padel.jpg',
     video: {
-      webm: '/videos/hero-multisport.webm',
-      mp4: '/videos/hero-multisport.mp4',
-      startSec: 12.25,
-      endSec: 16.0,
+      webm: '/videos/showcase-pickleball.webm?v=2',
+      mp4: '/videos/showcase-pickleball.mp4?v=2',
     },
     highlights: [
       '10 sân mái vòm tại Bách Khoa & cụm sân ven sông Thủ Thiêm thông thoáng',
@@ -109,8 +106,8 @@ const SPORT_SPOTLIGHTS: SportSpotlightItem[] = [
     priceFrom: 'Từ 95.000₫/ca',
     image: '/images/court-badminton-arena.jpg',
     video: {
-      webm: '/videos/login-ambient.webm',
-      mp4: '/videos/login-ambient.mp4',
+      webm: '/videos/showcase-badminton.webm?v=2',
+      mp4: '/videos/showcase-badminton.mp4?v=2',
     },
     highlights: [
       'Hệ thống tường tiêu âm kết hợp thông gió đối lưu mát mẻ quanh năm',
@@ -132,10 +129,8 @@ const SPORT_SPOTLIGHTS: SportSpotlightItem[] = [
     priceFrom: 'Từ 220.000₫/ca',
     image: '/images/sport-tennis-sunny.jpg',
     video: {
-      webm: '/videos/hero-multisport.webm',
-      mp4: '/videos/hero-multisport.mp4',
-      startSec: 0,
-      endSec: 4.0,
+      webm: '/videos/showcase-tennis.webm?v=2',
+      mp4: '/videos/showcase-tennis.mp4?v=2',
     },
     highlights: [
       'Mái hiên nghỉ vận động viên riêng biệt kèm xô đá lạnh & khăn mát từng sân',
@@ -157,10 +152,8 @@ const SPORT_SPOTLIGHTS: SportSpotlightItem[] = [
     priceFrom: 'Từ 240.000₫/ca',
     image: '/images/sport-basketball-ocean.jpg',
     video: {
-      webm: '/videos/hero-multisport.webm',
-      mp4: '/videos/hero-multisport.mp4',
-      startSec: 8.5,
-      endSec: 12.25,
+      webm: '/videos/showcase-basketball.webm?v=2',
+      mp4: '/videos/showcase-basketball.mp4?v=2',
     },
     highlights: [
       'Tích hợp đồng thời sân 5v5 tiêu chuẩn và khu đấu 3x3 sôi động tại Thủ Thiêm',
@@ -190,6 +183,8 @@ export const HomeShowcaseSections: React.FC<HomeShowcaseSectionsProps> = ({
 }) => {
   const prefersReduced = useReducedMotion();
   const [activeSportIdx, setActiveSportIdx] = useState<number>(0);
+  const [archPaused, setArchPaused] = useState(false);
+  const [spotlightPaused, setSpotlightPaused] = useState(false);
 
   const activeSpotlight = SPORT_SPOTLIGHTS[activeSportIdx];
 
@@ -264,13 +259,14 @@ export const HomeShowcaseSections: React.FC<HomeShowcaseSectionsProps> = ({
         </ScrollReveal>
 
         <div className="mt-8 grid grid-cols-1 gap-5 lg:grid-cols-12">
-          {/* Bento Card 1 (7 cols): Flagship Architectural Complex with Live Ambient Video */}
+          {/* Bento Card 1 (7 cols): Flagship Architectural Complex with Live Consumer Action Video */}
           <ScrollReveal className="group relative overflow-hidden rounded-[30px] bg-[#0B2217] text-white lg:col-span-7 min-h-[360px] flex flex-col justify-between p-6 sm:p-8 shadow-[0_24px_60px_rgba(11,34,23,0.16)]">
             <AmbientVideoLayer
-              posterSrc="/images/hero-fairway-complex.jpg"
-              alt="Kiến trúc tổ hợp sân thể thao ArenaPulse"
-              webmSrc="/videos/login-ambient.webm"
-              mp4Src="/videos/login-ambient.mp4"
+              posterSrc="/videos/poster-architecture-live.jpg"
+              alt="Người chơi trải nghiệm tổ hợp sân thể thao ArenaPulse"
+              webmSrc="/videos/showcase-architecture.webm?v=2"
+              mp4Src="/videos/showcase-architecture.mp4?v=2"
+              paused={archPaused}
               className="transition-transform duration-700 ease-out group-hover:scale-105"
             />
             <div className="absolute inset-0 bg-gradient-to-t from-[#06150E]/92 via-[#092116]/45 to-black/25" />
@@ -279,9 +275,20 @@ export const HomeShowcaseSections: React.FC<HomeShowcaseSectionsProps> = ({
               <span className="rounded-full bg-white/15 px-3.5 py-1 text-[11px] font-semibold text-[#E7F7D4] backdrop-blur-md border border-white/15">
                 Flagship Multi-Sport Architecture
               </span>
-              <span className="rounded-full bg-[#E7F7D4] px-3 py-1 tabular-nums text-[11px] font-bold text-[#0B2217]">
-                Mở cửa 05:30 – 24:00
-              </span>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setArchPaused((p) => !p)}
+                  aria-label={archPaused ? 'Phát video kiến trúc tổ hợp' : 'Tạm dừng video kiến trúc tổ hợp'}
+                  className="inline-flex items-center gap-1.5 rounded-full bg-black/50 px-3 py-1 text-[11px] font-semibold text-white backdrop-blur-md border border-white/20 hover:bg-black/75 transition cursor-pointer"
+                >
+                  {archPaused ? <Play className="h-3 w-3" /> : <Pause className="h-3 w-3" />}
+                  {archPaused ? 'Phát' : 'Video Tổ hợp'}
+                </button>
+                <span className="rounded-full bg-[#E7F7D4] px-3 py-1 tabular-nums text-[11px] font-bold text-[#0B2217]">
+                  Mở cửa 05:30 – 24:00
+                </span>
+              </div>
             </div>
 
             <div className="relative z-10 mt-28 space-y-5">
@@ -451,19 +458,37 @@ export const HomeShowcaseSections: React.FC<HomeShowcaseSectionsProps> = ({
                   title: 'Trọng tài & Highlight AI',
                   price: 'Từ 120.000₫',
                   sub: 'Điều hành trận & trả clip Full HD',
+                  videoWebm: '/videos/showcase-football.webm?v=2',
+                  videoMp4: '/videos/showcase-football.mp4?v=2',
                 },
               ].map((item) => (
                 <div
                   key={item.title}
                   className="group flex items-center gap-3 sm:flex-col sm:items-stretch overflow-hidden rounded-2xl border border-neutral-200/80 bg-[#FAFAFA] p-2.5 transition-colors hover:bg-white"
                 >
-                  <div className="h-16 w-20 sm:h-28 sm:w-full shrink-0 overflow-hidden rounded-xl bg-neutral-200">
-                    <img
-                      src={item.img}
-                      alt={item.title}
-                      loading="lazy"
-                      className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
-                    />
+                  <div className="relative h-16 w-20 sm:h-28 sm:w-full shrink-0 overflow-hidden rounded-xl bg-neutral-200">
+                    {'videoMp4' in item && item.videoMp4 ? (
+                      <>
+                        <AmbientVideoLayer
+                          posterSrc={item.img}
+                          alt={item.title}
+                          webmSrc={item.videoWebm}
+                          mp4Src={item.videoMp4}
+                          className="transition-transform duration-500 group-hover:scale-105"
+                        />
+                        <span className="absolute bottom-1.5 left-1.5 z-10 inline-flex items-center gap-1 rounded-md bg-black/65 px-1.5 py-0.5 text-[9.5px] font-bold text-white backdrop-blur-xs">
+                          <span className="h-1.5 w-1.5 rounded-full bg-[#84CC16] animate-pulse" />
+                          Highlight
+                        </span>
+                      </>
+                    ) : (
+                      <img
+                        src={item.img}
+                        alt={item.title}
+                        loading="lazy"
+                        className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
+                      />
+                    )}
                   </div>
                   <div className="min-w-0 px-1 pt-1">
                     <div className="truncate text-xs font-bold text-[#0F172A]">{item.title}</div>
@@ -749,21 +774,32 @@ export const HomeShowcaseSections: React.FC<HomeShowcaseSectionsProps> = ({
                   mp4Src={activeSpotlight.video.mp4}
                   startSec={activeSpotlight.video.startSec}
                   endSec={activeSpotlight.video.endSec}
+                  paused={spotlightPaused}
                   className="transition-transform duration-700 group-hover:scale-105"
                 />
                 <div className="absolute inset-0 bg-gradient-to-t from-black/82 via-black/15 to-transparent" />
 
-                <div className="absolute left-5 top-5 flex flex-wrap items-center gap-2">
-                  <span className="rounded-full bg-white/95 px-3.5 py-1 text-[11px] font-semibold text-[#0F172A] shadow-xs">
-                    {activeSpotlight.standard}
-                  </span>
-                  <span className="rounded-full bg-[#E7F7D4] px-3.5 py-1 tabular-nums text-[11px] font-bold text-[#204E18]">
-                    {activeSpotlight.priceFrom}
-                  </span>
-                  <span className="inline-flex items-center gap-1.5 rounded-full bg-slate-950/75 px-3 py-1 text-[10.5px] font-semibold text-white backdrop-blur-md border border-white/15">
-                    <span className="h-1.5 w-1.5 rounded-full bg-[#84CC16] animate-pulse" />
-                    Video thực tế mặt sân
-                  </span>
+                <div className="absolute left-5 top-5 right-5 flex flex-wrap items-center justify-between gap-2">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="rounded-full bg-white/95 px-3.5 py-1 text-[11px] font-semibold text-[#0F172A] shadow-xs">
+                      {activeSpotlight.standard}
+                    </span>
+                    <span className="rounded-full bg-[#E7F7D4] px-3.5 py-1 tabular-nums text-[11px] font-bold text-[#204E18]">
+                      {activeSpotlight.priceFrom}
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setSpotlightPaused((p) => !p)}
+                    className="inline-flex items-center gap-1.5 rounded-full bg-slate-950/75 px-3 py-1 text-[10.5px] font-semibold text-white backdrop-blur-md border border-white/15 hover:bg-slate-900 transition cursor-pointer"
+                  >
+                    {spotlightPaused ? (
+                      <Play className="h-3 w-3 text-[#84CC16]" />
+                    ) : (
+                      <span className="h-1.5 w-1.5 rounded-full bg-[#84CC16] animate-pulse" />
+                    )}
+                    {spotlightPaused ? 'Phát tiếp video' : `Reels ${activeSpotlight.shortTab}`}
+                  </button>
                 </div>
 
                 <div className="absolute bottom-5 left-5 right-5 grid grid-cols-1 gap-2.5 sm:grid-cols-2">
@@ -932,13 +968,11 @@ export const HomeShowcaseSections: React.FC<HomeShowcaseSectionsProps> = ({
           <ScrollReveal className="grid grid-cols-1 gap-5 lg:grid-cols-12">
             <div className="relative overflow-hidden flex flex-col justify-between rounded-[30px] bg-[#0B2217] p-7 sm:p-9 text-white shadow-[0_24px_60px_rgba(11,34,23,0.2)] lg:col-span-7">
               <AmbientVideoLayer
-                posterSrc="/images/sunlit-action-athlete.jpg"
-                alt="Không khí thi đấu tại hệ thống sân ArenaPulse"
-                webmSrc="/videos/hero-multisport.webm"
-                mp4Src="/videos/hero-multisport.mp4"
-                startSec={0}
-                endSec={16}
-                videoOpacityClass="opacity-35"
+                posterSrc="/videos/poster-community-live.jpg"
+                alt="Không khí người chơi & dịch vụ tại hệ thống sân ArenaPulse"
+                webmSrc="/videos/showcase-community.webm?v=2"
+                mp4Src="/videos/showcase-community.mp4?v=2"
+                videoOpacityClass="opacity-50"
               />
               <div className="absolute inset-0 bg-gradient-to-br from-[#0B2217]/95 via-[#123624]/82 to-[#16422C]/75" />
               <div className="relative z-10 space-y-3">

@@ -66,6 +66,7 @@ interface MonteCarloAndRoleCenterSectionProps {
 
 type InternalTab =
   | 'OPERATIONS'
+  | 'USER_ACCOUNTS'
   | 'LESSOR_INSPECTOR'
   | 'RBAC_MATRIX'
   | 'FINANCE_LEDGER'
