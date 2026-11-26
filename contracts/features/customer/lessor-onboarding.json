@@ -1,0 +1,38 @@
+{
+  "branch": "service/customer/lessor-onboarding",
+  "title": "Đăng ký trở thành chủ sân",
+  "scope": "Xác thực OTP và nộp hồ sơ đối tác.",
+  "operations": [
+    {
+      "method": "POST",
+      "path": "/api/v1/lessor-applications/otp/request",
+      "operationId": "requestOtp"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/lessor-applications/otp/verify",
+      "operationId": "verifyOtp"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/lessor-applications",
+      "operationId": "submitApplication"
+    }
+  ],
+  "source": [
+    {
+      "file": "src/main/java/com/yieldengine/controller/customer/CustomerKycSubmissionController.java",
+      "anchors": [
+        "requestOtp(",
+        "verifyOtp(",
+        "submitApplication("
+      ]
+    },
+    {
+      "file": "frontend/src/api/marketplaceApi.ts",
+      "anchors": [
+        "submitLessorApplication("
+      ]
+    }
+  ]
+}
