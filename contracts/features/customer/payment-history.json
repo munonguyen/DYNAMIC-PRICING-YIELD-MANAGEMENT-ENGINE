@@ -1,0 +1,32 @@
+{
+  "branch": "service/customer/payment-history",
+  "title": "Lịch sử thanh toán",
+  "scope": "Đọc lịch sử giao dịch gắn với tài khoản khách.",
+  "operations": [
+    {
+      "method": "GET",
+      "path": "/api/v1/payments/history",
+      "operationId": "paymentHistory"
+    }
+  ],
+  "source": [
+    {
+      "file": "src/main/java/com/yieldengine/controller/customer/CustomerPaymentController.java",
+      "anchors": [
+        "paymentHistory("
+      ]
+    },
+    {
+      "file": "src/main/java/com/yieldengine/service/BookingOrchestratorService.java",
+      "anchors": [
+        "listPaymentHistory("
+      ]
+    },
+    {
+      "file": "frontend/src/components/FairwayHeader.tsx",
+      "anchors": [
+        "getPaymentHistory("
+      ]
+    }
+  ]
+}
