@@ -1,0 +1,37 @@
+{
+  "branch": "service/customer/court-booking",
+  "title": "Giữ sân",
+  "scope": "Lấy giá theo phiên và giữ sức chứa cho ca đã chọn.",
+  "operations": [
+    {
+      "method": "GET",
+      "path": "/api/v1/pricing/quote",
+      "operationId": "getPriceQuote"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/bookings/hold",
+      "operationId": "holdSlot"
+    }
+  ],
+  "source": [
+    {
+      "file": "src/main/java/com/yieldengine/controller/publicapi/PublicCatalogueController.java",
+      "anchors": [
+        "getPriceQuote("
+      ]
+    },
+    {
+      "file": "src/main/java/com/yieldengine/controller/customer/CustomerBookingController.java",
+      "anchors": [
+        "holdSlot("
+      ]
+    },
+    {
+      "file": "src/main/java/com/yieldengine/service/BookingOrchestratorService.java",
+      "anchors": [
+        "holdSlot("
+      ]
+    }
+  ]
+}
