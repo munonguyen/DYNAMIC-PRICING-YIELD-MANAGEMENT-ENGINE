@@ -20,7 +20,7 @@ import { getActiveLessorServices } from '../data/courtServicesData';
 import { isValidVietnamTaxCode } from '../utils/lessorLegalValidator';
 import { EXPO_EASE, ScrollReveal } from './motionPrimitives';
 import { ActionButton } from './FairwayControls';
-import { MoMoCheckoutQr } from './MoMoCheckoutQr';
+import { CheckoutPaymentQr } from './CheckoutPaymentQr';
 
 interface BookingPipelineAndQrSectionProps {
   activeListing: PublishedListing | null;
@@ -42,6 +42,11 @@ interface BookingPipelineAndQrSectionProps {
   selectedServiceQuantities?: Record<string, number>;
   onChangeServiceQuantity?: (serviceId: string, nextQty: number) => void;
 }
+
+const qrProviders = [
+  { code: 'VIETQR_NAPAS', title: 'Chuyển khoản VietQR', detail: 'Quét bằng ứng dụng ngân hàng' },
+  { code: 'MOMO_WALLET', title: 'Ví MoMo', detail: 'Quét bằng ứng dụng MoMo' },
+] as const;
 
 const stateMessages: Record<BookingPaymentStatus['paymentStatus'], string> = {
   NOT_STARTED: 'Chưa tạo giao dịch thanh toán.',
@@ -78,6 +83,7 @@ export const BookingPipelineAndQrSection: React.FC<BookingPipelineAndQrSectionPr
   onChangeServiceQuantity,
 }) => {
   const [planMode, setPlanMode] = useState<PaymentPlanMode>('DEPOSIT_ESCROW');
+  const [preferredProvider, setPreferredProvider] = useState<(typeof qrProviders)[number]['code']>('VIETQR_NAPAS');
   const [providers, setProviders] = useState<CheckoutProvider[] | null>(null);
   const [paymentStatus, setPaymentStatus] = useState<BookingPaymentStatus | null>(null);
   const [paymentBusy, setPaymentBusy] = useState(false);
@@ -104,7 +110,9 @@ export const BookingPipelineAndQrSection: React.FC<BookingPipelineAndQrSectionPr
   const state = currentPayment?.paymentStatus;
   const issued = state === 'VERIFIED' || state === 'NO_DEPOSIT';
   const activeTicket = issued ? myTickets.find(ticket => ticket.reservationId === trackedReservation) : null;
-  const hasMoMoCheckout = providers?.includes('MOMO_WALLET') ?? false;
+  const enabledQrProviders = qrProviders.filter(({ code }) => providers?.includes(code));
+  const selectedProvider = enabledQrProviders.find(({ code }) => code === preferredProvider) ?? enabledQrProviders[0];
+  const shownProvider = currentPayment?.provider ?? selectedProvider?.code;
   const activePaymentQr = state === 'PENDING' ? currentPayment?.paymentQr : null;
 
   useEffect(() => {
@@ -233,9 +241,9 @@ export const BookingPipelineAndQrSection: React.FC<BookingPipelineAndQrSectionPr
     : currentPayment?.requestedAmount ?? (planMode === 'FULL_ONLINE' ? lockedPrice : depositAmount);
   const remainingAtVenue = issued && currentPayment ? currentPayment.remainingAtVenue : Math.max(0, lockedPrice - payableNow);
   const displaysFullPayment = payableNow > 0 && payableNow === lockedPrice;
-  const canStartPayment = Boolean(holdResult && hasMoMoCheckout && !isHoldExpired && !cancelResult
+  const canStartPayment = Boolean(holdResult && selectedProvider && !isHoldExpired && !cancelResult
     && (state === 'NOT_STARTED' || state === 'FAILED'));
-  const paymentLocked = Boolean(paymentBusy || issued || state === 'PENDING' || cancelResult);
+  const paymentLocked = Boolean(paymentBusy || issued || state === 'PENDING' || state === 'REVIEW_REQUIRED' || cancelResult);
   const canVenueOperate = activeRole === 'STAFF' || activeRole === 'MANAGER' || activeRole === 'ADMIN';
 
   const previewRefundPct = venueCancelMode
@@ -252,7 +260,7 @@ export const BookingPipelineAndQrSection: React.FC<BookingPipelineAndQrSectionPr
 
   const validateAndSubmitPayment = async () => {
     setPaymentError(null);
-    if (!canStartPayment || !holdResult) return;
+    if (!canStartPayment || !holdResult || !selectedProvider) return;
     const cleanPhone = customerPhone.replace(/\s+/g, '');
     if (customerName.trim().split(/\s+/).length < 2) {
       setPaymentError('Vui lòng nhập đầy đủ họ tên người nhận sân (ít nhất 2 từ).');
@@ -284,7 +292,7 @@ export const BookingPipelineAndQrSection: React.FC<BookingPipelineAndQrSectionPr
     };
     setPaymentBusy(true);
     try {
-      await marketplaceApi.createMoMoPaymentSession(holdResult, customer);
+      await marketplaceApi.createInlineQrPayment(selectedProvider.code, holdResult, customer);
     } catch (error) {
       setPaymentError(error instanceof Error ? error.message : 'Chưa tạo được giao dịch thanh toán.');
     } finally {
@@ -296,7 +304,7 @@ export const BookingPipelineAndQrSection: React.FC<BookingPipelineAndQrSectionPr
   const steps = [
     { step: 1, title: 'Khóa giá 10 phút', sub: 'Đã cố định giá thuê ca' },
     { step: 2, title: 'Giữ sân vật lý', sub: 'Khóa sân chống đặt trùng' },
-    { step: 3, title: 'Quét mã thanh toán', sub: 'QR MoMo trên checkout' },
+    { step: 3, title: 'Quét mã thanh toán', sub: 'QR ngay trên checkout' },
     { step: 4, title: 'Biên lai & Vé QR', sub: 'Quét mã một lần vào sân' },
   ];
 
@@ -528,17 +536,24 @@ export const BookingPipelineAndQrSection: React.FC<BookingPipelineAndQrSectionPr
 
             <ScrollReveal delay={0.05} className="rounded-[26px] border border-neutral-200/90 bg-white p-6 sm:p-7 shadow-xs">
               <h3 className="text-base sm:text-lg font-semibold text-[#0F172A]">2. Phương thức thanh toán</h3>
-              <div className="mt-4 flex gap-3 rounded-2xl border border-[#16422C]/15 bg-[#F4F8F4] p-4">
-                <ScanLine aria-hidden="true" className="h-5 w-5 shrink-0 text-[#16422C]" />
-                <div>
-                  <p className="text-sm font-semibold text-[#16422C]">Quét QR MoMo</p>
-                  <p className="mt-1 text-sm text-neutral-700">
-                    {hasMoMoCheckout
-                      ? 'Mã QR theo đơn sẽ xuất hiện trong phần tóm tắt đặt sân sau khi bạn tạo mã.'
-                      : providers === null ? 'Đang kiểm tra cổng thanh toán…' : 'Thanh toán QR MoMo chưa được cấu hình.'}
-                  </p>
+              {enabledQrProviders.length > 0 ? (
+                <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                  {enabledQrProviders.map(({ code, title, detail }) => (
+                    <button type="button" key={code} disabled={paymentLocked} aria-pressed={shownProvider === code}
+                      onClick={() => { setPreferredProvider(code); setPaymentError(null); }}
+                      className={`flex items-start gap-3 rounded-2xl border p-4 text-left ${shownProvider === code
+                        ? 'border-[#16422C] bg-[#F4F8F4] text-[#16422C]' : 'border-neutral-200 text-neutral-800'}`}>
+                      <ScanLine aria-hidden="true" className="h-5 w-5 shrink-0" />
+                      <span><span className="block text-sm font-semibold">{title}</span>
+                        <span className="mt-1 block text-xs">{detail}</span></span>
+                    </button>
+                  ))}
                 </div>
-              </div>
+              ) : (
+                <p className="mt-4 text-sm text-neutral-700">
+                  {providers === null ? 'Đang kiểm tra phương thức thanh toán…' : 'Chưa có cổng thanh toán QR được cấu hình.'}
+                </p>
+              )}
             </ScrollReveal>
 
             {/* BLOCK 3: Booker Contact & VAT Invoice */}
@@ -917,7 +932,8 @@ export const BookingPipelineAndQrSection: React.FC<BookingPipelineAndQrSectionPr
                         : displaysFullPayment ? 'Thanh toán ngay (100% tiền sân)' : `Thanh toán ngay (Cọc ${depositPct}%)`}
                     </span>
                     <span className="text-[11px] text-neutral-400">
-                      {issued && state === 'NO_DEPOSIT' ? 'Thanh toán tại sân' : currentPayment?.provider === 'VNPAY_ESCROW' ? 'Qua VNPay' : 'Qua QR MoMo'}
+                      {issued && state === 'NO_DEPOSIT' ? 'Thanh toán tại sân' : shownProvider === 'VNPAY_ESCROW' ? 'Qua VNPay'
+                        : qrProviders.find(({ code }) => code === shownProvider)?.title}
                     </span>
                   </div>
                   <span className="tabular-nums text-2xl font-bold text-[#16422C]">
@@ -976,7 +992,7 @@ export const BookingPipelineAndQrSection: React.FC<BookingPipelineAndQrSectionPr
               </div>
 
               {activePaymentQr && currentPayment?.requestedAmount != null && currentPayment.providerReference && !cancelResult && (
-                <MoMoCheckoutQr qr={activePaymentQr} amount={currentPayment.requestedAmount} reference={currentPayment.providerReference} />
+                <CheckoutPaymentQr qr={activePaymentQr} amount={currentPayment.requestedAmount} reference={currentPayment.providerReference} />
               )}
 
               {trackedReservation && !cancelResult && (

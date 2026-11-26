@@ -1,10 +1,12 @@
 package com.yieldengine.service;
 
+import com.yieldengine.config.VietQrProperties;
 import com.yieldengine.entity.Payment;
 import com.yieldengine.enums.VnPayTransactionStatus;
 import com.yieldengine.exception.ResourceNotFoundException;
 import com.yieldengine.record.ops.BookingPaymentStatus;
 import com.yieldengine.record.ops.BookingPaymentStatus.PaymentQr;
+import com.yieldengine.record.ops.BookingPaymentStatus.BankTransfer;
 import com.yieldengine.record.ops.BookingPaymentStatus.State;
 import com.yieldengine.repository.PaymentRepository;
 import com.yieldengine.repository.ReservationRepository;
@@ -17,6 +19,8 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
+import java.util.ArrayList;
+import java.util.Map;
 
 @Service
 @RequiredArgsConstructor
@@ -25,9 +29,14 @@ public class CheckoutPaymentService {
     private final PaymentRepository payments;
     private final VnPayTransactionRepository vnPayTransactions;
     private final MoMoPaymentGatewayService moMo;
+    private final VietQrProperties vietQr;
+    private final VietQrTransferService vietQrTransfers;
 
     public List<String> configuredProviders() {
-        return moMo.isConfigured() ? List.of("MOMO_WALLET") : List.of();
+        var providers = new ArrayList<String>();
+        if (vietQr.isConfigured()) providers.add(VietQrTransferService.PROVIDER);
+        if (moMo.isConfigured()) providers.add("MOMO_WALLET");
+        return providers;
     }
 
     @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
@@ -87,17 +96,32 @@ public class CheckoutPaymentService {
                 return new BookingPaymentStatus(reservationId, bookingStatus, State.PENDING, 0, reservation.getLockedPrice(),
                         attempt.getAmountVnd(), "VNPAY_ESCROW", attempt.getTxnRef(), null, null);
             }
-            var pendingMoMo = lastPayment.filter(payment -> "MOMO_WALLET".equals(payment.getProvider())
-                    && "PENDING".equals(payment.getStatus()));
-            if (pendingMoMo.isPresent()) {
-                var attempt = pendingMoMo.get();
+            var pendingQr = lastPayment.filter(payment -> List.of("MOMO_WALLET", VietQrTransferService.PROVIDER)
+                    .contains(payment.getProvider()) && "PENDING".equals(payment.getStatus()));
+            if (pendingQr.isPresent()) {
+                var attempt = pendingQr.get();
+                var data = attempt.getRawPayload();
+                BankTransfer transfer = null;
+                if (VietQrTransferService.PROVIDER.equals(attempt.getProvider()) && data != null) {
+                    if (vietQrTransfers.hasPendingReview(reservationId, text(data, "mode"))) {
+                        return new BookingPaymentStatus(reservationId, bookingStatus, State.REVIEW_REQUIRED, 0,
+                                reservation.getLockedPrice(), attempt.getAmount(), attempt.getProvider(),
+                                attempt.getProviderRef(), null, null);
+                    }
+                    transfer = new BankTransfer(text(data, "bankCode"), text(data, "bankName"), text(data, "bankAccount"),
+                            text(data, "virtualAccount"), text(data, "accountName"), text(data, "content"));
+                }
                 PaymentQr qr = attempt.getCheckoutQrPayload() == null ? null : new PaymentQr(
-                        attempt.getCheckoutQrPayload(), holdUntil, Boolean.TRUE.equals(attempt.getCheckoutQrSandbox()));
+                        attempt.getCheckoutQrPayload(), holdUntil, Boolean.TRUE.equals(attempt.getCheckoutQrSandbox()), transfer);
                 return new BookingPaymentStatus(reservationId, bookingStatus, State.PENDING, 0, reservation.getLockedPrice(),
                         attempt.getAmount(), attempt.getProvider(), attempt.getProviderRef(), null, qr);
             }
             state = lastVnPay.isPresent() || lastPayment.isPresent() ? State.FAILED : State.NOT_STARTED;
         }
         return new BookingPaymentStatus(reservationId, bookingStatus, state, 0, reservation.getLockedPrice(), null, null, null, null, null);
+    }
+
+    private String text(Map<String, Object> data, String name) {
+        return data.get(name) instanceof String value ? value : "";
     }
 }

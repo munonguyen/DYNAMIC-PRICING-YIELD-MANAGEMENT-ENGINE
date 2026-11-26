@@ -92,6 +92,19 @@ momo:
     ipn-url: ${MOMO_IPN_URL:}
     live-http-enabled: ${MOMO_LIVE_HTTP_ENABLED:true}
 
+vietqr:
+  enabled: ${VIETQR_ENABLED:false}
+  mode: ${VIETQR_MODE:SANDBOX}
+  sandbox-base-url: ${VIETQR_SANDBOX_BASE_URL:https://dev.vietqr.org}
+  merchant-username: ${VIETQR_MERCHANT_USERNAME:}
+  merchant-password: ${VIETQR_MERCHANT_PASSWORD:}
+  callback-username: ${VIETQR_CALLBACK_USERNAME:}
+  callback-password: ${VIETQR_CALLBACK_PASSWORD:}
+  callback-secret: ${VIETQR_CALLBACK_SECRET:}
+  bank-code: ${VIETQR_BANK_CODE:}
+  bank-account: ${VIETQR_BANK_ACCOUNT:}
+  account-name: ${VIETQR_ACCOUNT_NAME:}
+
 vnpay:
   pay-url: ${VNPAY_PAY_URL:https://sandbox.vnpayment.vn/paymentv2/vpcpay.html}
   api-url: ${VNPAY_API_URL:https://sandbox.vnpayment.vn/merchant_webapi/api/transaction}

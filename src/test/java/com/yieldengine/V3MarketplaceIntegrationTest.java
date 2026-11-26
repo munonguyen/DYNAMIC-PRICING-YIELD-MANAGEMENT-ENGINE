@@ -1,13 +1,22 @@
 package com.yieldengine;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.sun.net.httpserver.HttpExchange;
+import com.sun.net.httpserver.HttpServer;
+import org.springframework.test.context.DynamicPropertyRegistry;
+import org.springframework.test.context.DynamicPropertySource;
+import java.net.InetSocketAddress;
+import java.io.IOException;
+import java.util.Base64;
+import java.nio.charset.StandardCharsets;
 import com.yieldengine.config.PricingProperties;
 import com.yieldengine.record.auth.*;
 import com.yieldengine.record.finance.CreateCommissionRuleRequest;
 import com.yieldengine.record.finance.ReconciliationReportResponse;
 import com.yieldengine.record.ops.CancelBookingResponse;
 import com.yieldengine.record.ops.CheckInResponse;
-import com.yieldengine.record.ops.CreateMoMoPaymentRequest;
+import com.yieldengine.record.ops.CreateQrPaymentRequest;
 import com.yieldengine.record.ops.MoMoIpnCallbackRequest;
 import com.yieldengine.utils.CryptoHashUtils;
 import com.yieldengine.record.ops.OpenConversationRequest;
@@ -52,7 +61,11 @@ import static org.junit.jupiter.api.Assertions.*;
 @SpringBootTest(properties = {
         "vnpay.tmn-code=ARENA_TEST", "vnpay.hash-secret=arena-test-vnpay-fixture-key",
         "momo.gateway.partner-code=ARENA_MOMO_TEST", "momo.gateway.access-key=arena-momo-fixture-access",
-        "momo.gateway.secret-key=arena-momo-fixture-secret"
+        "momo.gateway.secret-key=arena-momo-fixture-secret",
+        "vietqr.enabled=true", "vietqr.mode=SANDBOX", "vietqr.bank-code=MB", "vietqr.bank-account=10000001",
+        "vietqr.account-name=ARENA TEST", "vietqr.merchant-username=fixture-merchant", "vietqr.merchant-password=fixture-secret",
+        "vietqr.callback-username=fixture-vietqr-callback", "vietqr.callback-password=fixture-vietqr-callback-secret",
+        "vietqr.callback-secret=fixture-vietqr-callback-signing-secret"
 })
 @AutoConfigureMockMvc
 @TestMethodOrder(MethodOrderer.OrderAnnotation.class)
@@ -61,6 +74,50 @@ class V3MarketplaceIntegrationTest {
 
     private static final UUID DEFAULT_TENANT_ID = UUID.fromString("00000000-0000-0000-0000-000000000001");
     private static final UUID DEFAULT_GROUP_ID = UUID.fromString("a0000000-0000-0000-0000-000000000001");
+
+    private static final String VIETQR = "/api/v1/payments/vietqr";
+    private static final ObjectMapper JSON = new ObjectMapper();
+    private static HttpServer vietQrStub;
+
+    @DynamicPropertySource
+    static void useLocalVietQr(DynamicPropertyRegistry properties) throws IOException {
+        vietQrStub = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        vietQrStub.createContext("/vqr/api/token_generate", request -> {
+            boolean allowed = basicHeader("fixture-merchant:fixture-secret")
+                    .equals(request.getRequestHeaders().getFirst("Authorization"));
+            respond(request, allowed ? 200 : 401, Map.of("access_token", "sandbox-fixture-bearer"));
+        });
+        vietQrStub.createContext("/vqr/api/qr/generate-customer", request -> {
+            var posted = JSON.readTree(request.getRequestBody());
+            boolean allowed = "Bearer sandbox-fixture-bearer".equals(request.getRequestHeaders().getFirst("Authorization"))
+                    && posted.path("qrType").asInt(-1) == 0 && "C".equals(posted.path("transType").asText())
+                    && posted.path("content").asText().equals(posted.path("orderId").asText());
+            respond(request, allowed ? 200 : 400, Map.of(
+                    "orderId", posted.path("orderId").asText(), "bankCode", "MB", "bankAccount", "10000001",
+                    "bankName", "Fixture Bank", "content", "VQR" + posted.path("orderId").asText(),
+                    "qrCode", "000201010212" + posted.path("orderId").asText(), "amount", posted.path("amount").asText()));
+        });
+        vietQrStub.start();
+        properties.add("vietqr.sandbox-base-url", () -> "http://127.0.0.1:" + vietQrStub.getAddress().getPort());
+    }
+
+    @AfterAll
+    static void stopLocalVietQr() {
+        if (vietQrStub != null) vietQrStub.stop(0);
+    }
+
+    private static void respond(HttpExchange exchange, int status, Map<String, ?> body) throws IOException {
+        byte[] bytes = JSON.writeValueAsBytes(body);
+        exchange.getResponseHeaders().set("Content-Type", "application/json");
+        exchange.sendResponseHeaders(status, bytes.length);
+        try (var output = exchange.getResponseBody()) {
+            output.write(bytes);
+        }
+    }
+
+    private static String basicHeader(String credentials) {
+        return "Basic " + Base64.getEncoder().encodeToString(credentials.getBytes(StandardCharsets.UTF_8));
+    }
 
     @Autowired
     private AuthService authService;
@@ -425,13 +482,13 @@ class V3MarketplaceIntegrationTest {
         var quote = pricingEngineService.getPriceQuote(DEFAULT_GROUP_ID, start, player.id().toString());
         var hold = bookingOrchestratorService.holdSlot(HoldSlotRequest.builder().groupId(DEFAULT_GROUP_ID)
                 .slotStart(start).userId(player.id().toString()).priceLockToken(quote.getPriceLockToken()).build());
-        var create = new CreateMoMoPaymentRequest(hold.getReservationId(), hold.getDepositAmount(),
+        var create = new CreateQrPaymentRequest(hold.getReservationId(), hold.getDepositAmount(),
                 null, null, null, false, null, null, null);
         String orderId = "TEST_" + suffix;
-        bookingOrchestratorService.beginMoMoPayment(create, player.id(), orderId);
+        bookingOrchestratorService.beginQrPayment(create, player.id(), "MOMO_WALLET", orderId);
         assertNull(checkoutPayment.getStatus(hold.getReservationId(), player.id()).paymentQr());
         String qrPayload = "000201-MOMO-TEST-QR-" + suffix;
-        bookingOrchestratorService.saveMoMoPaymentQr(hold.getReservationId(), orderId, qrPayload, true);
+        bookingOrchestratorService.savePaymentQr(hold.getReservationId(), "MOMO_WALLET", orderId, qrPayload, true, null);
         var pending = checkoutPayment.getStatus(hold.getReservationId(), player.id());
         assertEquals(State.PENDING, pending.paymentStatus());
         assertEquals(0, pending.paidAmount());
@@ -537,6 +594,115 @@ class V3MarketplaceIntegrationTest {
         assertEquals(hold.getLockedPrice(), status.remainingAtVenue());
         assertNull(status.paymentQr());
         assertNotNull(checkInService.issueOrGetQrCode(hold.getReservationId()).qrToken());
+    }
+
+    @Test
+    @Order(10)
+    void vietQrReconcilesOnlyAuthenticatedMatchingDepositsAndRemembersBankReferences() throws Exception {
+        String suffix = UUID.randomUUID().toString().substring(0, 8);
+        var player = authService.register(new RegisterRequest("vietqr_" + suffix, suffix + "@example.test",
+                "Pass12345!", "Test", "Player", null));
+        var login = authService.login(new LoginRequest(player.username(), "Pass12345!"));
+        AuthContext.set(sessionStore.findSession(login.accessToken()).orElseThrow(), login.accessToken());
+        var hold = createPaymentTestHold(Instant.now().plusSeconds(42000).truncatedTo(ChronoUnit.MILLIS), player.id());
+        var request = new CreateQrPaymentRequest(hold.getReservationId(), hold.getDepositAmount(),
+                null, null, null, false, null, null, null);
+        var newPayment = mvc.perform(MockMvcRequestBuilders.post(VIETQR + "/create")
+                        .header("Authorization", "Bearer " + login.accessToken())
+                        .contentType("application/json").content(JSON.writeValueAsString(request)))
+                .andReturn().getResponse();
+        assertEquals(201, newPayment.getStatus(), newPayment.getContentAsString());
+        var pending = checkoutPayment.getStatus(hold.getReservationId(), player.id());
+        assertEquals(State.PENDING, pending.paymentStatus());
+        assertEquals("VIETQR_NAPAS", pending.provider());
+        assertTrue(pending.paymentQr().sandbox());
+        assertTrue(pending.paymentQr().payload().startsWith("000201"));
+        String ref = pending.providerReference();
+        String content = pending.paymentQr().transfer().content();
+        assertEquals("VQR" + ref, content);
+        assertThrows(BusinessConflictException.class, () -> bookingOrchestratorService.beginQrPayment(
+                request, player.id(), "MOMO_WALLET", "parallel-" + suffix));
+
+        var bankToken = mvc.perform(MockMvcRequestBuilders.post(VIETQR + "/api/token_generate")
+                        .header("Authorization", basicHeader("fixture-vietqr-callback:fixture-vietqr-callback-secret")))
+                .andReturn().getResponse();
+        assertEquals(200, bankToken.getStatus(), bankToken.getContentAsString());
+        String token = JSON.readTree(bankToken.getContentAsString()).path("access_token").asText();
+        sendBankNotice("Bearer " + login.accessToken(), suffix + "-fake", hold.getDepositAmount(), content, ref, "C", 401);
+        sendBankNotice("Bearer " + token + ".changed", suffix + "-fake", hold.getDepositAmount(), content, ref, "C", 401);
+        assertEquals(State.PENDING, checkoutPayment.getStatus(hold.getReservationId(), player.id()).paymentStatus());
+        sendBankNotice("Bearer " + token, suffix + "-out", hold.getDepositAmount(), content, ref, "D", 200);
+        assertEquals(State.PENDING, checkoutPayment.getStatus(hold.getReservationId(), player.id()).paymentStatus());
+
+        JsonNode mismatch = sendBankNotice("Bearer " + token, suffix + "-short", hold.getDepositAmount() - 1000, content, ref, "C", 200);
+        assertEquals(State.REVIEW_REQUIRED, checkoutPayment.getStatus(hold.getReservationId(), player.id()).paymentStatus());
+        assertEquals(0, checkoutPayment.getStatus(hold.getReservationId(), player.id()).paidAmount());
+        var unauthorizedReview = mvc.perform(MockMvcRequestBuilders.get(VIETQR + "/review")
+                        .header("Authorization", "Bearer " + login.accessToken())).andReturn().getResponse();
+        assertEquals(403, unauthorizedReview.getStatus());
+        String reviewId = mismatch.at("/object/reftransactionid").asText();
+        var staff = new com.yieldengine.record.security.SessionPrincipal(player.id(), player.username(),
+                List.of(new com.yieldengine.record.security.RoleGrant("ACCOUNTANT", "PLATFORM", null)),
+                Instant.now(), Instant.now().plusSeconds(120));
+        String staffToken = sessionStore.createSession(staff, Duration.ofMinutes(2));
+        var list = mvc.perform(MockMvcRequestBuilders.get(VIETQR + "/review")
+                .header("Authorization", "Bearer " + staffToken)).andReturn().getResponse();
+        assertEquals(200, list.getStatus());
+        assertTrue(list.getContentAsString().contains(reviewId));
+        var closed = mvc.perform(MockMvcRequestBuilders.patch(VIETQR + "/review/" + reviewId)
+                .header("Authorization", "Bearer " + staffToken).contentType("application/json")
+                .content("{\"note\":\"Reconciled on bank statement\"}")).andReturn().getResponse();
+        assertEquals(204, closed.getStatus(), closed.getContentAsString());
+        assertEquals(State.PENDING, checkoutPayment.getStatus(hold.getReservationId(), player.id()).paymentStatus());
+
+        JsonNode accepted = sendBankNotice("Bearer " + token, suffix + "-paid", hold.getDepositAmount(), content, null, "C", 200);
+        assertEquals(accepted, sendBankNotice("Bearer " + token, suffix + "-paid", hold.getDepositAmount(), content, null, "C", 200));
+        sendBankNotice("Bearer " + token, suffix + "-extra", hold.getDepositAmount(), content, ref, "C", 200);
+        var verified = checkoutPayment.getStatus(hold.getReservationId(), player.id());
+        assertEquals(State.VERIFIED, verified.paymentStatus());
+        assertEquals(hold.getDepositAmount(), verified.paidAmount());
+        assertNull(verified.paymentQr());
+        var applied = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM vietqr_bank_transfers WHERE reservation_id = ? AND status = 'APPLIED'",
+                Long.class, hold.getReservationId());
+        assertEquals(1L, applied);
+        var journals = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM ledger_journals WHERE reservation_id = ? AND event_type = 'DEPOSIT_COLLECTED'",
+                Long.class, hold.getReservationId());
+        assertEquals(1L, journals);
+        AuthContext.set(sessionStore.findSession(login.accessToken()).orElseThrow(), login.accessToken());
+        assertNotNull(checkInService.issueOrGetQrCode(hold.getReservationId()).qrToken());
+
+        var cancelledHold = createPaymentTestHold(Instant.now().plusSeconds(48000).truncatedTo(ChronoUnit.MILLIS), player.id());
+        var fullPayment = new CreateQrPaymentRequest(cancelledHold.getReservationId(), cancelledHold.getLockedPrice(),
+                null, null, null, false, null, null, null);
+        var created = mvc.perform(MockMvcRequestBuilders.post(VIETQR + "/create")
+                        .header("Authorization", "Bearer " + login.accessToken())
+                        .contentType("application/json").content(JSON.writeValueAsString(fullPayment)))
+                .andReturn().getResponse();
+        assertEquals(201, created.getStatus(), created.getContentAsString());
+        var late = checkoutPayment.getStatus(cancelledHold.getReservationId(), player.id());
+        AuthContext.set(sessionStore.findSession(login.accessToken()).orElseThrow(), login.accessToken());
+        bookingOrchestratorService.cancelReservationWithPolicy(cancelledHold.getReservationId(), null, "USER_CANCELLED");
+        sendBankNotice("Bearer " + token, suffix + "-cancelled", cancelledHold.getLockedPrice(),
+                late.paymentQr().transfer().content(), late.providerReference(), "C", 200);
+        assertEquals(State.REVIEW_REQUIRED, checkoutPayment.getStatus(cancelledHold.getReservationId(), player.id()).paymentStatus());
+        AuthContext.set(sessionStore.findSession(login.accessToken()).orElseThrow(), login.accessToken());
+        assertThrows(BusinessConflictException.class, () -> checkInService.issueOrGetQrCode(cancelledHold.getReservationId()));
+    }
+
+    private JsonNode sendBankNotice(String auth, String suffix, long amount, String content, String order, String direction, int code)
+            throws Exception {
+        var body = new java.util.LinkedHashMap<String, Object>(Map.of(
+                "bankaccount", "10000001", "amount", amount, "transType", direction, "content", content,
+                "transactionid", "fixture-tx-" + suffix, "referencenumber", "fixture-bank-" + suffix,
+                "transactiontime", Instant.now().toEpochMilli()));
+        if (order != null) body.put("orderId", order);
+        var result = mvc.perform(MockMvcRequestBuilders.post(VIETQR + "/bank/api/transaction-sync")
+                .header("Authorization", auth).contentType("application/json").content(JSON.writeValueAsBytes(body)))
+                .andReturn().getResponse();
+        assertEquals(code, result.getStatus(), result.getContentAsString());
+        return JSON.readTree(result.getContentAsString());
     }
 
     private HoldSlotResponse createPaymentTestHold(Instant start, UUID userId) {

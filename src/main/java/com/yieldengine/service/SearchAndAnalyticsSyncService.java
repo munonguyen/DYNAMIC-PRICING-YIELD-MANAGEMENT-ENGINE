@@ -740,7 +740,8 @@ public class SearchAndAnalyticsSyncService implements ApplicationRunner {
             case "VNPAY_ESCROW", "VNPAY" -> "VNPAY Ký quỹ";
             case "MOMO_WALLET", "MOMO" -> "Ví MoMo";
             case "INTL_CARD" -> "Thẻ Quốc tế 3DS";
-            default -> "VietQR Napas 247";
+            case "VIETQR_NAPAS", "VIETQR" -> "VietQR Napas 247";
+            default -> "Chưa có xác nhận thanh toán online";
         };
     }
 }

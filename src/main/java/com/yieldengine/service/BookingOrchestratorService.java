@@ -5,7 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.yieldengine.dto.SlotOccupancyChangedEvent;
 import com.yieldengine.record.ops.CancelBookingResponse;
 import com.yieldengine.record.ops.PaymentWebhookRequest;
-import com.yieldengine.record.ops.CreateMoMoPaymentRequest;
+import com.yieldengine.record.ops.CreateQrPaymentRequest;
 import com.yieldengine.record.ops.TicketPassSnapshot;
 import com.yieldengine.dto.request.HoldSlotRequest;
 import com.yieldengine.dto.response.HoldSlotResponse;
@@ -36,6 +36,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Duration;
 import java.time.Instant;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
@@ -214,14 +215,15 @@ public class BookingOrchestratorService {
             throw new BusinessConflictException("Chỉ khởi tạo thanh toán cho lượt giữ sân còn hiệu lực.");
         }
         if (vnPayTransactionRepository.existsByReservationIdAndStatus(reservationId, VnPayTransactionStatus.PENDING)
-                || paymentRepository.existsByBookingIdAndProviderAndStatus(reservation.getBookingId(), "MOMO_WALLET", "PENDING")) {
+                || paymentRepository.existsByBookingIdAndProviderInAndStatus(
+                        reservation.getBookingId(), List.of("MOMO_WALLET", "VIETQR_NAPAS"), "PENDING")) {
             throw new BusinessConflictException("Đơn đang có giao dịch chờ xử lý. Vui lòng kiểm tra giao dịch đã tạo.");
         }
         return reservation;
     }
 
     @Transactional
-    public void beginMoMoPayment(CreateMoMoPaymentRequest request, UUID userId, String orderId) {
+    public void beginQrPayment(CreateQrPaymentRequest request, UUID userId, String provider, String orderId) {
         Reservation reservation = prepareGatewayPayment(request.reservationId(), userId);
         validateGatewayAmount(reservation, request.amount());
         updateBookingContactDetails(request.reservationId(), request.customerName(), request.customerPhone(),
@@ -229,33 +231,36 @@ public class BookingOrchestratorService {
                 request.bookingNote());
         Booking booking = bookingRepository.findById(reservation.getBookingId()).orElseThrow();
         paymentRepository.save(Payment.builder().tenant(booking.getTenant()).booking(booking)
-                .provider("MOMO_WALLET").providerRef(orderId).amount(request.amount()).currency(booking.getCurrency())
+                .provider(provider).providerRef(orderId).amount(request.amount()).currency(booking.getCurrency())
                 .paymentType(resolvePaymentTypeForAmount(reservation, request.amount())).status("PENDING").build());
     }
 
     @Transactional
-    public void saveMoMoPaymentQr(UUID reservationId, String orderId, String qrPayload, boolean sandbox) {
+    public void savePaymentQr(UUID reservationId, String provider, String orderId, String qrPayload,
+                              boolean sandbox, Map<String, Object> metadata) {
         Reservation reservation = lockReservation(reservationId);
-        paymentRepository.findByProviderAndProviderRef("MOMO_WALLET", orderId)
+        paymentRepository.findByProviderAndProviderRef(provider, orderId)
                 .filter(payment -> reservation.getBookingId().equals(payment.getBooking().getId()))
                 .filter(payment -> "PENDING".equals(payment.getStatus()))
                 .ifPresent(payment -> {
                     payment.setCheckoutQrPayload(qrPayload);
                     payment.setCheckoutQrSandbox(sandbox);
+                    payment.setRawPayload(metadata);
                 });
     }
 
     @Transactional
-    public void markMoMoCreateRejected(UUID reservationId, String orderId) {
-        lockReservation(reservationId);
-        paymentRepository.findByProviderAndProviderRef("MOMO_WALLET", orderId)
+    public void markQrCreateRejected(UUID reservationId, String provider, String orderId) {
+        Reservation reservation = lockReservation(reservationId);
+        paymentRepository.findByProviderAndProviderRef(provider, orderId)
+                .filter(payment -> reservation.getBookingId().equals(payment.getBooking().getId()))
                 .filter(payment -> "PENDING".equals(payment.getStatus()))
                 .ifPresent(payment -> payment.setStatus("FAILED"));
     }
 
     @Transactional
     public Reservation processPaymentWebhook(PaymentWebhookRequest webhook) {
-        if (!"VNPAY_ESCROW".equals(webhook.provider()) && !"MOMO_WALLET".equals(webhook.provider())) {
+        if (!List.of("VNPAY_ESCROW", "MOMO_WALLET", "VIETQR_NAPAS").contains(webhook.provider())) {
             throw new IllegalArgumentException("Cổng thanh toán chưa được tích hợp.");
         }
         Reservation reservation = lockReservation(webhook.reservationId());
@@ -263,8 +268,8 @@ public class BookingOrchestratorService {
             throw new IllegalArgumentException("Khung giờ giao dịch không khớp đơn đặt.");
         }
         var existing = paymentRepository.findByProviderAndProviderRef(webhook.provider(), webhook.providerRef());
-        if ("MOMO_WALLET".equals(webhook.provider()) && existing.isEmpty()) {
-            throw new BusinessConflictException("Không tìm thấy phiên thanh toán MoMo của đơn.");
+        if (!"VNPAY_ESCROW".equals(webhook.provider()) && existing.isEmpty()) {
+            throw new BusinessConflictException("Không tìm thấy phiên thanh toán của đơn.");
         }
         if (existing.isPresent()) {
             Payment payment = existing.get();

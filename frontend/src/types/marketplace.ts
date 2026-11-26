@@ -197,7 +197,26 @@ export interface MyTicketRecord {
 
 export type PaymentGatewayCode = 'VIETQR_NAPAS' | 'VNPAY_ESCROW' | 'MOMO_WALLET' | 'INTL_CARD';
 
-export type CheckoutProvider = 'VNPAY_ESCROW' | 'MOMO_WALLET';
+export type CheckoutProvider = 'VNPAY_ESCROW' | 'MOMO_WALLET' | 'VIETQR_NAPAS';
+
+export interface VietQrBankTransfer {
+  bankCode: string;
+  bankName: string;
+  bankAccount: string;
+  virtualAccount: string;
+  accountName: string;
+  content: string;
+}
+
+export interface VietQrReviewItem {
+  id: string;
+  reservationId: string | null;
+  reference: string;
+  amount: number;
+  content: string;
+  reason: string;
+  receivedAt: string;
+}
 
 export interface BookingPaymentStatus {
   reservationId: string;
@@ -210,7 +229,7 @@ export interface BookingPaymentStatus {
   provider: CheckoutProvider | null;
   providerReference: string | null;
   verifiedAt: string | null;
-  paymentQr: { payload: string; holdUntil: string; sandbox: boolean } | null;
+  paymentQr: { payload: string; holdUntil: string; sandbox: boolean; transfer: VietQrBankTransfer | null } | null;
 }
 
 export interface MoMoPaymentSession {

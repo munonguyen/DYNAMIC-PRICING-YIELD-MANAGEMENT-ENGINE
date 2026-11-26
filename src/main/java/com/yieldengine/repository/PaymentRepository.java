@@ -19,7 +19,7 @@ public interface PaymentRepository extends JpaRepository<Payment, UUID> {
 
     Optional<Payment> findFirstByBookingIdOrderByCreatedAtDesc(UUID bookingId);
 
-    boolean existsByBookingIdAndProviderAndStatus(UUID bookingId, String provider, String status);
+    boolean existsByBookingIdAndProviderInAndStatus(UUID bookingId, List<String> providers, String status);
 
     List<Payment> findByBookingIdOrderByCreatedAtAsc(UUID bookingId);
 

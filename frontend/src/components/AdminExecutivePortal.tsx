@@ -22,6 +22,7 @@ import {
   EXPO_EASE,
 } from './motionPrimitives';
 import { ActionButton } from './FairwayControls';
+import { VietQrReviewPanel } from './VietQrReviewPanel';
 import { LessorAnalyticsDashboard } from './LessorAnalyticsDashboard';
 import { LessorPartnerPortal } from './LessorPartnerPortal';
 import type { AdminHeaderTabId } from './FairwayHeader';
@@ -918,6 +919,8 @@ export const AdminExecutivePortal: React.FC<AdminExecutivePortalProps> = ({
                       </div>
                     </div>
                   </div>
+
+                  {(activeRole === 'ADMIN' || activeRole === 'ACCOUNTANT') && <VietQrReviewPanel />}
 
                   {/* Commission Schedule per Lessor Partner */}
                   <div className="overflow-hidden rounded-[26px] border border-neutral-200/90 bg-white shadow-xs">

@@ -67,24 +67,24 @@ public class BookingController {
     @Operation(summary = "Create MoMo v2 HMAC-SHA256 payment session matching PayGate spec")
     @PostMapping("/payments/momo/create")
     public ResponseEntity<MoMoPaymentSessionResponse> createMoMoPaymentSession(
-            @Valid @RequestBody CreateMoMoPaymentRequest request
+            @Valid @RequestBody CreateQrPaymentRequest request
     ) {
         SessionPrincipal user = rbacGuard.requireAuthenticated();
         moMoPaymentGatewayService.validateInitiation(request.reservationId(), request.amount());
         String orderId = "AP_" + UUID.randomUUID().toString().replace("-", "");
-        bookingOrchestratorService.beginMoMoPayment(request, user.userId(), orderId);
+        bookingOrchestratorService.beginQrPayment(request, user.userId(), "MOMO_WALLET", orderId);
         String extraData = java.util.Base64.getEncoder().encodeToString(
                 request.reservationId().toString().getBytes(java.nio.charset.StandardCharsets.UTF_8));
         try {
             MoMoPaymentInitResult init = moMoPaymentGatewayService.createPaymentSession(
                     request.reservationId(), request.amount(), orderId,
                     "Dat san ArenaPulse " + request.reservationId().toString().substring(0, 8), extraData);
-            bookingOrchestratorService.saveMoMoPaymentQr(request.reservationId(), orderId,
-                    init.qrCodeUrl(), moMoPaymentGatewayService.isSandbox());
+            bookingOrchestratorService.savePaymentQr(request.reservationId(), "MOMO_WALLET", orderId,
+                    init.qrCodeUrl(), moMoPaymentGatewayService.isSandbox(), null);
             return ResponseEntity.status(HttpStatus.CREATED).cacheControl(CacheControl.noStore())
                     .body(moMoGatewayMapper.toSessionResponse(init));
         } catch (MoMoSessionRejectedException ex) {
-            bookingOrchestratorService.markMoMoCreateRejected(request.reservationId(), orderId);
+            bookingOrchestratorService.markQrCreateRejected(request.reservationId(), "MOMO_WALLET", orderId);
             throw ex;
         }
     }

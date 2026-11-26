@@ -10,7 +10,6 @@ import type {
   LessorApplicationReceipt,
   LessorApplicationRecord,
   LessorBookingOrder,
-  MoMoPaymentSession,
   MyTicketRecord,
   VnPayReturnResult,
   OtpChallengeResult,
@@ -1314,7 +1313,8 @@ class MarketplaceApiClient {
     };
   }
 
-  async createMoMoPaymentSession(
+  async createInlineQrPayment(
+    provider: 'MOMO_WALLET' | 'VIETQR_NAPAS',
     hold: HoldSlotResult,
     options: {
       amount: number;
@@ -1326,8 +1326,25 @@ class MarketplaceApiClient {
       vatTaxCode?: string;
       bookingNote?: string;
     }
-  ): Promise<MoMoPaymentSession> {
-    return this.checkoutRequest('/payments/momo/create', { reservationId: hold.reservationId, ...options });
+  ): Promise<void> {
+    const path = provider === 'VIETQR_NAPAS' ? '/payments/vietqr/create' : '/payments/momo/create';
+    await this.checkoutRequest(path, { reservationId: hold.reservationId, ...options });
+  }
+
+  getVietQrReviewQueue(signal?: AbortSignal): Promise<import('../types/marketplace').VietQrReviewItem[]> {
+    return this.checkoutRequest('/payments/vietqr/review', undefined, signal);
+  }
+
+  async closeVietQrReview(id: string, note: string): Promise<void> {
+    const response = await fetch(`/api/v1/payments/vietqr/review/${encodeURIComponent(id)}`, {
+      method: 'PATCH',
+      headers: this.headers(),
+      body: JSON.stringify({ note }),
+    });
+    if (!response.ok) {
+      const problem = await response.json().catch(() => null);
+      throw new Error(problem?.message || 'Chưa lưu được kết quả đối soát.');
+    }
   }
 
   async verifyVnPayReturnParams(rawQueryString: string): Promise<VnPayReturnResult> {

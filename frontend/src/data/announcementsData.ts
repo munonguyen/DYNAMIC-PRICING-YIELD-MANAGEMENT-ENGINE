@@ -83,9 +83,9 @@ export const INITIAL_ANNOUNCEMENTS: VenueAnnouncement[] = [
     category: 'ACCOUNT_PAYMENT',
     severity: 'POSITIVE',
     pinned: true,
-    title: 'Thanh toán QR MoMo và nhận vé tại ArenaPulse',
+    title: 'Thanh toán qua QR và nhận vé tại ArenaPulse',
     summary:
-      'Checkout hiển thị mã QR MoMo theo từng đơn khi cổng đã được cấu hình. Hệ thống chỉ ghi nhận tiền và cấp vé sau xác nhận của cổng thanh toán.',
+      'Checkout hiển thị mã VietQR hoặc MoMo theo từng đơn khi cổng đã được cấu hình. Hệ thống chỉ ghi nhận tiền và cấp vé sau xác nhận của cổng thanh toán.',
     authorName: 'Trung tâm Thanh toán & Đối soát ArenaPulse',
     readMinutes: 3,
     coverImageUrl: '/images/sport-complex-aerial.jpg',
@@ -93,7 +93,7 @@ export const INITIAL_ANNOUNCEMENTS: VenueAnnouncement[] = [
     pullQuote:
       'Ngay khi giao dịch thanh toán được xác nhận thành công, vé QR check-in một lần được kích hoạt trên hệ thống và gửi đính kèm về Gmail người đặt.',
     keyTakeaways: [
-      'Khách có thể chọn đặt cọc hoặc trả đủ tiền sân qua QR MoMo trên checkout.',
+      'Khách có thể chọn đặt cọc hoặc trả đủ tiền sân bằng QR trên checkout.',
       'Nếu khoản tiền đến trễ và sân không còn, giao dịch được đưa vào đối soát.',
       'Người chơi có thể xem lại hoặc bấm gửi lại vé QR qua Gmail bất cứ lúc nào trong mục Thanh toán & Vé.',
     ],
@@ -101,7 +101,7 @@ export const INITIAL_ANNOUNCEMENTS: VenueAnnouncement[] = [
       {
         heading: '1. Thanh toán và xác nhận',
         paragraphs: [
-          'Tạo mã QR trong checkout rồi xác nhận giao dịch bằng ứng dụng MoMo.',
+          'Tạo mã QR trong checkout rồi xác nhận giao dịch bằng ứng dụng ngân hàng hoặc MoMo.',
           'Trang thanh toán cập nhật trạng thái sau khi hệ thống nhận xác nhận từ cổng.',
         ],
       },
@@ -343,7 +343,7 @@ export const INITIAL_PERSONAL_NOTIFICATIONS: PersonalUserNotification[] = [
     id: 'pn-2',
     kind: 'PAYMENT',
     title: 'Thanh toán QR ngay tại checkout',
-    body: 'Khi QR MoMo được cấu hình, bạn có thể đặt cọc hoặc trả đủ tiền sân bằng cách quét mã của đơn.',
+    body: 'Bạn có thể quét mã của đơn để đặt cọc hoặc trả đủ tiền sân khi cổng QR được cấu hình.',
     timestampLabel: '22 phút trước',
     isNew: true,
     actionLabel: 'Đi tới Thanh toán →',
@@ -371,7 +371,7 @@ export const INITIAL_PERSONAL_NOTIFICATIONS: PersonalUserNotification[] = [
     id: 'pn-5',
     kind: 'SECURITY',
     title: 'Lưu ý an toàn giao dịch chuyển khoản VietQR',
-    body: 'Chỉ chuyển khoản đúng số tài khoản Ký quỹ ARENAPULSE ESCROW và nội dung mã đơn CV...; không chuyển tiền qua tài khoản cá nhân ngoài sàn.',
+    body: 'Đối chiếu tài khoản nhận, số tiền và nội dung ngay trên đơn. Với đơn gắn nhãn Sandbox, hãy dùng Test Callback để thử.',
     timestampLabel: 'Hôm qua',
     isNew: false,
   },
