@@ -264,7 +264,7 @@ public class InventoryService {
         Map<UUID, List<SlotListingQuoteDto>> slots = new HashMap<>();
         catalogueJdbc.query("""
                 SELECT ts.group_id, ts.slot_start, ts.slot_end, ts.total_capacity,
-                       GREATEST(0, ts.total_capacity - COALESCE(si.held_count + si.confirmed_count, 0)) AS available,
+                       GREATEST(0, COALESCE(si.total_capacity - si.held_count - si.confirmed_count, 0)) AS available,
                        COALESCE(sp.current_price, rg.base_price) AS price
                 FROM time_slots ts
                 JOIN resource_groups rg ON rg.id = ts.group_id
@@ -300,13 +300,16 @@ public class InventoryService {
     @Transactional(readOnly = true)
     public ResourceGroup getVisibleResourceGroup(UUID id) {
         ResourceGroup group = getResourceGroup(id);
-        boolean visible = "PUBLISHED".equals(group.getPublishStatus()) && "ACTIVE".equals(group.getStatus())
-                && group.getDeletedAt() == null && "ACTIVE".equals(group.getTenant().getStatus());
-        if (visible || AuthContext.current().filter(actor -> actor.hasPlatformRole("ADMIN")
+        if (isPublishedForBooking(group) || AuthContext.current().filter(actor -> actor.hasPlatformRole("ADMIN")
                 || actor.hasTenantRole(group.getTenant().getId(), "MANAGER", "STAFF")).isPresent()) {
             return group;
         }
         throw new ResourceNotFoundException("Không tìm thấy cụm sân.");
+    }
+
+    static boolean isPublishedForBooking(ResourceGroup group) {
+        return "PUBLISHED".equals(group.getPublishStatus()) && "ACTIVE".equals(group.getStatus())
+                && group.getDeletedAt() == null && "ACTIVE".equals(group.getTenant().getStatus());
     }
 
     @Transactional

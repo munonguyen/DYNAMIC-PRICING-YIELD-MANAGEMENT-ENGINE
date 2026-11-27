@@ -5,6 +5,11 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.yieldengine.exception.BusinessConflictException;
 import com.yieldengine.exception.ResourceNotFoundException;
+import com.yieldengine.entity.SlotId;
+import com.yieldengine.repository.SlotInventoryRepository;
+import com.yieldengine.repository.TimeSlotRepository;
+import com.yieldengine.repository.UnitRepository;
+import com.yieldengine.utils.DbClockUtils;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
@@ -19,6 +24,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.time.Instant;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
@@ -33,6 +39,36 @@ public class CourtFloorPlanService {
             """;
     private final JdbcTemplate jdbc;
     private final ObjectMapper json;
+    private final InventoryService inventory;
+    private final TimeSlotRepository timeSlots;
+    private final SlotInventoryRepository slotInventory;
+    private final UnitRepository units;
+
+    @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
+    public BookingAvailability loadBookingAvailability(UUID groupId, Instant slotStart) {
+        var group = inventory.getResourceGroup(groupId);
+        if (!InventoryService.isPublishedForBooking(group)) throw new ResourceNotFoundException("Không tìm thấy cụm sân.");
+        SlotId slotId = new SlotId(groupId, slotStart);
+        var slot = timeSlots.findById(slotId).orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy ca sân."));
+        boolean available = "OPEN".equals(slot.getStatus()) && slotStart.isAfter(DbClockUtils.now(jdbc))
+                && slotInventory.findById(slotId).filter(counts ->
+                    counts.getHeldCount() + counts.getConfirmedCount() < counts.getTotalCapacity()).isPresent();
+        var courts = units.findAvailability(groupId, slotStart, slot.getSlotEnd()).stream()
+                .map(unit -> new BookingCourt(unit.getId(), unit.getUnitNumber(), bookingStatus(unit, available))).toList();
+        Layout layout = currentLayout(groupId);
+        if (layout != null) {
+            var visibleUnits = courts.stream().map(BookingCourt::id).collect(Collectors.toSet());
+            layout = new Layout(layout.groupId(), layout.widthCm(), layout.lengthCm(),
+                    layout.placements().stream().filter(placement -> visibleUnits.contains(placement.unitId())).toList(), layout.version());
+        }
+        return new BookingAvailability(layout, courts);
+    }
+
+    private static BookingStatus bookingStatus(UnitRepository.AvailabilityRow unit, boolean available) {
+        if (!"ACTIVE".equals(unit.getStatus())) return BookingStatus.UNAVAILABLE;
+        if (unit.getOccupied()) return BookingStatus.TAKEN;
+        return available ? BookingStatus.AVAILABLE : BookingStatus.UNAVAILABLE;
+    }
 
     @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
     public Editor load(UUID tenantId, UUID groupId) {
@@ -130,6 +166,9 @@ public class CourtFloorPlanService {
     }
 
     public record PhysicalCourt(UUID id, String unitNumber) {}
+    public enum BookingStatus { AVAILABLE, TAKEN, UNAVAILABLE }
+    public record BookingCourt(UUID id, String unitNumber, BookingStatus status) {}
+    public record BookingAvailability(Layout layout, List<BookingCourt> courts) {}
     public record Editor(Layout layout, List<PhysicalCourt> units) {}
     public record Layout(UUID groupId, int widthCm, int lengthCm, List<CourtPlacement> placements, int version) {}
     public record Draft(

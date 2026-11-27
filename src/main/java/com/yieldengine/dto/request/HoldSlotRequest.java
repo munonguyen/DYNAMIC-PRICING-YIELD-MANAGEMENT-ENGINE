@@ -31,4 +31,5 @@ public class HoldSlotRequest {
     private String priceLockToken;
 
     private String idempotencyKey;
+    private UUID unitId;
 }
