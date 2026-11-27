@@ -1,5 +1,5 @@
 {
-  "branch": "service/admin/platform-dashboard",
+  "branch": "complete/admin/platform-dashboard",
   "title": "Dashboard toàn sàn",
   "scope": "Xem báo cáo vận hành và chỉ số toàn nền tảng.",
   "operations": [
