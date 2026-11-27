@@ -3,6 +3,7 @@ import {
   ArrowRightLeft,
   BarChart3,
   Building2,
+  CalendarDays,
   CheckCircle2,
   MessageSquare,
   Receipt,
@@ -49,6 +50,7 @@ export const PAGE_NAV_ITEMS: PageNavItem[] = [
   { id: 'news', path: '/news', sectionId: 'news', label: 'Bài viết' },
   { id: 'announcements', path: '/announcements', sectionId: 'announcements', label: 'Thông báo' },
   { id: 'rankings', path: '/rankings', sectionId: 'rankings', label: 'Xếp hạng' },
+  { id: 'schedule', path: '/my-schedule', sectionId: 'my-schedule', label: 'Lịch của tôi' },
   { id: 'checkout', path: '/checkout', sectionId: 'booking-flow', label: 'Thanh toán & Vé' },
   { id: 'pricing', path: '/pricing', sectionId: 'yield-matrix', label: 'Định giá động' },
   { id: 'governance', path: '/governance', sectionId: 'command-center', label: 'Đăng ký chủ sân' },
@@ -789,6 +791,19 @@ export const FairwayHeader: React.FC<FairwayHeaderProps> = ({
                                 type="button"
                                 onClick={() => {
                                   setAccountMenuOpen(false);
+                                  onNavigate('schedule');
+                                }}
+                                className="flex w-full items-center rounded-xl px-3 py-2 text-left font-medium hover:bg-[#F8FAFC]"
+                              >
+                                <span className="inline-flex items-center gap-2.5">
+                                  <CalendarDays className="h-4 w-4 text-[#16422C]" />
+                                  Lịch thuê của tôi
+                                </span>
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setAccountMenuOpen(false);
                                   onNavigate('checkout');
                                 }}
                                 className="flex w-full items-center justify-between rounded-xl px-3 py-2 text-left font-medium hover:bg-[#F8FAFC]"
@@ -985,7 +1000,7 @@ export const FairwayHeader: React.FC<FairwayHeaderProps> = ({
               )}
 
               {/* Primary Customer CTA — HIDDEN when logged into Internal Lessor/Staff/Admin Workspace */}
-              {!isInternalWorkspaceMode && (
+              {!isInternalWorkspaceMode && currentPage !== 'schedule' && (
                 <ActionButton
                   variant="ink"
                   size="sm"

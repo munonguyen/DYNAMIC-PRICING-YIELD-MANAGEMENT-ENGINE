@@ -200,6 +200,23 @@ export interface MyTicketRecord {
   paidAt?: string | null;
 }
 
+export interface CustomerScheduleBooking {
+  reservationId: string;
+  venueName: string;
+  venueAddress: string | null;
+  groupName: string;
+  unitNumber: string;
+  slotStart: string;
+  slotEnd: string;
+  status: MyTicketRecord['status'];
+  holdExpiresAt: string | null;
+}
+
+export interface CustomerSchedule {
+  weekStart: string;
+  bookings: CustomerScheduleBooking[];
+}
+
 export type PaymentGatewayCode = 'VIETQR_NAPAS' | 'VNPAY_ESCROW' | 'MOMO_WALLET' | 'INTL_CARD';
 
 export type CheckoutProvider = 'VNPAY_ESCROW' | 'MOMO_WALLET' | 'VIETQR_NAPAS';
@@ -521,6 +538,7 @@ export type AppPageId =
   | 'news'
   | 'announcements'
   | 'rankings'
+  | 'schedule'
   | 'checkout'
   | 'pricing'
   | 'governance'
