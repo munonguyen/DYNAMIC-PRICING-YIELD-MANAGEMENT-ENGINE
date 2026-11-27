@@ -29,6 +29,7 @@ import type {
   RoleCode,
   SlotListingQuote,
   SportTypeItem,
+  VenueCourtSnapshot,
   VenueProviderInfo,
 } from '../types/marketplace';
 import {
@@ -50,6 +51,7 @@ import { QrCheckInScannerModal, type QrModalTabId } from './QrCheckInScannerModa
 import { CreateCourtGroupModal } from './CreateCourtGroupModal';
 import { BookingOrderDetailModal } from './BookingOrderDetailModal';
 import { LiveCourtsInUseSection } from './LiveCourtsInUseSection';
+import { StaffCourtStatus } from './StaffCourtStatus';
 import { WeeklyScheduleGrid, type WeeklyFixedBlock } from './WeeklyScheduleGrid';
 import { getActiveLessorServices, resolveCourtThumbnail } from '../data/courtServicesData';
 
@@ -166,6 +168,8 @@ export const LessorPartnerPortal: React.FC<LessorPartnerPortalProps> = ({
   const activeTab: LessorPortalTabId =
     isStaffOnly && rawActiveTab === 'OVERVIEW' ? 'ORDERS_CHECKIN' : rawActiveTab;
   const staffWideSchedule = isStaffOnly && activeTab === 'WEEKLY_SCHEDULE';
+  const staffCourtsActive = isStaffOnly && activeTab === 'LIVE_COURTS';
+  const staffWideWorkspace = staffWideSchedule || staffCourtsActive;
   const setActiveTab = (next: LessorPortalTabId) => {
     setInternalActiveTab(next);
     onSelectTab?.(next);
@@ -180,6 +184,16 @@ export const LessorPartnerPortal: React.FC<LessorPartnerPortalProps> = ({
 
   const [providerOrders, setProviderOrders] = useState<LessorBookingOrder[]>([]);
   const [orderRevision, setOrderRevision] = useState(0);
+  const [courtRefresh, setCourtRefresh] = useState(0);
+  const [courtSnapshot, setCourtSnapshot] = useState<VenueCourtSnapshot | null>(null);
+  const [courtStatusError, setCourtStatusError] = useState<string | null>(null);
+  const currentCourtSnapshot = courtSnapshot?.tenantId === tenantId ? courtSnapshot : null;
+  const actionableOrders = useMemo(() => {
+    if (!staffCourtsActive || !currentCourtSnapshot) return providerOrders;
+    const latest = new Map(providerOrders.map(order => [order.reservationId, order]));
+    for (const order of currentCourtSnapshot.bookings) latest.set(order.reservationId, order);
+    return [...latest.values()];
+  }, [providerOrders, currentCourtSnapshot, staffCourtsActive]);
   const [orderFilter, setOrderFilter] = useState<
     'ALL' | 'HELD' | 'CONFIRMED' | 'COMPLETED' | 'NO_SHOW' | 'CANCELLED'
   >('ALL');
@@ -214,6 +228,39 @@ export const LessorPartnerPortal: React.FC<LessorPartnerPortalProps> = ({
       window.clearInterval(timer);
     };
   }, [tenantId, orderRevision]);
+
+  useEffect(() => {
+    if (!tenantId || !staffCourtsActive) return;
+    const controller = new AbortController();
+    let pending = false;
+    setCourtStatusError(null);
+
+    const refresh = async () => {
+      if (pending || document.hidden) return;
+      pending = true;
+      try {
+        const snapshot = await marketplaceApi.getVenueCourtStatus(tenantId, controller.signal);
+        if (controller.signal.aborted) return;
+        setCourtSnapshot(snapshot);
+        setCourtStatusError(null);
+      } catch (error) {
+        if (!controller.signal.aborted) {
+          setCourtStatusError(error instanceof Error ? error.message : 'Không tải được trạng thái sân.');
+        }
+      } finally {
+        pending = false;
+      }
+    };
+
+    void refresh();
+    const timer = window.setInterval(refresh, 15_000);
+    document.addEventListener('visibilitychange', refresh);
+    return () => {
+      controller.abort();
+      window.clearInterval(timer);
+      document.removeEventListener('visibilitychange', refresh);
+    };
+  }, [tenantId, staffCourtsActive, orderRevision, courtRefresh]);
 
   const loadAnalyticsFromDbOrEs = async () => {
     if (!tenantId || isStaffOnly) return;
@@ -252,9 +299,14 @@ export const LessorPartnerPortal: React.FC<LessorPartnerPortalProps> = ({
   }, [activeTab, analyticsDays, tenantId, isStaffOnly, orderRevision]);
 
   const updateOrderStatus = async (orderId: string, status: 'COMPLETED' | 'NO_SHOW') => {
-    const order = providerOrders.find((item) => item.orderId === orderId);
     try {
-      if (status === 'NO_SHOW' && order) await marketplaceApi.markNoShow(order.reservationId);
+      if (status === 'NO_SHOW') {
+        const order = selectedDetailOrder?.orderId === orderId
+          ? selectedDetailOrder : actionableOrders.find(item => item.orderId === orderId);
+        if (!order) throw new Error('Không tìm thấy đơn đặt sân để cập nhật.');
+        await marketplaceApi.markNoShow(order.reservationId);
+        flashToast(`Đã đánh dấu đơn ${orderId} bỏ lịch.`);
+      }
       setOrderRevision((revision) => revision + 1);
     } catch (error) {
       flashToast(error instanceof Error ? error.message : 'Không thể cập nhật trạng thái đơn.');
@@ -280,8 +332,10 @@ export const LessorPartnerPortal: React.FC<LessorPartnerPortalProps> = ({
     flashToast('Giữ sân tại quầy chưa có dịch vụ lưu.');
 
   const selectedDetailOrder = useMemo<LessorBookingOrder | null>(
-    () => (detailOrderId ? providerOrders.find((o) => o.orderId === detailOrderId) ?? null : null),
-    [detailOrderId, providerOrders]
+    () => detailOrderId
+      ? actionableOrders.find(order => order.reservationId === detailOrderId || order.orderId === detailOrderId) ?? null
+      : null,
+    [detailOrderId, actionableOrders]
   );
 
   const selectedDetailCourt = useMemo<PublishedListing | null>(
@@ -482,9 +536,13 @@ export const LessorPartnerPortal: React.FC<LessorPartnerPortalProps> = ({
     },
     {
       id: 'LIVE_COURTS',
-      label: 'Sân Đang Dùng & Vị Trí',
-      sub: 'Sơ đồ ô sân & vị trí khách đang chơi',
-      badge: `${providerOrders.filter((o) => o.status === 'COMPLETED' || o.status === 'CONFIRMED').length + Object.keys(walkInLocksByUnit).length} ô`,
+      label: isStaffOnly ? 'Sân & Khách Đặt' : 'Sân Đang Dùng & Vị Trí',
+      sub: isStaffOnly ? 'Trạng thái từng sân và khách trong ngày' : 'Sơ đồ ô sân & vị trí khách đang chơi',
+      badge: isStaffOnly
+        ? staffCourtsActive && currentCourtSnapshot && !courtStatusError
+          ? `${currentCourtSnapshot.courts.filter(court => court.status === 'RENTED').length} đang thuê`
+          : undefined
+        : `${providerOrders.filter((o) => o.status === 'COMPLETED' || o.status === 'CONFIRMED').length + Object.keys(walkInLocksByUnit).length} ô`,
       staffAllowed: true,
     },
     {
@@ -603,10 +661,10 @@ export const LessorPartnerPortal: React.FC<LessorPartnerPortalProps> = ({
   return (
     <section id="command-center" className={embeddedForAdmin ? 'py-2' : 'py-10 sm:py-14'}>
       <div className={embeddedForAdmin ? 'space-y-6'
-        : `mx-auto space-y-6 px-4 sm:px-8 ${staffWideSchedule ? 'max-w-[1760px] lg:space-y-4' : 'max-w-[1420px]'}`}>
+        : `mx-auto space-y-6 px-4 sm:px-8 ${staffWideWorkspace ? 'max-w-[1760px] lg:space-y-4' : 'max-w-[1420px]'}`}>
         {/* TOP EXECUTIVE PARTNER COMMAND HEADER */}
         <div className={`relative overflow-hidden rounded-[28px] border border-[#16422C]/20 bg-gradient-to-br from-[#0B2218] via-[#123524] to-[#0F172A] p-6 text-white shadow-[0_24px_60px_rgba(6,23,16,0.22)] sm:p-8
-          ${staffWideSchedule ? 'lg:hidden print:hidden' : ''}`}>
+          ${staffWideWorkspace ? 'lg:hidden print:hidden' : ''}`}>
           <div
             className="pointer-events-none absolute -right-24 -top-24 h-72 w-72 rounded-full bg-[#84CC16]/12 blur-3xl"
             aria-hidden="true"
@@ -707,12 +765,12 @@ export const LessorPartnerPortal: React.FC<LessorPartnerPortalProps> = ({
         </AnimatePresence>
 
         {/* MAIN 12-COL SAAS WORKSPACE */}
-        <div className={`grid grid-cols-1 items-start gap-6 ${staffWideSchedule ? 'lg:gap-3' : 'lg:grid-cols-12'}`}>
-          <aside className={staffWideSchedule ? 'space-y-4 xl:hidden print:hidden' : 'space-y-4 lg:sticky lg:top-24 lg:col-span-3'}>
+        <div className={`grid grid-cols-1 items-start gap-6 ${staffWideWorkspace ? 'lg:gap-3' : 'lg:grid-cols-12'}`}>
+          <aside className={staffWideWorkspace ? 'space-y-4 xl:hidden print:hidden' : 'space-y-4 lg:sticky lg:top-24 lg:col-span-3'}>
             <nav
               aria-label="Phân hệ quản lý cho thuê"
               className={`space-y-1 rounded-[26px] border border-neutral-200/90 bg-white p-3 shadow-xs
-                ${staffWideSchedule ? 'lg:grid lg:grid-cols-4 lg:gap-1 lg:space-y-0 lg:rounded-2xl lg:p-1.5' : ''}`}
+                ${staffWideWorkspace ? 'lg:grid lg:grid-cols-4 lg:gap-1 lg:space-y-0 lg:rounded-2xl lg:p-1.5' : ''}`}
             >
               {visibleNavItems.map((item) => {
                 const active = activeTab === item.id;
@@ -755,7 +813,7 @@ export const LessorPartnerPortal: React.FC<LessorPartnerPortalProps> = ({
 
             {/* Quick Support & Live Chat Status Card */}
             <div className={`space-y-3 rounded-[24px] border border-neutral-200/90 bg-white p-4 text-xs shadow-xs
-              ${staffWideSchedule ? 'lg:hidden' : ''}`}>
+              ${staffWideWorkspace ? 'lg:hidden' : ''}`}>
               <div className="flex items-center justify-between">
                 <span className="font-bold text-[#0F172A]">Trạng thái Kênh Chat Khách</span>
                 <span
@@ -794,7 +852,7 @@ export const LessorPartnerPortal: React.FC<LessorPartnerPortalProps> = ({
           </aside>
 
           {/* RIGHT 9 COLS: ACTIVE MODULE WORKSPACE */}
-          <div className={`min-w-0 ${staffWideSchedule ? '' : 'lg:col-span-9'}`}>
+          <div className={`min-w-0 ${staffWideWorkspace ? '' : 'lg:col-span-9'}`}>
             <AnimatePresence mode="wait">
               {/* ===================================================================== */}
               {/* TAB 1: OVERVIEW & LIVE QR CHECK-IN / BOOKING DESK                     */}
@@ -1455,7 +1513,14 @@ export const LessorPartnerPortal: React.FC<LessorPartnerPortalProps> = ({
                   exit={{ opacity: 0, y: -6 }}
                   transition={{ duration: 0.24, ease: EXPO_EASE }}
                 >
-                  <LiveCourtsInUseSection
+                  {isStaffOnly ? (
+                    <StaffCourtStatus key={tenantId} snapshot={currentCourtSnapshot} error={courtStatusError}
+                      venueName={activeProvider.providerName}
+                      onRefresh={() => setCourtRefresh(revision => revision + 1)}
+                      onOpenSchedule={() => setActiveTab('WEEKLY_SCHEDULE')}
+                      onOpenVenue={onOpenPublicShop ? () => onOpenPublicShop(activeProvider.providerId) : undefined}
+                      onOpenOrder={setDetailOrderId} />
+                  ) : <LiveCourtsInUseSection
                     listings={myListings}
                     providerOrders={providerOrders}
                     walkInLocksByUnit={walkInLocksByUnit}
@@ -1478,7 +1543,7 @@ export const LessorPartnerPortal: React.FC<LessorPartnerPortalProps> = ({
                       flashToast(`✓ Đã mở chi tiết hoàn tất thanh toán tại sân cho đơn ${orderId}.`);
                       setDetailOrderId(orderId);
                     }}
-                  />
+                  />}
                 </motion.div>
               )}
 
@@ -1497,6 +1562,7 @@ export const LessorPartnerPortal: React.FC<LessorPartnerPortalProps> = ({
                     expanded={staffWideSchedule}
                     venueName={activeProvider.providerName}
                     onOpenVenue={staffWideSchedule && onOpenPublicShop ? () => onOpenPublicShop(activeProvider.providerId) : undefined}
+                    onOpenCourtStatus={staffWideSchedule ? () => setActiveTab('LIVE_COURTS') : undefined}
                     listings={myListings}
                     providerOrders={providerOrders}
                     fixedBlocks={weeklyFixedBlocks}
@@ -2433,10 +2499,7 @@ export const LessorPartnerPortal: React.FC<LessorPartnerPortalProps> = ({
           }
           setQrModalOpen(true);
         }}
-        onMarkNoShow={(orderId) => {
-          updateOrderStatus(orderId, 'NO_SHOW');
-          flashToast(`Đã đánh dấu đơn ${orderId} bỏ lịch quá 15 phút ân hạn.`);
-        }}
+        onMarkNoShow={orderId => void updateOrderStatus(orderId, 'NO_SHOW')}
         onUpdateOrderAddOns={handleUpdateOrderAddOns}
         onOpenManageCourtServices={(groupId) => {
           setFocusedServiceGroupId(groupId);
@@ -2462,7 +2525,7 @@ export const LessorPartnerPortal: React.FC<LessorPartnerPortalProps> = ({
         allowedModes={qrModalAllowedModes}
         initialOrder={qrModalOrder}
         initialQuery={qrModalQuery}
-        providerOrders={providerOrders}
+        providerOrders={actionableOrders}
         activeVenueName={activeProvider.providerName}
         onClose={() => setQrModalOpen(false)}
         onPinFailedAttempt={handlePinFailedAttempt}

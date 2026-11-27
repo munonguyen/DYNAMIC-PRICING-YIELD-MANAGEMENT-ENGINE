@@ -30,8 +30,16 @@ import type {
   SimulationResult,
   SlotListingQuote,
   SportTypeItem,
+  VenueCourtSnapshot,
   VenueProviderInfo,
 } from '../types/marketplace';
+
+const venueBookingDate = new Intl.DateTimeFormat('en-CA', {
+  timeZone: 'Asia/Ho_Chi_Minh', year: 'numeric', month: '2-digit', day: '2-digit',
+});
+const venueBookingHour = new Intl.DateTimeFormat('en-GB', {
+  timeZone: 'Asia/Ho_Chi_Minh', hour: '2-digit', hourCycle: 'h23',
+});
 
 export function applyGalleryMediaToListing(
   listing: PublishedListing,
@@ -801,23 +809,28 @@ class MarketplaceApiClient {
   }
 
   async getVenueOrders(tenantId: string): Promise<LessorBookingOrder[]> {
-    const rows = await this.checkoutRequest<(LessorBookingOrder & { slotStart: string })[]>(
-      `/checkins/orders?tenantId=${tenantId}`
-    );
-    return rows.map((order) => {
-      const date = new Date(order.slotStart);
-      const parts = new Intl.DateTimeFormat('en-CA', {
-        timeZone: 'Asia/Ho_Chi_Minh', year: 'numeric', month: '2-digit', day: '2-digit',
-      }).formatToParts(date);
-      const field = (type: Intl.DateTimeFormatPartTypes) => parts.find((part) => part.type === type)?.value;
-      return {
-        ...order, providerId: tenantId, qrCode: '', addOnTotal: order.addOnTotal ?? 0,
-        dateIso: `${field('year')}-${field('month')}-${field('day')}`,
-        slotHour: Number(new Intl.DateTimeFormat('en-GB', {
-          timeZone: 'Asia/Ho_Chi_Minh', hour: '2-digit', hourCycle: 'h23',
-        }).format(date)),
-      };
-    });
+    const query = new URLSearchParams({ tenantId });
+    const rows = await this.checkoutRequest<LessorBookingOrder[]>(`/checkins/orders?${query}`);
+    return rows.map((order) => this.normalizeVenueOrder(order, tenantId));
+  }
+
+  async getVenueCourtStatus(tenantId: string, signal: AbortSignal): Promise<VenueCourtSnapshot> {
+    const query = new URLSearchParams({ tenantId });
+    const snapshot = await this.checkoutRequest<VenueCourtSnapshot>(`/checkins/court-status?${query}`, undefined, signal);
+    return { ...snapshot, bookings: snapshot.bookings.map((order) => this.normalizeVenueOrder(order, tenantId)) };
+  }
+
+  private normalizeVenueOrder(order: LessorBookingOrder, tenantId: string): LessorBookingOrder {
+    const baseOrder = { ...order, providerId: tenantId, qrCode: '', addOnTotal: order.addOnTotal ?? 0 };
+    if (!order.slotStart) return baseOrder;
+    const date = new Date(order.slotStart);
+    const parts = venueBookingDate.formatToParts(date);
+    const field = (type: Intl.DateTimeFormatPartTypes) => parts.find((part) => part.type === type)?.value;
+    return {
+      ...baseOrder,
+      dateIso: `${field('year')}-${field('month')}-${field('day')}`,
+      slotHour: Number(venueBookingHour.format(date)),
+    };
   }
 
   listConversations(tenantId?: string): Promise<VenueConversation[]> {

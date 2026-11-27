@@ -417,6 +417,23 @@ export interface LessorBookingOrder {
   slotEnd?: string | null;
 }
 
+export interface VenueCourt {
+  id: string;
+  groupId: string;
+  groupName: string;
+  unitNumber: string;
+  status: 'RENTED' | 'AWAITING_CHECK_IN' | 'PAYMENT_HOLD' | 'AVAILABLE' | 'UNAVAILABLE';
+  reservationId: string | null;
+}
+
+export interface VenueCourtSnapshot {
+  tenantId: string;
+  updatedAt: string;
+  today: string;
+  courts: VenueCourt[];
+  bookings: LessorBookingOrder[];
+}
+
 export interface LessorStaffMember {
   id: string;
   providerId: string;
