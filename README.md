@@ -222,6 +222,12 @@ curl -sS http://127.0.0.1:18121/simulate \
 | Tiền đến lần nữa | Sau khi đã xác nhận, gửi `exact` với `eventId` mới | Giữ nguyên biên lai và vé, đưa khoản chuyển thêm vào đối soát. |
 | Token sai hoặc giao dịch đi | Dùng `bad-token` hoặc `outgoing` | Token sai bị từ chối. Giao dịch ghi nợ không xác nhận đơn. |
 
+#### Thử thanh toán phần còn lại
+
+Sau khi callback xác nhận tiền cọc, khách chọn **Thanh toán phần còn lại** trên checkout hoặc mở đơn trong **Lịch sử Thanh toán & Vé QR**. Backend tính số tiền còn thiếu và tạo mã VietQR mới gửi đến tài khoản nhận đã đăng ký trong cấu hình `VIETQR_BANK_CODE`, `VIETQR_BANK_ACCOUNT` và `VIETQR_ACCOUNT_NAME`. Với bộ mô phỏng local, dùng lại lệnh `/simulate` ở trên với **Mã giao dịch của mã QR mới** và một `eventId` mới. Đơn chỉ hiển thị đã trả đủ sau callback hợp lệ. Soát vé nhận sân vẫn là bước riêng.
+
+Giao dịch sai số tiền hoặc đến sau khi đơn không còn nhận thanh toán được đưa vào hàng đợi đối soát. Khoản hoàn của đơn đã thu qua nhiều cổng được xử lý qua đối soát kế toán.
+
 ### Phương án 3. Thử qua sandbox VietQR.vn
 
 1. Dùng thông tin merchant sandbox do VietQR.vn cấp, điền tài khoản nhận test và thông tin `VIETQR_CALLBACK_*` riêng theo `.env.example`. Đặt `VIETQR_MODE=SANDBOX`, `VIETQR_ENABLED=true` và `VIETQR_SANDBOX_BASE_URL=https://dev.vietqr.org`.

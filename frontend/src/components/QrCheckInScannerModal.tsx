@@ -613,13 +613,13 @@ export const QrCheckInScannerModal: React.FC<QrCheckInScannerModalProps> = ({
                             Thanh toán &amp; Đối chiếu chính chủ
                           </div>
                           <div className="flex justify-between">
-                            <span className="text-neutral-500">Đã cọc online:</span>
+                            <span className="text-neutral-500">Đã thanh toán online</span>
                             <strong className="text-[#0E4F7E] tabular-nums">
                               {formatVnd(inspectResult.paidAmount ?? 0)}
                             </strong>
                           </div>
                           <div className="flex justify-between">
-                            <span className="text-neutral-500">Cần thu thêm tại sân:</span>
+                            <span className="text-neutral-500">Tiền sân còn lại</span>
                             <strong
                               className={`tabular-nums ${
                                 (inspectResult.remainingAtVenue ?? 0) > 0
@@ -739,13 +739,13 @@ export const QrCheckInScannerModal: React.FC<QrCheckInScannerModalProps> = ({
                           </strong>
                         </div>
                         <div className="flex justify-between gap-2 border-t border-neutral-200/70 pt-2">
-                          <span className="text-neutral-500">Đã cọc online:</span>
+                          <span className="text-neutral-500">Đã thanh toán online</span>
                           <strong className="text-[#0E4F7E] tabular-nums">
                             {formatVnd(selectedPinOrder.paidEscrow)}
                           </strong>
                         </div>
                         <div className="flex justify-between gap-2">
-                          <span className="text-neutral-500">Cần thu thêm tại sân:</span>
+                          <span className="text-neutral-500">Tiền sân còn lại</span>
                           <strong className="text-amber-700 tabular-nums">
                             {formatVnd(selectedPinOrder.remainingAtVenue)}
                           </strong>

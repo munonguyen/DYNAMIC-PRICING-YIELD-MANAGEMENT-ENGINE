@@ -32,6 +32,8 @@ import type { LessorPortalTabId } from './LessorPartnerPortal';
 import { ArenaPulseLogo } from './ArenaPulseLogo';
 import { ActionButton } from './FairwayControls';
 import { PaymentMethodLogo } from './PaymentMethodLogo';
+import { CustomerBalancePayment } from './CustomerBalancePayment';
+import type { BookingPaymentStatus } from '../types/marketplace';
 import { EXPO_EASE } from './motionPrimitives';
 
 export interface PageNavItem {
@@ -176,6 +178,19 @@ export const FairwayHeader: React.FC<FairwayHeaderProps> = ({
   const [historyRequest, setHistoryRequest] = useState(0);
   const [historyLoading, setHistoryLoading] = useState(false);
   const [historyError, setHistoryError] = useState(false);
+
+  useEffect(() => {
+    if (!accountMenuOpen) return;
+    const onBalanceUpdated = (event: Event) => {
+      const status = (event as CustomEvent<BookingPaymentStatus>).detail;
+      setAccountTickets(tickets => tickets.map(ticket => status?.reservationId === ticket.reservationId
+        ? { ...ticket, paidOnlineAmount: status.paidAmount, remainingAtVenue: status.remainingAtVenue,
+            paymentProvider: status.provider, providerReference: status.providerReference, paidAt: status.verifiedAt }
+        : ticket));
+    };
+    window.addEventListener('arenapulse:balance-updated', onBalanceUpdated);
+    return () => window.removeEventListener('arenapulse:balance-updated', onBalanceUpdated);
+  }, [accountMenuOpen]);
 
   useEffect(() => {
     setHistoryPage(0);
@@ -905,10 +920,13 @@ export const FairwayHeader: React.FC<FairwayHeaderProps> = ({
                                             </div>
                                           )}
                                           <div className="text-neutral-500">
-                                            Còn tại sân: <strong>{formatVnd(ticket.remainingAtVenue)}</strong>
+                                            Còn lại <strong>{formatVnd(ticket.remainingAtVenue)}</strong>
                                           </div>
                                         </div>
                                       </div>
+                                    )}
+                                    {isExpanded && ticket.status === 'CONFIRMED' && ticket.remainingAtVenue > 0 && (
+                                      <CustomerBalancePayment key={ticket.reservationId} reservationId={ticket.reservationId} />
                                     )}
                                   </div>
                                 );

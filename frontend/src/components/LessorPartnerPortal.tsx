@@ -1332,7 +1332,7 @@ export const LessorPartnerPortal: React.FC<LessorPartnerPortalProps> = ({
                               >
                                 <div className="text-left lg:text-right text-xs whitespace-nowrap">
                                   <div className="font-bold text-[#0F172A] tabular-nums">
-                                    Thu tại sân:{' '}
+                                    Tiền sân còn lại{' '}
                                     <span
                                       className={
                                         order.remainingAtVenue > 0
@@ -1344,7 +1344,7 @@ export const LessorPartnerPortal: React.FC<LessorPartnerPortalProps> = ({
                                     </span>
                                   </div>
                                   <div className="mt-0.5 text-[11px] text-neutral-500 tabular-nums">
-                                    Đã cọc{' '}
+                                    Đã thu online{' '}
                                     <strong className="text-[#16422C]">
                                       {formatVnd(order.paidEscrow)}
                                     </strong>{' '}

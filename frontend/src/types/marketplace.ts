@@ -235,6 +235,12 @@ export interface BookingPaymentStatus {
   providerReference: string | null;
   verifiedAt: string | null;
   paymentQr: { payload: string; holdUntil: string; sandbox: boolean; transfer: VietQrBankTransfer | null } | null;
+  balancePayment: {
+    state: 'AVAILABLE' | 'PENDING' | 'REVIEW_REQUIRED';
+    amount: number;
+    reference: string | null;
+    qr: BookingPaymentStatus['paymentQr'];
+  } | null;
 }
 
 export interface MoMoPaymentSession {

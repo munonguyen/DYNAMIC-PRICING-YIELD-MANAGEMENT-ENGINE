@@ -10,9 +10,10 @@ interface CheckoutPaymentQrProps {
   provider?: BookingPaymentStatus['provider'];
   amount: number;
   reference: string;
+  isBalance?: boolean;
 }
 
-export function CheckoutPaymentQr({ qr, provider, amount, reference }: CheckoutPaymentQrProps) {
+export function CheckoutPaymentQr({ qr, provider, amount, reference, isBalance = false }: CheckoutPaymentQrProps) {
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
     const timer = window.setInterval(() => setNow(Date.now()), 1000);
@@ -21,7 +22,9 @@ export function CheckoutPaymentQr({ qr, provider, amount, reference }: CheckoutP
 
   const seconds = Math.ceil((Date.parse(qr.holdUntil) - now) / 1000);
   if (!Number.isFinite(seconds) || seconds <= 0) {
-    return <p className="text-sm text-amber-900" role="status">Đã hết thời gian giữ sân. Vui lòng dừng quét mã.</p>;
+    return <p className="text-sm text-amber-900" role="status">
+      {isBalance ? 'Mã thanh toán đã hết hạn.' : 'Đã hết thời gian giữ sân.'} Vui lòng dừng quét mã.
+    </p>;
   }
   const timeLeft = `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`;
   const { transfer } = qr;
@@ -44,7 +47,7 @@ export function CheckoutPaymentQr({ qr, provider, amount, reference }: CheckoutP
         </h4>
         <p className="flex items-center gap-1.5 text-xs text-neutral-700">
           <Clock3 aria-hidden="true" className="h-4 w-4" />
-          Còn giữ sân <span className="font-semibold tabular-nums">{timeLeft}</span>
+          {isBalance ? 'Mã còn hạn' : 'Còn giữ sân'} <span className="font-semibold tabular-nums">{timeLeft}</span>
         </p>
       </div>
       <div className="my-4 flex justify-center">
