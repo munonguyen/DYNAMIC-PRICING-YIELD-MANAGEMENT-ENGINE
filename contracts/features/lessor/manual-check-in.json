@@ -1,5 +1,5 @@
 {
-  "branch": "service/lessor/manual-check-in",
+  "branch": "complete/lessor/manual-check-in",
   "title": "Nhận sân thủ công",
   "scope": "Chủ sân xác nhận nhận sân theo chế độ thủ công của cơ sở.",
   "operations": [
