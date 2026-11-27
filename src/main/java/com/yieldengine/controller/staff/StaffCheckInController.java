@@ -12,6 +12,7 @@ import com.yieldengine.record.ops.QrInspectResponse;
 import com.yieldengine.record.ops.ScanQrRequest;
 import com.yieldengine.record.ops.VerifyPinRequest;
 import com.yieldengine.service.CheckInService;
+import com.yieldengine.service.VenueCourtStatusService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
@@ -31,6 +32,15 @@ public class StaffCheckInController {
     private final CheckInService checkInService;
     private final RbacGuard rbac;
     private final SearchAndAnalyticsSyncService orders;
+
+    private final VenueCourtStatusService courtStatus;
+
+    @Operation(summary = "[STAFF / MANAGER] Read current court status and today's guest bookings")
+    @GetMapping("/court-status")
+    public ResponseEntity<VenueCourtStatusService.Snapshot> venueCourtStatus(@RequestParam(required = false) UUID tenantId) {
+        UUID venue = rbac.resolveAuthorizedTenantId(tenantId, "STAFF", "MANAGER");
+        return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(courtStatus.load(venue));
+    }
 
     @GetMapping("/orders")
     public ResponseEntity<List<LessorOrderSummaryDto>> venueOrders(@RequestParam(required = false) UUID tenantId,
