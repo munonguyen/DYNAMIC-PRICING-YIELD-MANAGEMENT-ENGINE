@@ -1,5 +1,5 @@
 {
-  "branch": "service/staff/arrival-orders",
+  "branch": "complete/staff/arrival-orders",
   "title": "Danh sách đơn tại quầy",
   "scope": "Nhân viên đọc đơn của cơ sở được phân công để chuẩn bị nhận sân.",
   "operations": [
