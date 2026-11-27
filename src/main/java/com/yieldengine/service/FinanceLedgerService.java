@@ -122,17 +122,35 @@ public class FinanceLedgerService {
     }
 
     @Transactional
+    public void recordBalanceCollected(Reservation reservation, Payment payment) {
+        postBalancedJournal(
+                "BALANCE_COLLECTED:" + payment.getId(), reservation.getTenantId(), reservation.getReservationId(),
+                payment.getId(), "BALANCE_COLLECTED", "Customer balance collected into platform escrow",
+                List.of(
+                        new JournalLeg("GATEWAY_CLEARING", "REVENUE", "DEBIT", payment.getAmount()),
+                        new JournalLeg("PLATFORM_ESCROW_LIABILITY", "REVENUE", "CREDIT", payment.getAmount())
+                )
+        );
+    }
+
+    @Transactional
     public void recordRentalCompleted(Reservation reservation, Short sportTypeId) {
         recordRentalCompleted(reservation, sportTypeId, reservation.getDepositAmount());
     }
 
     @Transactional
     public void recordRentalCompleted(Reservation reservation, Short sportTypeId, long escrowAmount) {
+        recordRentalCompleted(reservation, sportTypeId, escrowAmount, escrowAmount);
+    }
+
+    @Transactional
+    public void recordRentalCompleted(Reservation reservation, Short sportTypeId, long escrowAmount, long commissionBasis) {
         if (escrowAmount <= 0) {
             return;
         }
         BigDecimal rate = resolveCommissionRate(reservation.getTenantId(), sportTypeId, Instant.now(), false);
-        List<JournalLeg> legs = buildEscrowSplitLegs(escrowAmount, rate, "REVENUE", "REVENUE");
+        long commission = calculateCommissionAmount(commissionBasis, rate);
+        List<JournalLeg> legs = buildEscrowSplitLegs(escrowAmount, commission, "REVENUE", "REVENUE");
 
         postBalancedJournal(
                 "RENTAL_COMPLETED:" + reservation.getReservationId(),
@@ -216,7 +234,8 @@ public class FinanceLedgerService {
             return;
         }
         BigDecimal rate = resolveCommissionRate(reservation.getTenantId(), sportTypeId, Instant.now(), true);
-        List<JournalLeg> legs = buildEscrowSplitLegs(forfeit, rate, "FORFEITED_DEPOSIT", "FORFEITED_DEPOSIT");
+        List<JournalLeg> legs = buildEscrowSplitLegs(forfeit, calculateCommissionAmount(forfeit, rate),
+                "FORFEITED_DEPOSIT", "FORFEITED_DEPOSIT");
 
         postBalancedJournal(
                 "NO_SHOW_FORFEIT:" + reservation.getReservationId(),
@@ -338,9 +357,8 @@ public class FinanceLedgerService {
     }
 
     private List<JournalLeg> buildEscrowSplitLegs(
-            long escrowAmount, BigDecimal rate, String debitType, String creditVenueType
+            long escrowAmount, long commission, String debitType, String creditVenueType
     ) {
-        long commission = calculateCommissionAmount(escrowAmount, rate);
         long venueNet = escrowAmount - commission;
 
         List<JournalLeg> legs = new ArrayList<>();

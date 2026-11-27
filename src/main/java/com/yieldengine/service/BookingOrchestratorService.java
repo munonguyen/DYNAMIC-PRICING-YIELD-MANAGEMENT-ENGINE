@@ -504,6 +504,14 @@ public class BookingOrchestratorService {
         return created;
     }
 
+    void settleNoShowBalance(Reservation reservation, ResourceGroup group, long collectedEscrow) {
+        long refundableBalance = Math.max(0, collectedEscrow - reservation.getForfeitedAmount());
+        reservation.setRefundAmount(refundableBalance);
+        Payment refund = createRefundPaymentIfApplicable(reservation, group, refundableBalance);
+        financeLedgerService.recordCancellationSettlement(reservation, refund,
+                group.getSportType() != null ? group.getSportType().getId() : null, collectedEscrow);
+    }
+
     private Payment createRefundPaymentIfApplicable(Reservation reservation, ResourceGroup group, long refundAmount) {
         if (refundAmount <= 0 || reservation.getBookingId() == null) {
             return null;

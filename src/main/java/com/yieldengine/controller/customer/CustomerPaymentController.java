@@ -115,6 +115,15 @@ public class CustomerPaymentController {
                 .body(checkoutPaymentService.getStatus(request.reservationId(), owner));
     }
 
+    @Operation(summary = "[USER] Create or retrieve a VietQR code for the remaining booking balance")
+    @PostMapping("/vietqr/balance/{reservationId}")
+    public ResponseEntity<BookingPaymentStatus> createVietQrBalance(@PathVariable UUID reservationId) {
+        UUID owner = rbacGuard.requireAuthenticated().userId();
+        vietQrTransferService.createBalance(reservationId, owner);
+        return ResponseEntity.ok().cacheControl(CacheControl.noStore())
+                .body(checkoutPaymentService.getStatus(reservationId, owner));
+    }
+
     @Operation(summary = "[USER] Create HMAC-SHA512 signed VNPAY PayGate v2.1.0 redirect URL")
     @PostMapping("/vnpay/create-payment")
     public ResponseEntity<VnPayPaymentUrlResponse> createVnPayPayment(

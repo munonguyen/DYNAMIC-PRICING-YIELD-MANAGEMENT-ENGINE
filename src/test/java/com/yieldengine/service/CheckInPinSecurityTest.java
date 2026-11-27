@@ -79,6 +79,8 @@ class CheckInPinSecurityTest {
                 tokenService,
                 ticketPassService,
                 financeLedgerService,
+                mock(VietQrBalanceService.class),
+                mock(BookingOrchestratorService.class),
                 auditLogService,
                 rbacGuard,
                 validator,
@@ -142,6 +144,7 @@ class CheckInPinSecurityTest {
         );
 
         lenient().when(rbacGuard.requireAuthenticated()).thenReturn(staffPrincipal);
+        lenient().when(reservationRepository.lockByReservationId(reservationId)).thenReturn(Optional.of(reservation));
         lenient().when(reservationRepository.findByReservationId(reservationId)).thenReturn(Optional.of(reservation));
         lenient().when(checkInRepository.existsByReservationId(reservationId)).thenReturn(false);
         lenient().when(jdbcTemplate.queryForObject(anyString(), eq(Timestamp.class)))

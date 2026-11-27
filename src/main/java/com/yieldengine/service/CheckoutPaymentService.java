@@ -20,7 +20,6 @@ import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
 import java.util.ArrayList;
-import java.util.Map;
 
 @Service
 @RequiredArgsConstructor
@@ -32,6 +31,7 @@ public class CheckoutPaymentService {
     private final VnPayPaymentService vnPay;
     private final VietQrProperties vietQr;
     private final VietQrTransferService vietQrTransfers;
+    private final VietQrBalanceService balances;
 
     public List<String> configuredProviders() {
         var providers = new ArrayList<String>();
@@ -52,9 +52,11 @@ public class CheckoutPaymentService {
                 bookingId, "REFUND", "SUCCESS");
         if (paid.isPresent() && List.of("CONFIRMED", "COMPLETED").contains(bookingStatus)) {
             Payment receipt = paid.get();
-            return new BookingPaymentStatus(reservationId, bookingStatus, State.VERIFIED, receipt.getAmount(),
-                    Math.max(0, reservation.getLockedPrice() - receipt.getAmount()), null, receipt.getProvider(),
-                    receipt.getProviderRef(), receipt.getGatewayVerifiedAt(), null);
+            long collected = payments.sumSuccessfulPaidByBookingId(bookingId);
+            long remaining = Math.max(0, reservation.getLockedPrice() - collected);
+            return new BookingPaymentStatus(reservationId, bookingStatus, State.VERIFIED, collected,
+                    remaining, null, receipt.getProvider(), receipt.getProviderRef(), receipt.getGatewayVerifiedAt(),
+                    null, balances.status(reservation, remaining));
         }
         var review = payments.findFirstByBookingIdAndGatewayVerifiedAtIsNotNullAndPaymentTypeNotAndStatusOrderByGatewayVerifiedAtDesc(
                 bookingId, "REFUND", "REVIEW_REQUIRED");
@@ -70,7 +72,7 @@ public class CheckoutPaymentService {
             }).orElse(reservation.getRefundAmount() != null && reservation.getRefundAmount() > 0
                     ? State.REVIEW_REQUIRED : State.CANCELLED);
             return new BookingPaymentStatus(reservationId, bookingStatus, cancelledState,
-                    paid.map(Payment::getAmount).orElse(0L), 0, null,
+                    paid.isPresent() ? payments.sumSuccessfulPaidByBookingId(bookingId) : 0, 0, null,
                     paid.map(Payment::getProvider).orElse(null), paid.map(Payment::getProviderRef).orElse(null),
                     refund.map(Payment::getGatewayVerifiedAt).orElse(null), null);
         }
@@ -105,13 +107,12 @@ public class CheckoutPaymentService {
                 var data = attempt.getRawPayload();
                 BankTransfer transfer = null;
                 if (VietQrTransferService.PROVIDER.equals(attempt.getProvider()) && data != null) {
-                    if (vietQrTransfers.hasPendingReview(reservationId, text(data, "mode"))) {
+                    if (vietQrTransfers.hasPendingReview(reservationId, VietQrTransferService.field(data, "mode"))) {
                         return new BookingPaymentStatus(reservationId, bookingStatus, State.REVIEW_REQUIRED, 0,
                                 reservation.getLockedPrice(), attempt.getAmount(), attempt.getProvider(),
                                 attempt.getProviderRef(), null, null);
                     }
-                    transfer = new BankTransfer(text(data, "bankCode"), text(data, "bankName"), text(data, "bankAccount"),
-                            text(data, "virtualAccount"), text(data, "accountName"), text(data, "content"));
+                    transfer = VietQrTransferService.bankTransfer(data);
                 }
                 PaymentQr qr = attempt.getCheckoutQrPayload() == null ? null : new PaymentQr(
                         attempt.getCheckoutQrPayload(), holdUntil, Boolean.TRUE.equals(attempt.getCheckoutQrSandbox()), transfer);
@@ -120,10 +121,9 @@ public class CheckoutPaymentService {
             }
             state = lastVnPay.isPresent() || lastPayment.isPresent() ? State.FAILED : State.NOT_STARTED;
         }
-        return new BookingPaymentStatus(reservationId, bookingStatus, state, 0, reservation.getLockedPrice(), null, null, null, null, null);
+        return new BookingPaymentStatus(reservationId, bookingStatus, state, 0, reservation.getLockedPrice(),
+                null, null, null, null, null, state == State.NO_DEPOSIT
+                ? balances.status(reservation, reservation.getLockedPrice()) : null);
     }
 
-    private String text(Map<String, Object> data, String name) {
-        return data.get(name) instanceof String value ? value : "";
-    }
 }
