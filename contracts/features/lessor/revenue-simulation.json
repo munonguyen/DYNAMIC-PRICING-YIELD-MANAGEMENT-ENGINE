@@ -1,5 +1,5 @@
 {
-  "branch": "service/lessor/revenue-simulation",
+  "branch": "complete/lessor/revenue-simulation",
   "title": "Mô phỏng doanh thu",
   "scope": "Chạy mô phỏng định giá và doanh thu cho cơ sở.",
   "operations": [
