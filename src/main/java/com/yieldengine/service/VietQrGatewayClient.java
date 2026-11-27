@@ -1,7 +1,9 @@
 package com.yieldengine.service;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.yieldengine.exception.AppException;
 import com.yieldengine.config.VietQrProperties;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.client.JdkClientHttpRequestFactory;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
@@ -40,9 +42,9 @@ public class VietQrGatewayClient {
             if (ex.getStatusCode().value() == 400 || ex.getStatusCode().value() == 401 || ex.getStatusCode().value() == 403) {
                 throw new RequestRejected("VietQR từ chối tạo mã. Vui lòng kiểm tra cấu hình kết nối.");
             }
-            throw new IllegalStateException("Chưa xác minh được việc tạo QR VietQR. Vui lòng kiểm tra lại trạng thái.");
+            throw new AppException("Chưa xác minh được việc tạo QR VietQR. Vui lòng kiểm tra lại trạng thái.", HttpStatus.BAD_GATEWAY);
         } catch (RestClientException ex) {
-            throw new IllegalStateException("Chưa xác minh được việc tạo QR VietQR. Vui lòng kiểm tra lại trạng thái.");
+            throw new AppException("Chưa xác minh được việc tạo QR VietQR. Vui lòng kiểm tra lại trạng thái.", HttpStatus.BAD_GATEWAY);
         }
         String payload = field(result, "qrCode");
         String content = field(result, "content");
@@ -55,7 +57,7 @@ public class VietQrGatewayClient {
                 || payload.codePoints().anyMatch(Character::isISOControl)
                 || content.isBlank() || content.length() > 255 || content.codePoints().anyMatch(Character::isISOControl)
                 || (!virtualAccount.isEmpty() && !virtualAccount.matches("[A-Za-z0-9]{1,40}"))) {
-            throw new IllegalStateException("Dữ liệu mã QR của VietQR chưa khớp đơn. Vui lòng kiểm tra lại trạng thái.");
+            throw new AppException("Dữ liệu mã QR của VietQR chưa khớp đơn. Vui lòng kiểm tra lại trạng thái.", HttpStatus.BAD_GATEWAY);
         }
         return new IssuedQr(payload, content, field(result, "bankName"), properties.getBankAccount(), virtualAccount,
                 properties.getAccountName(), properties.getBankCode());
@@ -85,9 +87,9 @@ public class VietQrGatewayClient {
                            String virtualAccount, String accountName, String bankCode) {
     }
 
-    public static class RequestRejected extends IllegalStateException {
+    public static class RequestRejected extends AppException {
         public RequestRejected(String message) {
-            super(message);
+            super(message, HttpStatus.BAD_GATEWAY);
         }
     }
 }
