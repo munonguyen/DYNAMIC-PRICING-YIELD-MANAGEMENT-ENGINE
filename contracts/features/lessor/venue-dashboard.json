@@ -1,5 +1,5 @@
 {
-  "branch": "service/lessor/venue-dashboard",
+  "branch": "complete/lessor/venue-dashboard",
   "title": "Dashboard cơ sở",
   "scope": "Báo cáo sức chứa, đơn hàng và doanh thu theo cơ sở.",
   "operations": [
