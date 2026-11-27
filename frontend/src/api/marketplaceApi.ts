@@ -354,8 +354,9 @@ class MarketplaceApiClient {
     return this.checkoutRequest('/bookings/my-tickets');
   }
 
-  getPaymentHistory(): Promise<MyTicketRecord[]> {
-    return this.checkoutRequest('/payments/history');
+  getPaymentHistory(page: number, size: number, signal?: AbortSignal): Promise<MyTicketRecord[]> {
+    const query = new URLSearchParams({ page: String(page), size: String(size) });
+    return this.checkoutRequest(`/payments/history?${query}`, undefined, signal);
   }
 
   async inspectQrTicket(rawInput: string, providerOrders: LessorBookingOrder[]): Promise<import('../types/marketplace').QrInspectResult> {

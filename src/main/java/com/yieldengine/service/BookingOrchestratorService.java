@@ -655,21 +655,6 @@ public class BookingOrchestratorService {
                 .toList();
     }
 
-    @Transactional(readOnly = true)
-    public java.util.List<com.yieldengine.record.ops.MyTicketResponse> listPaymentHistory(UUID userId) {
-        return reservationRepository.findByUserIdOrderBySlotStartDesc(userId).stream()
-                .map(res -> {
-                    Payment primaryPayment = findPrimaryPaymentForBooking(res.getBookingId());
-                    boolean hasTransactionOrClosed = primaryPayment != null
-                            || "CONFIRMED".equals(res.getStatus())
-                            || "COMPLETED".equals(res.getStatus())
-                            || "CANCELLED".equals(res.getStatus());
-                    return hasTransactionOrClosed ? toTicketResponse(res, primaryPayment) : null;
-                })
-                .filter(java.util.Objects::nonNull)
-                .toList();
-    }
-
     private Payment findPrimaryPaymentForBooking(UUID bookingId) {
         if (bookingId == null) {
             return null;

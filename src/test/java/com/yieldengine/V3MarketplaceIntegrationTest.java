@@ -141,6 +141,9 @@ class V3MarketplaceIntegrationTest {
     private VnPayPaymentService vnPay;
 
     @Autowired
+    private CustomerTicketReadService customerTickets;
+
+    @Autowired
     private VnPayRefundSettlement vnPayRefundSettlement;
 
     @Autowired
@@ -410,6 +413,10 @@ class V3MarketplaceIntegrationTest {
         assertEquals(State.PENDING, checkoutPayment.getStatus(held.getReservationId(), player.id()).paymentStatus());
         assertThrows(BusinessConflictException.class, () -> vnPay.createPaymentUrl(paymentRequest, "127.0.0.1", player.id()));
 
+        assertTrue(customerTickets.listPaymentHistory(player.id(), 0, 25).stream()
+                .noneMatch(ticket -> held.getReservationId().equals(ticket.reservationId())));
+        assertTrue(customerTickets.listTickets(manager.id(), held.getReservationId(), 0, 1).isEmpty());
+
         var rejected = signedVnPayFixture(attempt.txnRef(), attempt.vnpAmount(), "24", "02");
         assertFalse(vnPay.handleReturnCallback(rejected).paymentSucceeded());
         assertEquals(State.PENDING, checkoutPayment.getStatus(held.getReservationId(), player.id()).paymentStatus());
@@ -432,6 +439,14 @@ class V3MarketplaceIntegrationTest {
         assertEquals(State.VERIFIED, verified.paymentStatus());
         assertEquals(held.getDepositAmount(), verified.paidAmount());
         assertEquals(retry.txnRef(), verified.providerReference());
+
+        var ticket = customerTickets.listTickets(player.id(), held.getReservationId(), 0, 1).get(0);
+        assertEquals(retry.txnRef(), ticket.providerReference());
+        assertEquals(held.getDepositAmount(), ticket.paidOnlineAmount());
+        assertNotNull(ticket.paidAt());
+        assertNotNull(ticket.qrToken());
+        assertTrue(customerTickets.listPaymentHistory(player.id(), 0, 100).stream()
+                .anyMatch(row -> held.getReservationId().equals(row.reservationId())));
 
         // 5. Player retrieves QR Code
         QrCodeResponse qr = checkInService.issueOrGetQrCode(held.getReservationId());
@@ -467,6 +482,7 @@ class V3MarketplaceIntegrationTest {
 
         assertThrows(Exception.class,
                 () -> jdbcTemplate.update("DELETE FROM ledger_entries WHERE reservation_id = ?", held.getReservationId()));
+
     }
     @Test
     @Order(6)
