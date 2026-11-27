@@ -1,17 +1,8 @@
-import React, { useMemo, useState } from 'react';
-import {
-  Calendar,
-  ChevronLeft,
-  ChevronRight,
-  Clock,
-  Lock,
-  Plus,
-  Printer,
-  Trash2,
-  X,
-} from 'lucide-react';
+import { useMemo, useState, type FormEvent } from 'react';
+import { CalendarDays, ChevronLeft, ChevronRight, Lock, Plus, Printer, Trash2, X } from 'lucide-react';
 import type { LessorBookingOrder, PublishedListing } from '../types/marketplace';
 import { PillSelect } from './FairwayControls';
+import { WeeklyBookingCard, weeklyBookingStatus } from './WeeklyBookingCard';
 
 export interface WeeklyFixedBlock {
   id: string;
@@ -33,575 +24,344 @@ interface WeeklyScheduleGridProps {
   onOpenOrderDetail: (orderId: string) => void;
 }
 
-const WEEKDAY_NAMES = ['Thứ 2', 'Thứ 3', 'Thứ 4', 'Thứ 5', 'Thứ 6', 'Thứ 7', 'Chủ Nhật'];
-const TIMETABLE_HOURS = Array.from({ length: 16 }, (_, idx) => 6 + idx); // 06:00 -> 21:00 (16 ca)
-
-function toLocalIso(d: Date): string {
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+interface ScheduleCell {
+  orders: LessorBookingOrder[];
+  blocks: WeeklyFixedBlock[];
+  hasCollision: boolean;
 }
 
-function formatShortDdMm(d: Date): string {
-  return `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}`;
+const weekdayNames = ['Thứ 2', 'Thứ 3', 'Thứ 4', 'Thứ 5', 'Thứ 6', 'Thứ 7', 'CN'];
+const vietnamDate = new Intl.DateTimeFormat('sv-SE', { timeZone: 'Asia/Ho_Chi_Minh', year: 'numeric', month: '2-digit', day: '2-digit' });
+const time = new Intl.DateTimeFormat('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });
+const scheduleStatuses = ['CONFIRMED', 'COMPLETED', 'HELD'] as const;
+const weekOffsets = [-2, -1, 0, 1, 2, 3, 4];
+const weekButton = 'grid h-10 w-10 shrink-0 place-items-center rounded-xl border border-[#DDE8E1] bg-white text-[#16422C] hover:bg-[#EDF5EF] disabled:opacity-40';
+
+function shiftDate(day: string, offset: number) {
+  const date = new Date(`${day}T00:00:00Z`);
+  date.setUTCDate(date.getUTCDate() + offset);
+  return date.toISOString().slice(0, 10);
 }
 
-function formatFullDate(d: Date): string {
-  return `${formatShortDdMm(d)}/${d.getFullYear()}`;
+function formatShortDate(iso: string) {
+  return `${iso.slice(8, 10)}/${iso.slice(5, 7)}`;
 }
 
-function getMondayOfWeek(refDate: Date, weekOffset: number): Date {
-  const copy = new Date(refDate.getFullYear(), refDate.getMonth(), refDate.getDate());
-  const jsDay = copy.getDay(); // 0=Sun, 1=Mon..6=Sat
-  const diffToMonday = jsDay === 0 ? -6 : 1 - jsDay;
-  copy.setDate(copy.getDate() + diffToMonday + weekOffset * 7);
-  return copy;
+function hourLabel(hour: number) {
+  return `${String(hour).padStart(2, '0')}:00`;
 }
 
-function resolveOrderHour(order: LessorBookingOrder): number {
-  if (typeof order.slotHour === 'number' && order.slotHour >= 6 && order.slotHour <= 21) {
-    return order.slotHour;
-  }
-  const match = order.slotLabel.match(/(\d{1,2}):\d{2}/);
-  if (match) {
-    const parsed = Number(match[1]);
-    if (parsed >= 6 && parsed <= 21) return parsed;
-  }
-  return 8;
+function unitKey(unit: string) {
+  const number = unit.match(/\d+$/)?.[0];
+  return number ? String(Number(number)) : unit.trim().toLowerCase();
 }
 
-function resolveOrderDateIso(order: LessorBookingOrder, todayIso: string): string {
-  if (order.dateIso && /^\d{4}-\d{2}-\d{2}$/.test(order.dateIso)) {
-    return order.dateIso;
-  }
-  if (order.slotLabel.toLowerCase().includes('hôm nay')) {
-    return todayIso;
-  }
-  return todayIso;
+function orderTimeLabel(order: LessorBookingOrder) {
+  if (!order.slotStart) return order.slotLabel;
+  const start = new Date(order.slotStart);
+  if (!order.slotEnd) return time.format(start);
+  const end = new Date(order.slotEnd);
+  const day = vietnamDate.format(end);
+  return `${time.format(start)}–${time.format(end)}${day !== vietnamDate.format(start) ? ` (${formatShortDate(day)})` : ''}`;
 }
 
-export const WeeklyScheduleGrid: React.FC<WeeklyScheduleGridProps> = ({
-  listings,
-  providerOrders,
-  fixedBlocks,
-  onAddFixedBlock,
-  onRemoveFixedBlock,
-  onOpenOrderDetail,
-}) => {
-  const [weekOffset, setWeekOffset] = useState<number>(0);
-  const [groupFilter, setGroupFilter] = useState<string>('ALL');
-  const [unitFilter, setUnitFilter] = useState<string>('ALL');
-  const [showCompleted, setShowCompleted] = useState<boolean>(true);
-  const [showConfirmed, setShowConfirmed] = useState<boolean>(true);
-  const [showFixed, setShowFixed] = useState<boolean>(true);
-  const [showConflictOnly, setShowConflictOnly] = useState<boolean>(false);
+export function WeeklyScheduleGrid({
+  listings, providerOrders, fixedBlocks, onAddFixedBlock, onRemoveFixedBlock, onOpenOrderDetail,
+}: WeeklyScheduleGridProps) {
+  const [weekOffset, setWeekOffset] = useState(0);
+  const [mobileDay, setMobileDay] = useState<string | null>(null);
+  const [groupFilter, setGroupFilter] = useState('ALL');
+  const [unitFilter, setUnitFilter] = useState('ALL');
+  const [hiddenStatuses, setHiddenStatuses] = useState<Set<LessorBookingOrder['status']>>(() => new Set());
+  const [showFixed, setShowFixed] = useState(true);
+  const [showConflictOnly, setShowConflictOnly] = useState(false);
+  const [compact, setCompact] = useState(false);
 
   const [draftCell, setDraftCell] = useState<{ dateIso: string; dayLabel: string; hour: number } | null>(null);
-  const [draftTitle, setDraftTitle] = useState<string>('Lịch tập cố định CLB');
-  const [draftUnit, setDraftUnit] = useState<string>('Sân 01');
-  const [draftKind, setDraftKind] = useState<'RECURRING_CLIENT' | 'MAINTENANCE'>('RECURRING_CLIENT');
+  const [draftTitle, setDraftTitle] = useState('Lịch tập cố định CLB');
+  const [draftUnit, setDraftUnit] = useState('Sân 01');
+  const [draftKind, setDraftKind] = useState<WeeklyFixedBlock['kind']>('RECURRING_CLIENT');
 
-  const today = useMemo(() => new Date(), []);
-  const todayIso = useMemo(() => toLocalIso(today), [today]);
+  const today = vietnamDate.format(new Date());
+  const weekBase = shiftDate(today, -((new Date(`${today}T00:00:00Z`).getUTCDay() + 6) % 7));
+  const weekStart = shiftDate(weekBase, weekOffset * 7);
+  const weekDays = weekdayNames.map((dayName, index) => {
+    const iso = shiftDate(weekStart, index);
+    return { dayName, iso, short: formatShortDate(iso), isToday: iso === today };
+  });
+  const weekEnd = weekDays[6].iso;
+  const currentMobileDay = weekDays.find(day => day.iso === mobileDay)
+    ?? weekDays.find(day => day.isToday) ?? weekDays[0];
 
-  const weekOptions = useMemo(() => {
-    return [-2, -1, 0, 1, 2, 3, 4].map((offset) => {
-      const mon = getMondayOfWeek(today, offset);
-      const sun = new Date(mon);
-      sun.setDate(mon.getDate() + 6);
-      const tag = offset === 0 ? 'Tuần này' : offset < 0 ? `Tuần trước (${Math.abs(offset)})` : `Tuần tới (+${offset})`;
-      return {
-        value: String(offset),
-        label: `${tag} [${formatFullDate(mon)} → ${formatFullDate(sun)}]`,
-      };
+  const weekOptions = weekOffsets.map(offset => {
+    const start = shiftDate(weekBase, offset * 7);
+    const end = shiftDate(start, 6);
+    return { value: String(offset), label: `${formatShortDate(start)} – ${formatShortDate(end)}/${end.slice(0, 4)}` };
+  });
+
+  const changeWeek = (offset: number) => {
+    setWeekOffset(offset);
+    setMobileDay(null);
+  };
+  const changeStatusVisibility = (status: LessorBookingOrder['status']) => {
+    setHiddenStatuses(current => {
+      const next = new Set(current);
+      if (next.has(status)) next.delete(status);
+      else next.add(status);
+      return next;
     });
-  }, [today]);
-
-  const weekDays = useMemo(() => {
-    const mon = getMondayOfWeek(today, weekOffset);
-    return WEEKDAY_NAMES.map((dayName, idx) => {
-      const d = new Date(mon);
-      d.setDate(mon.getDate() + idx);
-      const iso = toLocalIso(d);
-      return {
-        dayName,
-        shortDate: formatShortDdMm(d),
-        iso,
-        isToday: iso === todayIso,
-      };
-    });
-  }, [today, weekOffset, todayIso]);
+  };
 
   const availableUnits = useMemo(() => {
-    const maxCap = listings.reduce(
-      (max, l) => Math.max(max, l.upcomingSlots[0]?.totalCapacity ?? 4),
-      4
-    );
-    return Array.from({ length: Math.min(12, Math.max(4, maxCap)) }, (_, i) => `Sân ${String(i + 1).padStart(2, '0')}`);
+    const capacity = listings.reduce((max, listing) => Math.max(max, listing.upcomingSlots[0]?.totalCapacity ?? 4), 4);
+    return Array.from({ length: Math.min(12, capacity) }, (_, index) => `Sân ${String(index + 1).padStart(2, '0')}`);
   }, [listings]);
 
-  // Index orders + fixed blocks by `${dateIso}__${hour}`
-  const cellIndex = useMemo(() => {
-    const map = new Map<
-      string,
-      { orders: LessorBookingOrder[]; blocks: WeeklyFixedBlock[]; hasCollision: boolean }
-    >();
-
-    const ensureEntry = (key: string) => {
-      let existing = map.get(key);
-      if (!existing) {
-        existing = { orders: [], blocks: [], hasCollision: false };
-        map.set(key, existing);
-      }
-      return existing;
+  const { cellIndex, hours, countByDay, totalOrders } = useMemo(() => {
+    const cells = new Map<string, ScheduleCell>();
+    const counts = new Map<string, number>();
+    let firstHour = 6;
+    let lastHour = 21;
+    let total = 0;
+    const getCell = (date: string, hour: number) => {
+      const key = `${date}__${hour}`;
+      const cell = cells.get(key) ?? { orders: [], blocks: [], hasCollision: false };
+      cells.set(key, cell);
+      firstHour = Math.min(firstHour, hour);
+      lastHour = Math.max(lastHour, hour);
+      return cell;
     };
 
     for (const order of providerOrders) {
-      if (order.status === 'NO_SHOW' || order.status === 'CANCELLED') continue;
-      if (order.status === 'COMPLETED' && !showCompleted) continue;
-      if (order.status === 'CONFIRMED' && !showConfirmed) continue;
+      if (!scheduleStatuses.some(status => status === order.status) || hiddenStatuses.has(order.status)) continue;
       if (groupFilter !== 'ALL' && order.groupId !== groupFilter) continue;
-      if (unitFilter !== 'ALL' && !order.unitNumber.includes(unitFilter.replace('Sân ', ''))) continue;
-
-      const dIso = resolveOrderDateIso(order, todayIso);
-      const hr = resolveOrderHour(order);
-      const entry = ensureEntry(`${dIso}__${hr}`);
-      entry.orders.push(order);
+      if (unitFilter !== 'ALL' && unitKey(order.unitNumber) !== unitKey(unitFilter)) continue;
+      const date = order.dateIso ?? (order.slotStart ? vietnamDate.format(new Date(order.slotStart)) : '');
+      const hour = order.slotHour ?? (order.slotStart ? Number(time.format(new Date(order.slotStart)).slice(0, 2)) : NaN);
+      if (date < weekStart || date > weekEnd || !Number.isInteger(hour) || hour < 0 || hour > 23) continue;
+      getCell(date, hour).orders.push(order);
     }
 
     if (showFixed) {
-      for (const blk of fixedBlocks) {
-        if (groupFilter !== 'ALL' && blk.groupId !== groupFilter) continue;
-        if (unitFilter !== 'ALL' && blk.unitNumber !== unitFilter) continue;
-        const entry = ensureEntry(`${blk.dateIso}__${blk.hour}`);
-        entry.blocks.push(blk);
+      for (const block of fixedBlocks) {
+        if (block.dateIso < weekStart || block.dateIso > weekEnd) continue;
+        if (groupFilter !== 'ALL' && block.groupId !== groupFilter) continue;
+        if (unitFilter !== 'ALL' && unitKey(block.unitNumber) !== unitKey(unitFilter)) continue;
+        getCell(block.dateIso, block.hour).blocks.push(block);
       }
     }
 
-    for (const entry of map.values()) {
-      const seenUnit = new Set<string>();
-      for (const o of entry.orders) {
-        const key = `${o.groupId}__${o.unitNumber}`;
-        if (seenUnit.has(key)) entry.hasCollision = true;
-        seenUnit.add(key);
-      }
-      for (const b of entry.blocks) {
-        const key = `${b.groupId}__${b.unitNumber}`;
-        if (seenUnit.has(key)) entry.hasCollision = true;
-        seenUnit.add(key);
+    for (const [key, cell] of cells) {
+      cell.orders.sort((left, right) => (left.slotStart ?? left.slotLabel).localeCompare(right.slotStart ?? right.slotLabel));
+      const units = [...cell.orders, ...cell.blocks].map(item => `${item.groupId}__${unitKey(item.unitNumber)}`);
+      cell.hasCollision = new Set(units).size < units.length;
+      if (!showConflictOnly || cell.hasCollision) {
+        const day = key.slice(0, 10);
+        counts.set(day, (counts.get(day) ?? 0) + cell.orders.length + cell.blocks.length);
+        total += cell.orders.length;
       }
     }
 
-    return map;
-  }, [
-    providerOrders,
-    fixedBlocks,
-    showCompleted,
-    showConfirmed,
-    showFixed,
-    groupFilter,
-    unitFilter,
-    todayIso,
-  ]);
+    return {
+      cellIndex: cells, hours: Array.from({ length: lastHour - firstHour + 1 }, (_, index) => firstHour + index),
+      countByDay: counts, totalOrders: total,
+    };
+  }, [providerOrders, fixedBlocks, groupFilter, unitFilter, hiddenStatuses, showFixed, showConflictOnly, weekStart, weekEnd]);
 
-  const weekSummary = useMemo(() => {
-    let totalOrders = 0;
-    let completed = 0;
-    let confirmed = 0;
-    let fixed = 0;
-    let collisions = 0;
-    for (const day of weekDays) {
-      for (const hr of TIMETABLE_HOURS) {
-        const cell = cellIndex.get(`${day.iso}__${hr}`);
-        if (!cell) continue;
-        totalOrders += cell.orders.length;
-        completed += cell.orders.filter((o) => o.status === 'COMPLETED').length;
-        confirmed += cell.orders.filter((o) => o.status === 'CONFIRMED').length;
-        fixed += cell.blocks.length;
-        if (cell.hasCollision) collisions += 1;
-      }
-    }
-    return { totalOrders, completed, confirmed, fixed, collisions };
-  }, [weekDays, cellIndex]);
-
-  const handleSaveFixedBlock = (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleSaveFixedBlock = (event: FormEvent) => {
+    event.preventDefault();
     if (!draftCell) return;
-    const targetListing =
-      (groupFilter !== 'ALL' ? listings.find((l) => l.groupId === groupFilter) : listings[0]) ??
-      listings[0];
+    const listing = listings.find(item => item.groupId === groupFilter) ?? listings[0];
     onAddFixedBlock({
-      id: `blk-${Date.now()}`,
-      dateIso: draftCell.dateIso,
-      hour: draftCell.hour,
-      groupId: targetListing?.groupId ?? '',
-      groupName: targetListing?.groupName ?? 'Cụm sân cơ sở',
-      unitNumber: draftUnit,
-      title:
-        draftTitle.trim() ||
-        (draftKind === 'MAINTENANCE' ? 'Bảo trì mặt sân / Đèn' : 'Lịch cố định khách quen'),
+      id: `blk-${Date.now()}`, dateIso: draftCell.dateIso, hour: draftCell.hour,
+      groupId: listing?.groupId ?? '', groupName: listing?.groupName ?? 'Cụm sân cơ sở',
+      unitNumber: draftUnit, title: draftTitle.trim()
+        || (draftKind === 'MAINTENANCE' ? 'Bảo trì mặt sân / Đèn' : 'Lịch cố định khách quen'),
       kind: draftKind,
     });
     setDraftCell(null);
   };
 
-  return (
-    <div className="space-y-4">
-      {/* TOP CONTROL & LEGEND BAR */}
-      <div className="rounded-[26px] border border-neutral-200/90 bg-white p-5 shadow-xs space-y-4">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <span className="inline-flex items-center gap-1.5 rounded-full bg-[#E6F1F8] px-3 py-0.5 text-[11px] font-bold uppercase tracking-wider text-[#0E4F7E]">
-              <Calendar className="h-3 w-3" />
-              Thời khóa biểu Vận hành Theo Tuần
-            </span>
-            <h3 className="mt-1 text-xl font-bold text-[#0F172A]">
-              Lịch Thuê Sân &amp; Điều Phối Khung Giờ Theo Tuần
-            </h3>
-            <p className="text-xs text-neutral-500">
-              Theo dõi toàn cảnh lịch đặt từ Thứ 2 đến Chủ Nhật • Bấm vào ca đã đặt để xem chi tiết đơn, hoặc bấm ô trống để thêm lịch cố định / bảo trì.
-            </p>
-          </div>
+  const openBlock = (day: (typeof weekDays)[number], hour: number) => {
+    setDraftCell({ dateIso: day.iso, dayLabel: `${day.dayName} · ${day.short}`, hour });
+  };
 
-          <div className="flex flex-wrap items-center gap-2 text-xs">
-            <span className="rounded-full bg-[#F4F8F4] px-3 py-1 font-semibold text-[#16422C] tabular-nums">
-              {weekSummary.totalOrders} ca đặt trong tuần
-            </span>
-            <button
-              type="button"
-              onClick={() => window.print()}
-              className="inline-flex items-center gap-1.5 rounded-full border border-neutral-200 bg-white px-3.5 py-1.5 font-semibold text-[#0F172A] hover:border-[#16422C] cursor-pointer"
-            >
-              <Printer className="h-3.5 w-3.5" />
-              In lịch tuần
-            </button>
+  const renderCell = (cell: ScheduleCell, day: (typeof weekDays)[number], preview: boolean) => (
+    <div className="space-y-1.5">
+      {cell.hasCollision && <p className="rounded-md bg-amber-100 px-2 py-0.5 text-[10px] font-semibold text-amber-900">Trùng ô sân</p>}
+      {cell.orders.map(order => (
+        <WeeklyBookingCard key={order.orderId} order={order} dateLabel={`${day.dayName}, ${day.short}`}
+          timeLabel={orderTimeLabel(order)} preview={preview} onOpen={() => onOpenOrderDetail(order.orderId)} />
+      ))}
+      {cell.blocks.map(block => (
+        <div key={block.id} className={`flex items-start gap-1.5 rounded-xl border p-2 text-[11px] ${block.kind === 'MAINTENANCE'
+          ? 'border-[#E9DAB6] bg-[#FCF7EB] text-[#604721]' : 'border-[#D4DFD8] bg-[#F0F5F2] text-[#284B3A]'}`}>
+          <div className="min-w-0 flex-1">
+            <p className="truncate font-semibold">{block.unitNumber} · {block.title}</p>
+            <p className="truncate opacity-80">{block.groupName}</p>
           </div>
+          <button type="button" onClick={() => onRemoveFixedBlock(block.id)} aria-label={`Xóa lịch ${block.title}`}
+            className="rounded p-1.5 hover:bg-white/70 hover:text-rose-700">
+            <Trash2 aria-hidden="true" className="h-3.5 w-3.5" />
+          </button>
+        </div>
+      ))}
+    </div>
+  );
+
+  const visibleHours = compact || showConflictOnly
+    ? hours.filter(hour => weekDays.some(day => {
+        const cell = cellIndex.get(`${day.iso}__${hour}`);
+        return cell && (!showConflictOnly || cell.hasCollision);
+      }))
+    : hours;
+
+  const dayCells = hours.flatMap(hour => {
+    const cell = cellIndex.get(`${currentMobileDay.iso}__${hour}`);
+    return cell && (!showConflictOnly || cell.hasCollision) ? [{ hour, cell }] : [];
+  });
+
+  return (
+    <section aria-label="Lịch tuần vận hành" className="min-w-0 overflow-hidden rounded-[24px] border border-[#DEE9E1] bg-white shadow-xs">
+      <header className="border-b border-[#E1EBE4] bg-gradient-to-r from-[#F3F8F4] to-white px-4 py-4 sm:px-5">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-center gap-2.5">
+            <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-[#16422C] text-white">
+              <CalendarDays aria-hidden="true" className="h-5 w-5" />
+            </span>
+            <div>
+              <h2 className="text-lg font-bold tracking-tight text-[#15382A] sm:text-xl">Lịch thuê sân</h2>
+              <p className="text-xs tabular-nums text-[#466355]">{totalOrders} ca đặt · Giờ Việt Nam</p>
+            </div>
+          </div>
+          <button type="button" onClick={() => window.print()}
+            className="inline-flex min-h-10 items-center gap-1.5 rounded-xl border border-[#DDE8E1] bg-white px-3 text-xs font-semibold text-[#16422C] hover:bg-[#EDF5EF]">
+            <Printer aria-hidden="true" className="h-4 w-4" /> In lịch
+          </button>
         </div>
 
-        {/* Week Selector + Filters */}
-        <div className="grid grid-cols-1 gap-2.5 border-t border-neutral-100 pt-4 lg:grid-cols-12 lg:items-center">
-          <div className="lg:col-span-5 flex items-center gap-1.5">
-            <button
-              type="button"
-              onClick={() => setWeekOffset((w) => Math.max(-2, w - 1))}
-              aria-label="Tuần trước"
-              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-neutral-200 bg-[#F8FAFC] text-[#0F172A] hover:border-[#16422C] cursor-pointer"
-            >
-              <ChevronLeft className="h-4 w-4" />
+        <div className="mt-4 grid gap-2 sm:grid-cols-2 xl:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)_minmax(0,0.7fr)]">
+          <div className="flex min-w-0 items-center gap-1.5 sm:col-span-2 xl:col-span-1">
+            <button type="button" aria-label="Tuần trước" className={weekButton}
+              disabled={weekOffset === weekOffsets[0]} onClick={() => changeWeek(weekOffset - 1)}>
+              <ChevronLeft aria-hidden="true" className="h-4 w-4" />
             </button>
             <div className="min-w-0 flex-1">
-              <PillSelect
-                variant="soft"
-                ariaLabel="Chọn tuần hiển thị"
-                value={String(weekOffset)}
-                onChange={(v) => setWeekOffset(Number(v))}
-                options={weekOptions}
-              />
+              <PillSelect variant="soft" ariaLabel="Chọn tuần hiển thị" value={String(weekOffset)}
+                onChange={value => changeWeek(Number(value))} options={weekOptions} />
             </div>
-            <button
-              type="button"
-              onClick={() => setWeekOffset((w) => Math.min(4, w + 1))}
-              aria-label="Tuần tiếp theo"
-              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-neutral-200 bg-[#F8FAFC] text-[#0F172A] hover:border-[#16422C] cursor-pointer"
-            >
-              <ChevronRight className="h-4 w-4" />
+            <button type="button" aria-label="Tuần tiếp theo" className={weekButton}
+              disabled={weekOffset === weekOffsets[weekOffsets.length - 1]} onClick={() => changeWeek(weekOffset + 1)}>
+              <ChevronRight aria-hidden="true" className="h-4 w-4" />
             </button>
             {weekOffset !== 0 && (
-              <button
-                type="button"
-                onClick={() => setWeekOffset(0)}
-                className="shrink-0 rounded-xl border border-[#16422C]/25 bg-[#F4F8F4] px-2.5 py-2 text-[11px] font-bold text-[#16422C] hover:bg-[#E7F7D4] cursor-pointer"
-              >
+              <button type="button" onClick={() => changeWeek(0)}
+                className="h-10 shrink-0 rounded-xl border border-[#DDE8E1] bg-white px-2 text-[11px] font-semibold text-[#16422C] hover:bg-[#EDF5EF]">
                 Tuần này
               </button>
             )}
           </div>
-
-          <div className="lg:col-span-4">
-            <PillSelect
-              variant="soft"
-              ariaLabel="Lọc cụm sân trên lịch tuần"
-              value={groupFilter}
-              onChange={setGroupFilter}
-              options={[
-                { value: 'ALL', label: `Tất cả cụm sân (${listings.length})` },
-                ...listings.map((l) => ({ value: l.groupId, label: l.groupName })),
-              ]}
-            />
-          </div>
-
-          <div className="lg:col-span-3">
-            <PillSelect
-              variant="soft"
-              ariaLabel="Lọc theo ô sân"
-              value={unitFilter}
-              onChange={setUnitFilter}
-              options={[
-                { value: 'ALL', label: 'Tất cả ô sân' },
-                ...availableUnits.map((u) => ({ value: u, label: u })),
-              ]}
-            />
-          </div>
+          <PillSelect variant="soft" ariaLabel="Lọc cụm sân trên lịch tuần" value={groupFilter} onChange={setGroupFilter}
+            options={[{ value: 'ALL', label: 'Tất cả cụm sân' }, ...listings.map(listing => ({ value: listing.groupId, label: listing.groupName }))]} />
+          <PillSelect variant="soft" ariaLabel="Lọc theo ô sân" value={unitFilter} onChange={setUnitFilter}
+            options={[{ value: 'ALL', label: 'Tất cả ô sân' }, ...availableUnits.map(unit => ({ value: unit, label: unit }))]} />
         </div>
 
-        {/* Interactive Legend Strip matching Timetable UX */}
-        <div className="flex flex-wrap items-center gap-3 text-xs pt-1">
-          <label className="inline-flex cursor-pointer items-center gap-1.5 select-none">
-            <input
-              type="checkbox"
-              checked={showConfirmed}
-              onChange={(e) => setShowConfirmed(e.target.checked)}
-              className="rounded border-neutral-300 text-[#0E4F7E]"
-            />
-            <span className="h-3 w-3 rounded-sm bg-[#0EA5E9]" />
-            <span className="font-medium text-neutral-700">
-              Lịch khách đã đặt ({weekSummary.confirmed})
-            </span>
+        <div aria-label="Bộ lọc trạng thái lịch" className="mt-3 flex flex-wrap gap-x-3 gap-y-1.5">
+          {scheduleStatuses.map(key => (
+            <label key={key} className="flex items-center gap-1.5 text-[11px] font-medium text-[#345546]">
+              <input type="checkbox" checked={!hiddenStatuses.has(key)} onChange={() => changeStatusVisibility(key)}
+                className="accent-[#16422C]" />
+              <span aria-hidden="true" className={`h-2 w-2 rounded-full ${weeklyBookingStatus[key].marker}`} />
+              {weeklyBookingStatus[key].title}
+            </label>
+          ))}
+          <label className="flex items-center gap-1.5 text-[11px] font-medium text-[#345546]">
+            <input type="checkbox" checked={showFixed} onChange={event => setShowFixed(event.target.checked)} className="accent-[#16422C]" />
+            Lịch cố định / bảo trì
           </label>
-
-          <label className="inline-flex cursor-pointer items-center gap-1.5 select-none">
-            <input
-              type="checkbox"
-              checked={showCompleted}
-              onChange={(e) => setShowCompleted(e.target.checked)}
-              className="rounded border-neutral-300 text-[#16422C]"
-            />
-            <span className="h-3 w-3 rounded-sm bg-[#16A34A]" />
-            <span className="font-medium text-neutral-700">
-              Đã nhận sân ({weekSummary.completed})
-            </span>
+          <label className="hidden items-center gap-1.5 text-[11px] font-medium text-[#345546] lg:flex">
+            <input type="checkbox" checked={compact} onChange={event => setCompact(event.target.checked)} className="accent-[#16422C]" />
+            Chỉ giờ có ca
           </label>
-
-          <label className="inline-flex cursor-pointer items-center gap-1.5 select-none">
-            <input
-              type="checkbox"
-              checked={showFixed}
-              onChange={(e) => setShowFixed(e.target.checked)}
-              className="rounded border-neutral-300 text-purple-600"
-            />
-            <span className="h-3 w-3 rounded-sm bg-purple-600" />
-            <span className="font-medium text-neutral-700">
-              Lịch cố định / Bảo trì ({weekSummary.fixed})
-            </span>
-          </label>
-
-          <label className="inline-flex cursor-pointer items-center gap-1.5 select-none">
-            <input
-              type="checkbox"
-              checked={showConflictOnly}
-              onChange={(e) => setShowConflictOnly(e.target.checked)}
-              className="rounded border-neutral-300 text-amber-500"
-            />
-            <span className="h-3 w-3 rounded-sm bg-amber-400" />
-            <span className="font-medium text-neutral-700">
-              Trùng ô sân ({weekSummary.collisions})
-            </span>
+          <label className="flex items-center gap-1.5 text-[11px] font-medium text-[#345546]">
+            <input type="checkbox" checked={showConflictOnly} onChange={event => setShowConflictOnly(event.target.checked)} className="accent-[#16422C]" />
+            Chỉ xem trùng ô sân
           </label>
         </div>
+      </header>
+
+      <div className="hidden overflow-x-auto lg:block print:block print:overflow-visible">
+        <table aria-label="Thời khóa biểu từ thứ Hai đến Chủ nhật" className="w-full min-w-[790px] table-fixed border-separate border-spacing-0 text-xs print:min-w-0">
+          <thead>
+            <tr>
+              <th scope="col" className="sticky left-0 z-[1] w-[68px] border-b border-r border-[#E3ECE5] bg-[#F1F6F2] px-2 py-2 text-left font-semibold text-[#355545]">Giờ</th>
+              {weekDays.map(day => (
+                <th key={day.iso} scope="col" aria-current={day.isToday ? 'date' : undefined}
+                  className={`border-b border-r border-[#E3ECE5] px-2 py-2 text-left last:border-r-0 ${day.isToday
+                    ? 'bg-[#16422C] text-white' : 'bg-[#F6F9F6] text-[#254737]'}`}>
+                  <span className="block font-bold">{day.dayName}</span>
+                  <time dateTime={day.iso} className={`text-[11px] font-medium tabular-nums ${day.isToday ? 'text-emerald-50/90' : 'text-[#537064]'}`}>{day.short}</time>
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {visibleHours.length === 0 && (
+              <tr><td colSpan={8} className="p-4 text-center text-sm text-[#50685D]">Không có ca phù hợp trong tuần này.</td></tr>
+            )}
+            {visibleHours.map(hour => (
+              <tr key={hour}>
+                <th scope="row" className="sticky left-0 z-[1] border-b border-r border-[#E6EEE8] bg-[#F8FAF8] px-2 py-2 text-left align-top text-[11px] font-semibold tabular-nums text-[#436355]">
+                  {hourLabel(hour)}
+                </th>
+                {weekDays.map(day => {
+                  const cell = cellIndex.get(`${day.iso}__${hour}`);
+                  const visible = cell && (!showConflictOnly || cell.hasCollision);
+                  return (
+                    <td key={day.iso} className={`group/cell h-9 border-b border-r border-[#E6EEE8] p-1 align-top last:border-r-0 ${day.isToday ? 'bg-[#F3F8F3]' : 'bg-white'}`}>
+                      {visible && renderCell(cell, day, true)}
+                      {!showConflictOnly && (
+                        <button type="button" onClick={() => openBlock(day, hour)} aria-label={`Thêm lịch ${day.dayName} ${hourLabel(hour)}`}
+                          className={`flex w-full items-center justify-center rounded-md text-[#387256] opacity-0 group-hover/cell:opacity-100 hover:bg-[#E6F1E9] focus-visible:opacity-100 ${visible ? 'mt-0.5 h-5' : 'h-7'}`}>
+                          <Plus aria-hidden="true" className="h-3.5 w-3.5" />
+                        </button>
+                      )}
+                    </td>
+                  );
+                })}
+              </tr>
+            ))}
+          </tbody>
+        </table>
       </div>
 
-      {/* TIMETABLE GRID TABLE */}
-      <div className="overflow-hidden rounded-[24px] border border-neutral-200 bg-white shadow-xs">
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[980px] border-collapse text-xs">
-            <thead>
-              <tr className="bg-[#F8FAFC] text-[#0F172A] border-b border-neutral-200">
-                <th className="w-16 border-r border-neutral-200 bg-[#0E4F7E] px-2 py-3 text-center text-white font-bold">
-                  <button
-                    type="button"
-                    onClick={() => setWeekOffset((w) => Math.max(-2, w - 1))}
-                    title="Tuần trước"
-                    className="inline-flex items-center justify-center rounded-md px-1.5 py-0.5 hover:bg-white/15 cursor-pointer"
-                  >
-                    ←
-                  </button>
-                </th>
-                {weekDays.map((day) => (
-                  <th
-                    key={day.iso}
-                    className={`w-[12.5%] border-r border-neutral-200 px-2 py-2.5 text-center ${
-                      day.isToday ? 'bg-[#E7F7D4]/75 text-[#16422C]' : ''
-                    }`}
-                  >
-                    <span className="font-bold">{day.dayName}</span>{' '}
-                    <span
-                      className={`font-medium ${
-                        day.isToday
-                          ? 'rounded-full bg-[#16422C] px-2 py-0.5 text-[10.5px] text-white'
-                          : 'text-neutral-500'
-                      }`}
-                    >
-                      ({day.shortDate})
-                    </span>
-                  </th>
-                ))}
-                <th className="w-24 bg-[#0E4F7E] px-2 py-3 text-center text-white font-bold">
-                  <button
-                    type="button"
-                    onClick={() => setWeekOffset((w) => Math.min(4, w + 1))}
-                    title="Tuần sau"
-                    className="inline-flex items-center justify-center rounded-md px-1.5 py-0.5 hover:bg-white/15 cursor-pointer"
-                  >
-                    →
-                  </button>
-                </th>
-              </tr>
-            </thead>
-
-            <tbody className="divide-y divide-neutral-200">
-              {TIMETABLE_HOURS.map((hour, rowIdx) => {
-                const startStr = `${String(hour).padStart(2, '0')}:00`;
-                const endStr = `${String(hour + 1).padStart(2, '0')}:00`;
-
-                return (
-                  <tr key={hour} className="group">
-                    {/* Left Slot Badge */}
-                    <td className="border-r border-b border-white/25 bg-[#0E4F7E] px-2 py-2 text-center font-bold text-white whitespace-nowrap">
-                      Ca {rowIdx + 1}
-                    </td>
-
-                    {/* 7 Day Cells */}
-                    {weekDays.map((day) => {
-                      const key = `${day.iso}__${hour}`;
-                      const cell = cellIndex.get(key);
-                      const hasContent = Boolean(
-                        cell && (cell.orders.length > 0 || cell.blocks.length > 0)
-                      );
-                      const matchesConflict = !showConflictOnly || Boolean(cell?.hasCollision);
-
-                      return (
-                        <td
-                          key={key}
-                          className={`align-top border-r border-neutral-200 p-1 min-h-[54px] transition ${
-                            day.isToday ? 'bg-[#F4F8F4]/45' : 'bg-white'
-                          }`}
-                        >
-                          {hasContent && matchesConflict ? (
-                            <div className="space-y-1">
-                              {cell!.orders.map((ord) => {
-                                const isCompleted = ord.status === 'COMPLETED';
-                                const blockStyle = cell!.hasCollision
-                                  ? 'border-amber-500 bg-amber-50 text-amber-950'
-                                  : isCompleted
-                                    ? 'border-[#16422C]/40 bg-[#E7F7D4]/80 text-[#0F172A]'
-                                    : 'border-[#0EA5E9]/45 bg-[#E0F2FE] text-[#0F172A]';
-
-                                return (
-                                  <button
-                                    key={ord.orderId}
-                                    type="button"
-                                    onClick={() => onOpenOrderDetail(ord.orderId)}
-                                    className={`w-full rounded-lg border px-2 py-1.5 text-left text-[11px] leading-snug transition hover:shadow-xs cursor-pointer ${blockStyle}`}
-                                  >
-                                    <div className="font-bold line-clamp-1">
-                                      {ord.unitNumber} • {ord.groupName}
-                                    </div>
-                                    <div className="truncate font-medium text-neutral-700">
-                                      Khách: {ord.customerName}
-                                    </div>
-                                    <div className="flex items-center justify-between gap-1 text-[10px] text-neutral-600 mt-0.5">
-                                      <span className="inline-flex items-center gap-0.5 tabular-nums font-semibold">
-                                        <Clock className="h-2.5 w-2.5 text-rose-500" />
-                                        {startStr} → {endStr}
-                                      </span>
-                                      <span className="font-bold">{ord.orderId}</span>
-                                    </div>
-                                  </button>
-                                );
-                              })}
-
-                              {cell!.blocks.map((blk) => (
-                                <div
-                                  key={blk.id}
-                                  className={`rounded-lg border px-2 py-1.5 text-[11px] leading-snug ${
-                                    blk.kind === 'MAINTENANCE'
-                                      ? 'border-amber-400 bg-amber-50 text-amber-950'
-                                      : 'border-purple-300 bg-purple-50 text-purple-950'
-                                  }`}
-                                >
-                                  <div className="flex items-start justify-between gap-1">
-                                    <span className="font-bold line-clamp-1">
-                                      {blk.unitNumber} • {blk.title}
-                                    </span>
-                                    <button
-                                      type="button"
-                                      onClick={() => onRemoveFixedBlock(blk.id)}
-                                      title="Xóa lịch cố định này"
-                                      className="text-neutral-500 hover:text-rose-700 cursor-pointer shrink-0"
-                                    >
-                                      <Trash2 className="h-3 w-3" />
-                                    </button>
-                                  </div>
-                                  <div className="text-[10px] opacity-80 truncate">
-                                    {blk.groupName}
-                                  </div>
-                                </div>
-                              ))}
-
-                              {/* Quick + button in occupied cell to add another court unit at same hour */}
-                              <button
-                                type="button"
-                                onClick={() =>
-                                  setDraftCell({
-                                    dateIso: day.iso,
-                                    dayLabel: `${day.dayName} (${day.shortDate})`,
-                                    hour,
-                                  })
-                                }
-                                className="w-full rounded border border-dashed border-neutral-200 py-0.5 text-[10px] font-medium text-neutral-400 opacity-0 transition group-hover:opacity-100 hover:border-[#16422C] hover:text-[#16422C] cursor-pointer"
-                              >
-                                + Thêm ô
-                              </button>
-                            </div>
-                          ) : (
-                            <button
-                              type="button"
-                              onClick={() =>
-                                setDraftCell({
-                                  dateIso: day.iso,
-                                  dayLabel: `${day.dayName} (${day.shortDate})`,
-                                  hour,
-                                })
-                              }
-                              aria-label={`Thêm lịch ${day.dayName} ${startStr}`}
-                              className="flex h-11 w-full items-center justify-center rounded-lg text-[10px] font-medium text-transparent transition hover:border hover:border-dashed hover:border-[#16422C]/40 hover:bg-[#F4F8F4]/70 hover:text-[#16422C] cursor-pointer"
-                            >
-                              <Plus className="h-3 w-3 mr-0.5" /> Khóa ca
-                            </button>
-                          )}
-                        </td>
-                      );
-                    })}
-
-                    {/* Right Time Axis */}
-                    <td className="border-l border-b border-white/25 bg-[#0E4F7E] px-2 py-2 text-center font-bold tabular-nums text-white whitespace-nowrap">
-                      {startStr} – {endStr}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-
-            <tfoot>
-              <tr className="bg-[#F8FAFC] text-[#0F172A] border-t border-neutral-200">
-                <th className="border-r border-neutral-200 bg-[#0E4F7E] px-2 py-2.5 text-center text-white">
-                  ←
-                </th>
-                {weekDays.map((day) => (
-                  <th
-                    key={`foot-${day.iso}`}
-                    className={`border-r border-neutral-200 px-2 py-2 text-center text-[11px] font-bold ${
-                      day.isToday ? 'bg-[#E7F7D4]/75 text-[#16422C]' : 'text-neutral-600'
-                    }`}
-                  >
-                    {day.dayName} ({day.shortDate})
-                  </th>
-                ))}
-                <th className="bg-[#0E4F7E] px-2 py-2.5 text-center text-white">→</th>
-              </tr>
-            </tfoot>
-          </table>
+      <div className="px-3 pb-4 pt-3 lg:hidden print:hidden">
+        <div aria-label="Chọn ngày trên lịch tuần" className="grid grid-cols-7 gap-px rounded-[16px] bg-[#F1F6F2] p-0.5">
+          {weekDays.map(day => (
+            <button type="button" key={day.iso} onClick={() => setMobileDay(day.iso)} aria-pressed={day.iso === currentMobileDay.iso}
+              aria-current={day.isToday ? 'date' : undefined} aria-label={`${day.dayName}, ${day.short}, ${countByDay.get(day.iso) ?? 0} ca`}
+              className={`min-h-12 min-w-0 rounded-xl text-center text-[10px] font-semibold tabular-nums ${day.iso === currentMobileDay.iso
+                ? 'bg-[#16422C] text-white' : 'text-[#355545] hover:bg-[#E5EFE8]'}`}>
+              <span className="block">{day.dayName}</span><span className="block text-xs">{day.short}</span>
+            </button>
+          ))}
+        </div>
+        <div className="mt-3 flex items-center justify-between gap-2">
+          <h3 className="text-sm font-bold text-[#15382A]">{currentMobileDay.dayName} · {currentMobileDay.short}</h3>
+          {!showConflictOnly && (
+            <button type="button" onClick={() => openBlock(currentMobileDay, hours[0])}
+              className="inline-flex min-h-10 items-center gap-1 rounded-xl border border-[#DDE8E1] px-2.5 text-xs font-semibold text-[#16422C] hover:bg-[#EDF5EF]">
+              <Plus aria-hidden="true" className="h-3.5 w-3.5" /> Thêm lịch
+            </button>
+          )}
+        </div>
+        <div className="mt-2 space-y-2">
+          {dayCells.length ? dayCells.map(({ hour, cell }) => (
+            <div key={hour}>{renderCell(cell, currentMobileDay, false)}</div>
+          )) : <p className="rounded-xl border border-dashed border-[#DDE8E1] p-3 text-sm text-[#50685D]">Không có ca trong ngày này.</p>}
         </div>
       </div>
-
       {/* OVERLAY MODAL FOR ADDING FIXED / MAINTENANCE BLOCK */}
       {draftCell && (
         <div
@@ -617,7 +377,7 @@ export const WeeklyScheduleGrid: React.FC<WeeklyScheduleGridProps> = ({
           >
             <div className="flex items-start justify-between gap-2">
               <div>
-                <span className="inline-flex items-center gap-1 rounded-full bg-purple-100 px-2.5 py-0.5 text-[10.5px] font-bold text-purple-900">
+                <span className="inline-flex items-center gap-1 rounded-full bg-[#E8F0EA] px-2.5 py-0.5 text-[10.5px] font-bold text-[#16422C]">
                   <Lock className="h-3 w-3" />
                   Đánh dấu khung giờ
                 </span>
@@ -629,6 +389,7 @@ export const WeeklyScheduleGrid: React.FC<WeeklyScheduleGridProps> = ({
               <button
                 type="button"
                 onClick={() => setDraftCell(null)}
+                aria-label="Đóng thêm lịch"
                 className="flex h-8 w-8 items-center justify-center rounded-full border border-neutral-200 text-neutral-500 hover:bg-neutral-100"
               >
                 <X className="h-4 w-4" />
@@ -654,6 +415,10 @@ export const WeeklyScheduleGrid: React.FC<WeeklyScheduleGridProps> = ({
                 </button>
               ))}
             </div>
+
+            <PillSelect variant="soft" ariaLabel="Chọn giờ bắt đầu"
+              value={String(draftCell.hour)} onChange={value => setDraftCell({ ...draftCell, hour: Number(value) })}
+              options={hours.map(hour => ({ value: String(hour), label: hourLabel(hour) }))} />
 
             <div>
               <label className="mb-1 block font-semibold text-neutral-700">Áp dụng cho ô sân</label>
@@ -696,7 +461,6 @@ export const WeeklyScheduleGrid: React.FC<WeeklyScheduleGridProps> = ({
           </form>
         </div>
       )}
-    </div>
+    </section>
   );
-};
-
+}
