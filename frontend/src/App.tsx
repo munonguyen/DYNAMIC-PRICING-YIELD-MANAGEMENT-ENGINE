@@ -1118,6 +1118,7 @@ export function App() {
       {currentPage !== 'login' && (
         <FloatingChatWidget
           open={chatOpen}
+          aboveMobileNavigation={currentPage === 'schedule'}
           onToggleOpen={setChatOpen}
           activeProviderId={activeChatProviderId}
           onSelectProviderId={setActiveChatProviderId}
