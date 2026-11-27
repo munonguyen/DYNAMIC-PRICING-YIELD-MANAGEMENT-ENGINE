@@ -1,5 +1,5 @@
 {
-  "branch": "service/admin/search-reindex",
+  "branch": "complete/admin/search-reindex",
   "title": "Lập lại chỉ mục tìm kiếm",
   "scope": "Quản trị nền tảng đồng bộ lại dữ liệu tìm kiếm.",
   "operations": [
