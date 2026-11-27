@@ -1,5 +1,5 @@
 {
-  "branch": "service/shared/payments/momo-wallet",
+  "branch": "initial/shared/payments/momo-wallet",
   "title": "Cổng MoMo",
   "scope": "Khởi tạo giao dịch MoMo và nhận xác nhận IPN.",
   "operations": [
@@ -27,5 +27,6 @@
         "handleMoMoIpnCallback("
       ]
     }
-  ]
+  ],
+  "validationPending": "Kiểm chứng tạo QR và IPN trên sandbox merchant MoMo."
 }
