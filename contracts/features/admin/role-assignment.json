@@ -1,5 +1,5 @@
 {
-  "branch": "service/admin/role-assignment",
+  "branch": "complete/admin/role-assignment",
   "title": "Phân quyền tài khoản",
   "scope": "Đọc ma trận quyền và cấp vai trò theo nền tảng hoặc cơ sở.",
   "operations": [

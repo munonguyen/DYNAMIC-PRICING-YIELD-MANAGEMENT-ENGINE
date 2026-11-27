@@ -30,4 +30,4 @@ Bản kiểm tra ngày 27/11/2026 bắt đầu từ `ce8bebc`. Spring Boot, Post
 
 ## Danh mục nhánh hiện hành
 
-[Mở danh mục nhánh theo hệ thống và chức năng](feature-branches.md).
+[Mở danh mục nhánh theo trạng thái, hệ thống và chức năng](feature-branches.md).
