@@ -1,0 +1,23 @@
+{
+  "branch": "complete/customer/court-position-selection",
+  "title": "Chọn sân vật lý trên sơ đồ",
+  "scope": "Xem sơ đồ công khai theo ca và giữ đúng sân khách chọn bằng khóa chống trùng. Có thể để hệ thống tự xếp sân.",
+  "operations": [
+    { "method": "GET", "path": "/api/v1/listings/{groupId}/court-availability", "operationId": "getCourtAvailability" },
+    { "method": "POST", "path": "/api/v1/bookings/hold", "operationId": "holdSlot" }
+  ],
+  "source": [
+    {
+      "file": "src/main/java/com/yieldengine/service/BookingOrchestratorService.java",
+      "anchors": ["findAndLockAvailableUnit", "requestedUnit"]
+    },
+    {
+      "file": "src/main/java/com/yieldengine/service/CourtFloorPlanService.java",
+      "anchors": ["loadBookingAvailability"]
+    },
+    {
+      "file": "frontend/src/components/BookingCourtPicker.tsx",
+      "anchors": ["Chọn vị trí sân", "Tự xếp sân"]
+    }
+  ]
+}
