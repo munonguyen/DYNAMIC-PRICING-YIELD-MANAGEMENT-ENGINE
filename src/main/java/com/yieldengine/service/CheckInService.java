@@ -49,6 +49,8 @@ public class CheckInService {
     private final PriceLockTokenService priceLockTokenService;
     private final TicketPassService ticketPassService;
     private final FinanceLedgerService financeLedgerService;
+    private final VietQrBalanceService balances;
+    private final BookingOrchestratorService bookings;
     private final AuditLogService auditLogService;
     private final RbacGuard rbacGuard;
     private final BookingAndOpsValidator bookingValidator;
@@ -114,8 +116,10 @@ public class CheckInService {
         SessionPrincipal scanner = rbacGuard.requireAuthenticated();
 
         bookingValidator.validateQrScan(payload, scanner);
-        Reservation reservation = reservationRepository.findByIdAndSlotStart(payload.getReservationId(), payload.getSlotStart())
-                .orElseThrow(() -> new ResourceNotFoundException("Reservation not found"));
+        Reservation reservation = lockReservation(payload.getReservationId());
+        if (!reservation.getSlotStart().equals(payload.getSlotStart())) {
+            throw new ResourceNotFoundException("Reservation not found");
+        }
 
         if (phoneLast4 != null && !phoneLast4.isBlank()) {
             String expectedLast4 = ticketPassService.resolveCustomerPhoneLast4(reservation);
@@ -130,8 +134,7 @@ public class CheckInService {
     @Transactional(noRollbackFor = {BusinessConflictException.class})
     public CheckInResponse verifyPinCheckIn(UUID reservationId, String rawPin, String phoneLast4) {
         SessionPrincipal staff = rbacGuard.requireAuthenticated();
-        Reservation reservation = reservationRepository.findByReservationId(reservationId)
-                .orElseThrow(() -> new ResourceNotFoundException("Reservation not found: " + reservationId));
+        Reservation reservation = lockReservation(reservationId);
 
         validatePinCheckInEligibility(reservation, staff);
         ticketPassService.requirePaymentForPass(reservation);
@@ -154,16 +157,12 @@ public class CheckInService {
             }
         }
 
-        reservation.setPinFailedAttempts(0);
-        reservation.setPinLockedUntil(null);
-        reservation.setPinConsumedAt(dbNow);
         return completeCheckInInternal(reservation, staff, "PIN_COUNTER", null);
     }
 
     @Transactional
     public CheckInResponse manualCheckIn(UUID reservationId) {
-        Reservation reservation = reservationRepository.findByReservationId(reservationId)
-                .orElseThrow(() -> new ResourceNotFoundException("Reservation not found: " + reservationId));
+        Reservation reservation = lockReservation(reservationId);
 
         SessionPrincipal manager = rbacGuard.requireAuthenticated();
         bookingValidator.validateManualCheckIn(reservation, manager);
@@ -173,8 +172,7 @@ public class CheckInService {
 
     @Transactional
     public Reservation markNoShow(UUID reservationId) {
-        Reservation reservation = reservationRepository.findByReservationId(reservationId)
-                .orElseThrow(() -> new ResourceNotFoundException("Reservation not found: " + reservationId));
+        Reservation reservation = lockReservation(reservationId);
 
         SessionPrincipal actor = rbacGuard.requireAuthenticated();
         ResourceGroup group = resourceGroupRepository.findById(reservation.getGroupId())
@@ -189,12 +187,14 @@ public class CheckInService {
         reservation.setNoShowMarkedAt(dbNow);
         reservation.setRefundAmount(0L);
         reservation.setForfeitedAmount(reservation.getDepositAmount());
+        long collectedEscrow = ticketPassService.resolveEscrowSettlementAmount(reservation);
+        if (collectedEscrow > reservation.getForfeitedAmount()) {
+            bookings.settleNoShowBalance(reservation, group, collectedEscrow);
+        } else {
+            financeLedgerService.recordNoShowForfeit(
+                    reservation, group.getSportType() != null ? group.getSportType().getId() : null);
+        }
         reservation = reservationRepository.save(reservation);
-
-        financeLedgerService.recordNoShowForfeit(
-                reservation,
-                group.getSportType() != null ? group.getSportType().getId() : null
-        );
 
         auditLogService.record(
                 actor.userId(),
@@ -206,6 +206,11 @@ public class CheckInService {
                 Map.of("forfeitedDeposit", reservation.getForfeitedAmount())
         );
         return reservation;
+    }
+
+    private Reservation lockReservation(UUID reservationId) {
+        return reservationRepository.lockByReservationId(reservationId)
+                .orElseThrow(() -> new ResourceNotFoundException("Reservation not found: " + reservationId));
     }
 
     private void validatePinCheckInEligibility(Reservation reservation, SessionPrincipal staff) {
@@ -314,6 +319,12 @@ public class CheckInService {
                 .orElseThrow(() -> new ResourceNotFoundException("ResourceGroup not found"));
 
         Instant now = DbClockUtils.now(jdbcTemplate);
+        balances.requireNoActiveAttempt(reservation, now);
+        if ("PIN_COUNTER".equals(method)) {
+            reservation.setPinFailedAttempts(0);
+            reservation.setPinLockedUntil(null);
+            reservation.setPinConsumedAt(now);
+        }
         CheckIn checkIn = checkInRepository.save(CheckIn.builder()
                 .tenantId(reservation.getTenantId())
                 .reservationId(reservation.getReservationId())
@@ -331,7 +342,8 @@ public class CheckInService {
         financeLedgerService.recordRentalCompleted(
                 reservation,
                 group.getSportType() != null ? group.getSportType().getId() : null,
-                collectedEscrow
+                collectedEscrow,
+                balances.commissionBasis(reservation, collectedEscrow)
         );
 
         auditLogService.record(

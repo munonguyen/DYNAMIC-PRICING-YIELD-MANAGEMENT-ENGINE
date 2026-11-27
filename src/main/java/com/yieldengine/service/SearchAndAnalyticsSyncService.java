@@ -207,7 +207,7 @@ public class SearchAndAnalyticsSyncService implements ApplicationRunner {
             LEFT JOIN LATERAL (
                 SELECT (array_agg(provider ORDER BY gateway_verified_at DESC))[1] AS provider, sum(amount) AS amount
                 FROM payments WHERE booking_id = r.booking_id AND status = 'SUCCESS'
-                    AND gateway_verified_at IS NOT NULL AND payment_type IN ('DEPOSIT', 'FULL_SETTLEMENT')
+                    AND gateway_verified_at IS NOT NULL AND payment_type IN ('DEPOSIT', 'FULL_SETTLEMENT', 'BALANCE')
             ) p ON true
             WHERE r.slot_start >= ? AND r.slot_start < ?
                 AND r.status IN ('CONFIRMED', 'COMPLETED')
@@ -458,8 +458,11 @@ public class SearchAndAnalyticsSyncService implements ApplicationRunner {
             JOIN resource_groups rg ON r.group_id = rg.id
             JOIN tenants t ON r.tenant_id = t.id
             JOIN sport_types st ON rg.sport_type_id = st.id
-            LEFT JOIN payments p ON p.booking_id = r.booking_id AND p.status = 'SUCCESS'
-                AND p.gateway_verified_at IS NOT NULL AND p.payment_type IN ('DEPOSIT', 'FULL_SETTLEMENT')
+            LEFT JOIN LATERAL (
+                SELECT (array_agg(provider ORDER BY gateway_verified_at DESC))[1] AS provider, sum(amount) AS amount
+                FROM payments WHERE booking_id = r.booking_id AND status = 'SUCCESS'
+                    AND gateway_verified_at IS NOT NULL AND payment_type IN ('DEPOSIT', 'FULL_SETTLEMENT', 'BALANCE')
+            ) p ON true
             """;
         return jdbcTemplate.query(sql, (rs, i) -> {
             String id = rs.getString("res_id");
@@ -538,7 +541,7 @@ public class SearchAndAnalyticsSyncService implements ApplicationRunner {
             LEFT JOIN LATERAL (
                 SELECT (array_agg(provider ORDER BY gateway_verified_at DESC))[1] AS provider, sum(amount) AS amount
                 FROM payments WHERE booking_id = r.booking_id AND status = 'SUCCESS'
-                    AND gateway_verified_at IS NOT NULL AND payment_type IN ('DEPOSIT', 'FULL_SETTLEMENT')
+                    AND gateway_verified_at IS NOT NULL AND payment_type IN ('DEPOSIT', 'FULL_SETTLEMENT', 'BALANCE')
             ) p ON true
             WHERE r.tenant_id = ? AND COALESCE(r.pricing_audit->>'source', '') <> 'SEED_V10'
             ORDER BY r.slot_start DESC, r.id DESC

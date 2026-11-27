@@ -717,6 +717,105 @@ class V3MarketplaceIntegrationTest {
         assertThrows(BusinessConflictException.class, () -> checkInService.issueOrGetQrCode(cancelledHold.getReservationId()));
     }
 
+    @Test
+    @Order(12)
+    void vietQrBalanceOnlySettlesTheOwnersOutstandingAmountAfterBankConfirmation() throws Exception {
+        String suffix = UUID.randomUUID().toString().substring(0, 8);
+        var player = authService.register(new RegisterRequest("balance_" + suffix, suffix + "@example.test",
+                "Pass12345!", "Test", "Player", null));
+        var login = authService.login(new LoginRequest(player.username(), "Pass12345!"));
+        var customer = sessionStore.findSession(login.accessToken()).orElseThrow();
+        AuthContext.set(customer, login.accessToken());
+        var hold = createPaymentTestHold(Instant.now().plusSeconds(54000).truncatedTo(ChronoUnit.MILLIS), player.id());
+        UUID reservationId = hold.getReservationId();
+        String url = VIETQR + "/balance/" + reservationId;
+        String customerBearer = "Bearer " + login.accessToken();
+        java.util.concurrent.Callable<org.springframework.mock.web.MockHttpServletResponse> start = () -> mvc.perform(MockMvcRequestBuilders.post(url).header("Authorization", customerBearer))
+                .andReturn().getResponse();
+        assertEquals(409, start.call().getStatus());
+
+        var request = new CreateQrPaymentRequest(reservationId, hold.getDepositAmount(),
+                null, null, null, false, null, null, null);
+        var deposit = mvc.perform(MockMvcRequestBuilders.post(VIETQR + "/create").header("Authorization", customerBearer)
+                        .contentType("application/json").content(JSON.writeValueAsBytes(request)))
+                .andReturn().getResponse();
+        assertEquals(201, deposit.getStatus(), deposit.getContentAsString());
+        var createdDeposit = JSON.readTree(deposit.getContentAsString());
+        var bankToken = mvc.perform(MockMvcRequestBuilders.post(VIETQR + "/api/token_generate")
+                        .header("Authorization", basicHeader("fixture-vietqr-callback:fixture-vietqr-callback-secret")))
+                .andReturn().getResponse();
+        String bank = "Bearer " + JSON.readTree(bankToken.getContentAsString()).path("access_token").asText();
+        sendBankNotice(bank, suffix + "-deposit", hold.getDepositAmount(),
+                createdDeposit.at("/paymentQr/transfer/content").asText(), createdDeposit.path("providerReference").asText(), "C", 200);
+
+        var outsider = new com.yieldengine.record.security.SessionPrincipal(UUID.randomUUID(), "other-customer", List.of(),
+                Instant.now(), Instant.now().plusSeconds(120));
+        String other = sessionStore.createSession(outsider, Duration.ofMinutes(2));
+        assertEquals(403, mvc.perform(MockMvcRequestBuilders.post(url).header("Authorization", "Bearer " + other))
+                .andReturn().getResponse().getStatus());
+
+        long amount = hold.getLockedPrice() - hold.getDepositAmount();
+        var response = start.call();
+        assertEquals(200, response.getStatus(), response.getContentAsString());
+        var started = JSON.readTree(response.getContentAsString());
+        var balance = started.path("balancePayment");
+        String reference = balance.path("reference").asText();
+        String content = balance.at("/qr/transfer/content").asText();
+        assertEquals(amount, balance.path("amount").asLong());
+        assertEquals("10000001", balance.at("/qr/transfer/bankAccount").asText());
+        assertTrue(balance.at("/qr/sandbox").asBoolean());
+        assertEquals("PENDING", balance.path("state").asText());
+        assertEquals(hold.getDepositAmount(), started.path("paidAmount").asLong());
+        assertEquals(reference, JSON.readTree(start.call().getContentAsString()).at("/balancePayment/reference").asText());
+
+        var manager = new com.yieldengine.record.security.SessionPrincipal(player.id(), "balance-venue-manager",
+                List.of(new com.yieldengine.record.security.RoleGrant("MANAGER", "TENANT", DEFAULT_TENANT_ID)),
+                Instant.now(), Instant.now().plusSeconds(120));
+        AuthContext.set(manager, "balance-venue-manager");
+        assertThrows(BusinessConflictException.class, () -> checkInService.manualCheckIn(reservationId));
+
+        sendBankNotice(customerBearer, suffix + "-forged", amount, content, reference, "C", 401);
+        sendBankNotice(bank, suffix + "-short", amount - 1, content, reference, "C", 200);
+        var review = checkoutPayment.getStatus(reservationId, player.id());
+        assertEquals(hold.getDepositAmount(), review.paidAmount());
+        assertEquals("REVIEW_REQUIRED", review.balancePayment().state().name());
+        JsonNode applied = sendBankNotice(bank, suffix + "-balance", amount, content, null, "C", 200);
+        assertEquals(applied, sendBankNotice(bank, suffix + "-balance", amount, content, null, "C", 200));
+        sendBankNotice(bank, suffix + "-extra", amount, content, reference, "C", 200);
+
+        var paid = checkoutPayment.getStatus(reservationId, player.id());
+        assertEquals(State.VERIFIED, paid.paymentStatus());
+        assertEquals("CONFIRMED", paid.reservationStatus());
+        assertEquals(hold.getLockedPrice(), paid.paidAmount());
+        assertEquals(0, paid.remainingAtVenue());
+        assertNull(paid.balancePayment());
+        assertEquals(409, start.call().getStatus());
+        assertEquals(1L, jdbcTemplate.queryForObject("""
+                SELECT COUNT(*) FROM ledger_journals WHERE reservation_id = ? AND event_type = 'BALANCE_COLLECTED'
+                """, Long.class, reservationId));
+        var row = customerTickets.listTickets(player.id(), reservationId, 0, 1).get(0);
+        assertEquals(hold.getLockedPrice(), row.paidOnlineAmount());
+        assertEquals(0, row.remainingAtVenue());
+
+        String managerToken = sessionStore.createSession(manager, Duration.ofMinutes(2));
+        var orders = mvc.perform(MockMvcRequestBuilders.get("/api/v1/checkins/orders").param("size", "100")
+                        .header("Authorization", "Bearer " + managerToken))
+                .andReturn().getResponse();
+        assertEquals(200, orders.getStatus(), orders.getContentAsString());
+        var confirmedOrder = java.util.stream.StreamSupport.stream(
+                        JSON.readTree(orders.getContentAsString()).spliterator(), false)
+                .filter(order -> reservationId.toString().equals(order.path("reservationId").asText()))
+                .findFirst().orElseThrow();
+        assertEquals(hold.getLockedPrice(), confirmedOrder.path("paidEscrow").asLong());
+        assertEquals(0, confirmedOrder.path("remainingAtVenue").asLong());
+
+        AuthContext.set(manager, "balance-venue-manager");
+        assertEquals("COMPLETED", checkInService.manualCheckIn(reservationId).reservationStatus());
+        assertEquals(hold.getLockedPrice(), jdbcTemplate.queryForObject("""
+                SELECT total_amount FROM ledger_journals WHERE reservation_id = ? AND event_type = 'RENTAL_COMPLETED'
+                """, Long.class, reservationId));
+    }
+
     private JsonNode sendBankNotice(String auth, String suffix, long amount, String content, String order, String direction, int code)
             throws Exception {
         var body = new java.util.LinkedHashMap<String, Object>(Map.of(

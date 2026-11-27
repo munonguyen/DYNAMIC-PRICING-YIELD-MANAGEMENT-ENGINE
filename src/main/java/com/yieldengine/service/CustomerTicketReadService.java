@@ -50,7 +50,7 @@ public class CustomerTicketReadService {
                                AND (p.gateway_verified_at IS NOT NULL OR p.payment_type = 'BALANCE')
                        ), 0) AS paid,
                        COALESCE(SUM(p.amount) FILTER (
-                           WHERE p.payment_type IN ('DEPOSIT', 'FULL_SETTLEMENT')
+                           WHERE p.payment_type IN ('DEPOSIT', 'FULL_SETTLEMENT', 'BALANCE')
                                AND p.gateway_verified_at IS NOT NULL
                        ), 0) AS escrow
                 FROM payments p

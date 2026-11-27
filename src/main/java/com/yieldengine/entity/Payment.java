@@ -61,6 +61,9 @@ public class Payment extends BaseEntity {
     @Column(name = "checkout_qr_payload", length = 1024)
     private String checkoutQrPayload;
 
+    @Column(name = "checkout_qr_expires_at")
+    private Instant checkoutQrExpiresAt;
+
     @Column(name = "checkout_qr_sandbox")
     private Boolean checkoutQrSandbox;
 

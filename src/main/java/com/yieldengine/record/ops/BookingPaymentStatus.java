@@ -13,8 +13,20 @@ public record BookingPaymentStatus(
         String provider,
         String providerReference,
         Instant verifiedAt,
-        PaymentQr paymentQr
+        PaymentQr paymentQr,
+        BalancePayment balancePayment
 ) {
+    public BookingPaymentStatus(UUID reservationId, String reservationStatus, State paymentStatus,
+                                long paidAmount, long remainingAtVenue, Long requestedAmount, String provider,
+                                String providerReference, Instant verifiedAt, PaymentQr paymentQr) {
+        this(reservationId, reservationStatus, paymentStatus, paidAmount, remainingAtVenue, requestedAmount,
+                provider, providerReference, verifiedAt, paymentQr, null);
+    }
+
+    public record BalancePayment(BalanceState state, long amount, String reference, PaymentQr qr) {}
+
+    public enum BalanceState { AVAILABLE, PENDING, REVIEW_REQUIRED }
+
     public record PaymentQr(String payload, Instant holdUntil, boolean sandbox, BankTransfer transfer) {}
 
     public record BankTransfer(String bankCode, String bankName, String bankAccount, String virtualAccount,

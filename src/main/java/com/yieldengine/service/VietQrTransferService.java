@@ -4,6 +4,7 @@ import com.yieldengine.exception.AppException;
 import com.yieldengine.config.VietQrProperties;
 import com.yieldengine.exception.BusinessConflictException;
 import com.yieldengine.exception.ResourceNotFoundException;
+import com.yieldengine.record.ops.BookingPaymentStatus.BankTransfer;
 import com.yieldengine.record.ops.CreateQrPaymentRequest;
 import com.yieldengine.record.ops.PaymentWebhookRequest;
 import com.yieldengine.record.ops.VietQrBankNotice;
@@ -32,24 +33,54 @@ public class VietQrTransferService {
     private final VietQrProperties properties;
     private final VietQrGatewayClient gateway;
     private final BookingOrchestratorService bookings;
+    private final VietQrBalanceService balances;
     private final ReservationRepository reservations;
     private final PaymentRepository payments;
     private final JdbcTemplate jdbc;
 
     public void create(CreateQrPaymentRequest request, UUID userId) {
+        requireConfigured();
+        String order = newOrderCode();
+        bookings.beginQrPayment(request, userId, PROVIDER, order);
+        issueQr(request.reservationId(), order, request.amount());
+    }
+
+    public void createBalance(UUID reservationId, UUID userId) {
+        requireConfigured();
+        var attempt = balances.prepare(reservationId, userId, newOrderCode());
+        if (attempt.created()) {
+            issueQr(reservationId, attempt.order(), attempt.amount());
+        }
+    }
+
+    private void requireConfigured() {
         if (!properties.isConfigured()) {
             throw new AppException("VietQR chưa được cấu hình.", HttpStatus.SERVICE_UNAVAILABLE);
         }
-        String order = "AP" + UUID.randomUUID().toString().replace("-", "").substring(0, 11).toUpperCase(Locale.ROOT);
-        bookings.beginQrPayment(request, userId, PROVIDER, order);
+    }
+
+    static BankTransfer bankTransfer(Map<String, Object> data) {
+        return new BankTransfer(field(data, "bankCode"), field(data, "bankName"), field(data, "bankAccount"),
+                field(data, "virtualAccount"), field(data, "accountName"), field(data, "content"));
+    }
+
+    static String field(Map<String, Object> data, String key) {
+        return data.get(key) instanceof String value ? value : "";
+    }
+
+    private String newOrderCode() {
+        return "AP" + UUID.randomUUID().toString().replace("-", "").substring(0, 11).toUpperCase(Locale.ROOT);
+    }
+
+    private void issueQr(UUID reservationId, String order, long amount) {
         try {
-            var qr = gateway.createDynamicQr(order, request.amount());
-            bookings.savePaymentQr(request.reservationId(), PROVIDER, order, qr.payload(), properties.isSandbox(),
+            var qr = gateway.createDynamicQr(order, amount);
+            bookings.savePaymentQr(reservationId, PROVIDER, order, qr.payload(), properties.isSandbox(),
                     Map.of("mode", properties.getMode().name(), "content", qr.content(), "bankCode", qr.bankCode(),
                             "bankName", qr.bankName(), "bankAccount", qr.bankAccount(),
                             "virtualAccount", qr.virtualAccount(), "accountName", qr.accountName()));
         } catch (VietQrGatewayClient.RequestRejected ex) {
-            bookings.markQrCreateRejected(request.reservationId(), PROVIDER, order);
+            bookings.markQrCreateRejected(reservationId, PROVIDER, order);
             throw ex;
         }
     }
@@ -87,7 +118,7 @@ public class VietQrTransferService {
         }
         var candidate = candidates.get(0);
         // All providers acquire the reservation lock before reading or changing a payment attempt.
-        reservations.lockByReservationId(candidate.reservationId()).orElseThrow();
+        var reservation = reservations.lockByReservationId(candidate.reservationId()).orElseThrow();
         var payment = payments.findByProviderAndProviderRef(PROVIDER, candidate.order()).orElseThrow();
         var data = payment.getRawPayload();
         String mismatch = null;
@@ -102,6 +133,12 @@ public class VietQrTransferService {
         }
         if (mismatch != null) {
             updateOutcome(eventId, candidate.reservationId(), "REVIEW_REQUIRED", mismatch);
+            return eventId;
+        }
+
+        if (VietQrBalanceService.isBalanceAttempt(payment)) {
+            String reason = balances.apply(reservation, payment, transactionTime.toInstant());
+            updateOutcome(eventId, candidate.reservationId(), reason == null ? "APPLIED" : "REVIEW_REQUIRED", reason);
             return eventId;
         }
 
