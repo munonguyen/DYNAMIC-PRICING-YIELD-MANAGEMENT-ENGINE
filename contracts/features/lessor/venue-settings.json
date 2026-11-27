@@ -1,5 +1,5 @@
 {
-  "branch": "service/lessor/venue-settings",
+  "branch": "complete/lessor/venue-settings",
   "title": "Cài đặt cơ sở",
   "scope": "Cấu hình thông tin cơ sở, kiểu nhận sân và quyền chat tại quầy.",
   "operations": [
