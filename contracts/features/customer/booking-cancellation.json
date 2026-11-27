@@ -1,5 +1,5 @@
 {
-  "branch": "service/customer/booking-cancellation",
+  "branch": "complete/customer/booking-cancellation",
   "title": "Hủy đặt sân",
   "scope": "Hủy đặt sân theo chính sách đã chốt trên đơn.",
   "operations": [
