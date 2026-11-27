@@ -1,5 +1,5 @@
 {
-  "branch": "service/lessor/court-pricing",
+  "branch": "complete/lessor/court-pricing",
   "title": "Cấu hình giá và cọc",
   "scope": "Cập nhật giá gốc, khoảng giá và tỷ lệ cọc của cụm sân.",
   "operations": [
