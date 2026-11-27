@@ -1,5 +1,5 @@
 {
-  "branch": "service/staff/no-show",
+  "branch": "complete/staff/no-show",
   "title": "Ghi nhận khách bỏ lịch",
   "scope": "Đánh dấu đơn bỏ lịch tại quầy.",
   "operations": [
