@@ -166,6 +166,7 @@ export const LessorPartnerPortal: React.FC<LessorPartnerPortalProps> = ({
   const rawActiveTab = controlledTab ?? internalActiveTab;
   const activeTab: LessorPortalTabId =
     isStaffOnly && rawActiveTab === 'OVERVIEW' ? 'ORDERS_CHECKIN' : rawActiveTab;
+  const staffWideSchedule = isStaffOnly && activeTab === 'WEEKLY_SCHEDULE';
   const setActiveTab = (next: LessorPortalTabId) => {
     setInternalActiveTab(next);
     onSelectTab?.(next);
@@ -602,9 +603,11 @@ export const LessorPartnerPortal: React.FC<LessorPartnerPortalProps> = ({
 
   return (
     <section id="command-center" className={embeddedForAdmin ? 'py-2' : 'py-10 sm:py-14'}>
-      <div className={embeddedForAdmin ? 'space-y-6' : 'mx-auto max-w-[1420px] px-4 sm:px-8 space-y-6'}>
+      <div className={embeddedForAdmin ? 'space-y-6'
+        : `mx-auto space-y-6 px-4 sm:px-8 ${staffWideSchedule ? 'max-w-[1760px] lg:space-y-4' : 'max-w-[1420px]'}`}>
         {/* TOP EXECUTIVE PARTNER COMMAND HEADER */}
-        <div className="relative overflow-hidden rounded-[28px] border border-[#16422C]/20 bg-gradient-to-br from-[#0B2218] via-[#123524] to-[#0F172A] p-6 sm:p-8 text-white shadow-[0_24px_60px_rgba(6,23,16,0.22)]">
+        <div className={`relative overflow-hidden rounded-[28px] border border-[#16422C]/20 bg-gradient-to-br from-[#0B2218] via-[#123524] to-[#0F172A] p-6 text-white shadow-[0_24px_60px_rgba(6,23,16,0.22)] sm:p-8
+          ${staffWideSchedule ? 'lg:hidden print:hidden' : ''}`}>
           <div
             className="pointer-events-none absolute -right-24 -top-24 h-72 w-72 rounded-full bg-[#84CC16]/12 blur-3xl"
             aria-hidden="true"
@@ -705,12 +708,12 @@ export const LessorPartnerPortal: React.FC<LessorPartnerPortalProps> = ({
         </AnimatePresence>
 
         {/* MAIN 12-COL SAAS WORKSPACE */}
-        <div className="grid grid-cols-1 gap-6 lg:grid-cols-12 items-start">
-          {/* LEFT 3 COLS: STICKY LESSOR MODULE SIDEBAR */}
-          <aside className="lg:col-span-3 lg:sticky lg:top-24 space-y-4">
+        <div className={`grid grid-cols-1 items-start gap-6 ${staffWideSchedule ? 'lg:gap-3' : 'lg:grid-cols-12'}`}>
+          <aside className={staffWideSchedule ? 'space-y-4 xl:hidden print:hidden' : 'space-y-4 lg:sticky lg:top-24 lg:col-span-3'}>
             <nav
               aria-label="Phân hệ quản lý cho thuê"
-              className="rounded-[26px] border border-neutral-200/90 bg-white p-3 shadow-xs space-y-1"
+              className={`space-y-1 rounded-[26px] border border-neutral-200/90 bg-white p-3 shadow-xs
+                ${staffWideSchedule ? 'lg:grid lg:grid-cols-4 lg:gap-1 lg:space-y-0 lg:rounded-2xl lg:p-1.5' : ''}`}
             >
               {visibleNavItems.map((item) => {
                 const active = activeTab === item.id;
@@ -752,7 +755,8 @@ export const LessorPartnerPortal: React.FC<LessorPartnerPortalProps> = ({
             </nav>
 
             {/* Quick Support & Live Chat Status Card */}
-            <div className="rounded-[24px] border border-neutral-200/90 bg-white p-4 shadow-xs space-y-3 text-xs">
+            <div className={`space-y-3 rounded-[24px] border border-neutral-200/90 bg-white p-4 text-xs shadow-xs
+              ${staffWideSchedule ? 'lg:hidden' : ''}`}>
               <div className="flex items-center justify-between">
                 <span className="font-bold text-[#0F172A]">Trạng thái Kênh Chat Khách</span>
                 <span
@@ -791,7 +795,7 @@ export const LessorPartnerPortal: React.FC<LessorPartnerPortalProps> = ({
           </aside>
 
           {/* RIGHT 9 COLS: ACTIVE MODULE WORKSPACE */}
-          <div className="lg:col-span-9 min-w-0">
+          <div className={`min-w-0 ${staffWideSchedule ? '' : 'lg:col-span-9'}`}>
             <AnimatePresence mode="wait">
               {/* ===================================================================== */}
               {/* TAB 1: OVERVIEW & LIVE QR CHECK-IN / BOOKING DESK                     */}
@@ -1492,6 +1496,9 @@ export const LessorPartnerPortal: React.FC<LessorPartnerPortalProps> = ({
                   transition={{ duration: 0.24, ease: EXPO_EASE }}
                 >
                   <WeeklyScheduleGrid
+                    expanded={staffWideSchedule}
+                    venueName={activeProvider.providerName}
+                    onOpenVenue={staffWideSchedule && onOpenPublicShop ? () => onOpenPublicShop(activeProvider.providerId) : undefined}
                     listings={myListings}
                     providerOrders={providerOrders}
                     fixedBlocks={weeklyFixedBlocks}
