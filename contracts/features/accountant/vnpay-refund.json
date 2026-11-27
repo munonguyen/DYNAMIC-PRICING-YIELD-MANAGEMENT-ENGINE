@@ -1,5 +1,5 @@
 {
-  "branch": "service/accountant/vnpay-refund",
+  "branch": "initial/accountant/vnpay-refund",
   "title": "Hoàn tiền VNPAY",
   "scope": "Yêu cầu hoàn tiền qua cổng VNPAY.",
   "operations": [
@@ -22,5 +22,6 @@
         "refundTransaction("
       ]
     }
-  ]
+  ],
+  "validationPending": "Kiểm chứng hoàn tiền toàn phần và một phần trên sandbox merchant."
 }
