@@ -1,5 +1,5 @@
 {
-  "branch": "service/admin/platform-audit",
+  "branch": "complete/admin/platform-audit",
   "title": "Nhật ký quản trị toàn sàn",
   "scope": "Xem dấu vết kiểm toán theo hành động và cơ sở.",
   "operations": [
