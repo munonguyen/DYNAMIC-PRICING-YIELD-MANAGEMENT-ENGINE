@@ -1,5 +1,5 @@
 {
-  "branch": "service/shared/payments/vnpay-gateway",
+  "branch": "initial/shared/payments/vnpay-gateway",
   "title": "Cổng VNPAY",
   "scope": "Khởi tạo thanh toán VNPAY và ghi nhận kết quả qua callback và IPN.",
   "operations": [
@@ -50,5 +50,6 @@
         "handleVnPayIpn("
       ]
     }
-  ]
+  ],
+  "validationPending": "Kiểm chứng khởi tạo và IPN trên sandbox merchant VNPAY."
 }
