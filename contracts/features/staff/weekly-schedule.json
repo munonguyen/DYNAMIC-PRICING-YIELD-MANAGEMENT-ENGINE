@@ -1,0 +1,22 @@
+{
+  "branch": "complete/staff/weekly-schedule",
+  "title": "Lịch thuê sân theo tuần",
+  "scope": "Xem lịch ca của cơ sở theo giờ Việt Nam. Lọc theo sân hoặc trạng thái và xem thông tin nhanh trên thẻ ca thuê.",
+  "operations": [
+    { "method": "GET", "path": "/api/v1/checkins/orders", "operationId": "venueOrders" }
+  ],
+  "source": [
+    {
+      "file": "src/main/java/com/yieldengine/controller/staff/StaffCheckInController.java",
+      "anchors": ["venueOrders("]
+    },
+    {
+      "file": "frontend/src/components/WeeklyScheduleGrid.tsx",
+      "anchors": ["Lịch tuần vận hành", "Chỉ giờ có ca"]
+    },
+    {
+      "file": "frontend/src/components/WeeklyBookingCard.tsx",
+      "anchors": ["role=\"tooltip\"", "Đã thu online"]
+    }
+  ]
+}
