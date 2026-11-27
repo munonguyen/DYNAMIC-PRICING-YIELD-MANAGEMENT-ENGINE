@@ -1,5 +1,5 @@
 {
-  "branch": "service/lessor/rented-courts",
+  "branch": "complete/lessor/rented-courts",
   "title": "Danh sách sân đã thuê",
   "scope": "Cổng chủ sân lọc các ca đã nhận sân (COMPLETED) trong danh sách đơn của cơ sở.",
   "operations": [
