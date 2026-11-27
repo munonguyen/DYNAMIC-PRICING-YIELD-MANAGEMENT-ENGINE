@@ -1,5 +1,5 @@
 {
-  "branch": "service/accountant/financial-audit",
+  "branch": "complete/accountant/financial-audit",
   "title": "Kiểm toán tài chính",
   "scope": "Tra cứu nhật ký kiểm toán trong phạm vi được cấp quyền.",
   "operations": [
