@@ -1,5 +1,5 @@
 {
-  "branch": "service/customer/lessor-onboarding",
+  "branch": "initial/customer/lessor-onboarding",
   "title": "Đăng ký trở thành chủ sân",
   "scope": "Xác thực OTP và nộp hồ sơ đối tác.",
   "operations": [
@@ -34,5 +34,6 @@
         "submitLessorApplication("
       ]
     }
-  ]
+  ],
+  "validationPending": "Kiểm chứng quy trình OTP, nộp hồ sơ và bàn giao qua kênh email tích hợp."
 }
