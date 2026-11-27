@@ -87,6 +87,9 @@ export const BookingPipelineAndQrSection: React.FC<BookingPipelineAndQrSectionPr
   const [planMode, setPlanMode] = useState<PaymentPlanMode>('DEPOSIT_ESCROW');
   const [preferredProvider, setPreferredProvider] = useState<(typeof qrProviders)[number]['code']>('VIETQR_NAPAS');
   const [providers, setProviders] = useState<CheckoutProvider[] | null>(null);
+  const [providersError, setProvidersError] = useState(false);
+  const [providerRequest, setProviderRequest] = useState(0);
+  const [returnError, setReturnError] = useState<string | null>(null);
   const [paymentStatus, setPaymentStatus] = useState<BookingPaymentStatus | null>(null);
   const [paymentBusy, setPaymentBusy] = useState(false);
   const [statusError, setStatusError] = useState<string | null>(null);
@@ -145,26 +148,20 @@ export const BookingPipelineAndQrSection: React.FC<BookingPipelineAndQrSectionPr
     setPaymentStatus(null);
     setPaymentError(null);
     setStatusError(null);
-    marketplaceApi
-      .getCheckoutProviders()
-      .then((data) => {
-        if (active) setProviders(data);
-      })
-      .catch(() => {
-        if (active) {
-          setProviders(['VIETQR_NAPAS', 'MOMO_WALLET', 'VNPAY_ESCROW']);
-        }
-      });
+    setReturnError(null);
     const location = window.location;
     const params = new URLSearchParams(location.search);
     if (params.has('vnp_TxnRef') && params.has('vnp_SecureHash')) {
       marketplaceApi.verifyVnPayReturnParams(location.search).then(result => {
-        if (active && result.signatureValid && result.reservationId) {
-          window.sessionStorage.setItem(trackingKey, result.reservationId);
-          setRememberedReservation(result.reservationId);
+        if (!active) return;
+        if (!result.signatureValid || !result.reservationId) {
+          setReturnError('Không xác minh được kết quả trả về từ VNPAY. Hãy kiểm tra trạng thái đơn.');
+          return;
         }
+        window.sessionStorage.setItem(trackingKey, result.reservationId);
+        setRememberedReservation(result.reservationId);
       }).catch(() => {
-        if (active) setStatusError('Chưa đọc được mã giao dịch trả về từ VNPay.');
+        if (active) setReturnError('Chưa đọc được kết quả trả về từ VNPAY. Hãy kiểm tra trạng thái đơn.');
       });
       window.history.replaceState({}, '', location.pathname);
     } else if (params.has('orderId') && params.has('resultCode')) {
@@ -172,6 +169,22 @@ export const BookingPipelineAndQrSection: React.FC<BookingPipelineAndQrSectionPr
     }
     return () => { active = false; };
   }, [ownerId, trackingKey]);
+
+  useEffect(() => {
+    setProviders(null);
+    setProvidersError(false);
+    if (!ownerId) return;
+    const request = new AbortController();
+    marketplaceApi.getCheckoutProviders(request.signal).then(data => {
+      if (!request.signal.aborted) setProviders(data);
+    }).catch(() => {
+      if (!request.signal.aborted) {
+        setProviders([]);
+        setProvidersError(true);
+      }
+    });
+    return () => request.abort();
+  }, [ownerId, providerRequest]);
 
   useEffect(() => {
     if (trackingKey && matchingHold?.reservationId) {
@@ -575,7 +588,15 @@ export const BookingPipelineAndQrSection: React.FC<BookingPipelineAndQrSectionPr
 
             <ScrollReveal delay={0.05} className="rounded-[26px] border border-neutral-200/90 bg-white p-6 sm:p-7 shadow-xs">
               <h3 className="text-base sm:text-lg font-semibold text-[#0F172A]">2. Phương thức thanh toán</h3>
-              {enabledQrProviders.length > 0 ? (
+              {returnError && <p role="alert" className="mt-3 text-sm text-rose-700">{returnError}</p>}
+              {providersError ? (
+                <div className="mt-4 flex flex-wrap items-center gap-3">
+                  <p role="alert" className="text-sm text-rose-700">Chưa tải được phương thức thanh toán.</p>
+                  <ActionButton variant="outline" size="sm" onClick={() => setProviderRequest(value => value + 1)}>
+                    Tải lại phương thức
+                  </ActionButton>
+                </div>
+              ) : enabledQrProviders.length > 0 ? (
                 <div className="mt-4 grid gap-3 sm:grid-cols-3">
                   {enabledQrProviders.map(({ code, title, detail }) => (
                     <button type="button" key={code} disabled={paymentLocked} aria-pressed={shownProvider === code}
