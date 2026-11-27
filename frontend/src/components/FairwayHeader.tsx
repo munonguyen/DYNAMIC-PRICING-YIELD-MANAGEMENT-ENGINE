@@ -809,7 +809,6 @@ export const FairwayHeader: React.FC<FairwayHeaderProps> = ({
                               {accountTickets.map((ticket) => {
                                 const isExpanded = expandedTicketId === ticket.reservationId;
                                 const isCancelled = ticket.status === 'CANCELLED';
-                                const providerCode = ticket.paymentProvider ?? 'VIETQR_NAPAS';
                                 const amountPaid =
                                   ticket.paidOnlineAmount > 0
                                     ? ticket.paidOnlineAmount
@@ -827,7 +826,7 @@ export const FairwayHeader: React.FC<FairwayHeaderProps> = ({
                                       className="flex w-full items-center justify-between gap-2.5 text-left cursor-pointer"
                                     >
                                       <div className="flex items-center gap-2.5 min-w-0">
-                                        <PaymentMethodLogo code={providerCode} size={28} />
+                                        <PaymentMethodLogo code={ticket.paymentProvider} size={28} decorative={false} />
                                         <div className="min-w-0">
                                           <div className="font-bold text-[#0F172A] truncate">
                                             {ticket.groupName} • {ticket.unitNumber}

@@ -48,6 +48,12 @@ public class CheckoutPaymentService {
         UUID bookingId = reservation.getBookingId();
         var paid = payments.findFirstByBookingIdAndGatewayVerifiedAtIsNotNullAndPaymentTypeNotAndStatusOrderByGatewayVerifiedAtDesc(
                 bookingId, "REFUND", "SUCCESS");
+        if (paid.isPresent() && List.of("CONFIRMED", "COMPLETED").contains(bookingStatus)) {
+            Payment receipt = paid.get();
+            return new BookingPaymentStatus(reservationId, bookingStatus, State.VERIFIED, receipt.getAmount(),
+                    Math.max(0, reservation.getLockedPrice() - receipt.getAmount()), null, receipt.getProvider(),
+                    receipt.getProviderRef(), receipt.getGatewayVerifiedAt(), null);
+        }
         var review = payments.findFirstByBookingIdAndGatewayVerifiedAtIsNotNullAndPaymentTypeNotAndStatusOrderByGatewayVerifiedAtDesc(
                 bookingId, "REFUND", "REVIEW_REQUIRED");
 
@@ -67,12 +73,6 @@ public class CheckoutPaymentService {
                     refund.map(Payment::getGatewayVerifiedAt).orElse(null), null);
         }
 
-        if (paid.isPresent() && List.of("CONFIRMED", "COMPLETED").contains(bookingStatus)) {
-            Payment receipt = paid.get();
-            return new BookingPaymentStatus(reservationId, bookingStatus, State.VERIFIED, receipt.getAmount(),
-                    Math.max(0, reservation.getLockedPrice() - receipt.getAmount()), null, receipt.getProvider(),
-                    receipt.getProviderRef(), receipt.getGatewayVerifiedAt(), null);
-        }
         if (review.isPresent() || paid.isPresent()) {
             Payment payment = review.orElseGet(paid::orElseThrow);
             return new BookingPaymentStatus(reservationId, bookingStatus, State.REVIEW_REQUIRED, payment.getAmount(),
@@ -89,13 +89,13 @@ public class CheckoutPaymentService {
             state = State.EXPIRED;
         } else {
             var lastVnPay = vnPayTransactions.findFirstByReservationIdOrderByCreatedAtDesc(reservationId);
-            var lastPayment = payments.findFirstByBookingIdOrderByCreatedAtDesc(bookingId);
             var pendingVnPay = lastVnPay.filter(tx -> tx.getStatus() == VnPayTransactionStatus.PENDING);
             if (pendingVnPay.isPresent()) {
                 var attempt = pendingVnPay.get();
                 return new BookingPaymentStatus(reservationId, bookingStatus, State.PENDING, 0, reservation.getLockedPrice(),
                         attempt.getAmountVnd(), "VNPAY_ESCROW", attempt.getTxnRef(), null, null);
             }
+            var lastPayment = payments.findFirstByBookingIdOrderByCreatedAtDescIdDesc(bookingId);
             var pendingQr = lastPayment.filter(payment -> List.of("MOMO_WALLET", VietQrTransferService.PROVIDER)
                     .contains(payment.getProvider()) && "PENDING".equals(payment.getStatus()));
             if (pendingQr.isPresent()) {

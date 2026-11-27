@@ -261,19 +261,36 @@ class MarketplaceApiClient {
   private async checkoutRequest<T>(
     path: string, body?: object, signal?: AbortSignal, method = body ? 'POST' : 'GET'
   ): Promise<T> {
-    const response = await fetch(`/api/v1${path}`, {
-      method, headers: this.headers(), body: body ? JSON.stringify(body) : undefined, signal,
-    });
+    let response: Response;
+    try {
+      response = await fetch(`/api/v1${path}`, {
+        method, headers: this.headers(), body: body ? JSON.stringify(body) : undefined, signal,
+      });
+    } catch (error) {
+      if (signal?.aborted) throw error;
+      throw new Error('Không kết nối được với hệ thống. Vui lòng thử lại.');
+    }
     if (!response.ok) {
       const problem = await response.json().catch(() => null);
-      throw new Error(problem?.message || 'Hệ thống chưa xác nhận được thao tác.');
+      throw new Error(typeof problem?.message === 'string' && problem.message
+        ? problem.message
+        : 'Hệ thống chưa xác nhận được thao tác.');
     }
     if (response.status === 204) return undefined as T;
-    return response.json();
+    try {
+      return await response.json();
+    } catch (error) {
+      if (signal?.aborted) throw error;
+      throw new Error('Hệ thống trả về dữ liệu không hợp lệ. Vui lòng thử lại.');
+    }
   }
 
-  getCheckoutProviders(): Promise<import('../types/marketplace').CheckoutProvider[]> {
-    return this.checkoutRequest('/payments/providers');
+  async getCheckoutProviders(signal?: AbortSignal): Promise<import('../types/marketplace').CheckoutProvider[]> {
+    const providers = await this.checkoutRequest<import('../types/marketplace').CheckoutProvider[]>(
+      '/payments/providers', undefined, signal,
+    );
+    if (!Array.isArray(providers)) throw new Error('Danh sách cổng thanh toán không hợp lệ.');
+    return providers;
   }
 
   getBookingPaymentStatus(reservationId: string, signal?: AbortSignal): Promise<import('../types/marketplace').BookingPaymentStatus> {
