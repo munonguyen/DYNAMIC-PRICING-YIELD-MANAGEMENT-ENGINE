@@ -1,5 +1,5 @@
 {
-  "branch": "service/lessor/court-media",
+  "branch": "complete/lessor/court-media",
   "title": "Quản lý ảnh sân",
   "scope": "Tải ảnh, đổi ảnh bìa và xóa ảnh sân.",
   "operations": [
