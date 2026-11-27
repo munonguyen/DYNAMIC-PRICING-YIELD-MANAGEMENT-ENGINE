@@ -1,5 +1,5 @@
 {
-  "branch": "service/accountant/vietqr-transfer-review",
+  "branch": "initial/accountant/vietqr-transfer-review",
   "title": "Đối soát ngoại lệ VietQR",
   "scope": "Xem và xử lý khoản chuyển VietQR cần đối soát thủ công.",
   "operations": [
@@ -28,5 +28,6 @@
         "reviewQueue("
       ]
     }
-  ]
+  ],
+  "validationPending": "Đối chiếu các trường hợp sai số tiền, trùng giao dịch và giao dịch đến muộn trên sandbox merchant."
 }
