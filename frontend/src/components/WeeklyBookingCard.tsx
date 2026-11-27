@@ -18,9 +18,10 @@ interface WeeklyBookingCardProps {
   timeLabel: string;
   onOpen: () => void;
   preview?: boolean;
+  roomy?: boolean;
 }
 
-export function WeeklyBookingCard({ order, dateLabel, timeLabel, onOpen, preview = false }: WeeklyBookingCardProps) {
+export function WeeklyBookingCard({ order, dateLabel, timeLabel, onOpen, preview = false, roomy = false }: WeeklyBookingCardProps) {
   const status = weeklyBookingStatus[order.status];
   const [showPreview, setShowPreview] = useState(false);
   const trigger = useRef<HTMLButtonElement>(null);
@@ -88,14 +89,15 @@ export function WeeklyBookingCard({ order, dateLabel, timeLabel, onOpen, preview
         onFocus={event => { if (event.currentTarget.matches(':focus-visible')) show(); }}
         onBlur={scheduleHide}
         onClick={() => { hide(); onOpen(); }}
-        className={`group flex w-full min-w-0 gap-2 rounded-xl border px-2.5 py-2 text-left outline-offset-2 transition hover:brightness-[0.98] focus-visible:outline-2 focus-visible:outline-[#2A7350] sm:px-3 ${status.card}`}>
+        className={`group flex w-full min-w-0 gap-2 rounded-xl border text-left outline-offset-2 transition hover:brightness-[0.98] focus-visible:outline-2 focus-visible:outline-[#2A7350]
+          ${roomy ? 'min-h-[82px] px-2.5 py-2.5 xl:px-3.5' : 'px-2.5 py-2 sm:px-3'}
+          ${showPreview && roomy ? 'shadow-sm ring-1 ring-[#448365]/35' : ''} ${status.card}`}>
         <span aria-hidden="true" className={`mt-1 h-2 w-2 shrink-0 rounded-full ${status.marker}`} />
         <span className="min-w-0 flex-1">
-          <span className="block text-[11px] font-bold tabular-nums">{timeLabel}</span>
-          <span className="mt-0.5 block truncate text-xs font-semibold">{order.customerName}</span>
-          <span className="mt-0.5 block truncate text-[10px] font-medium opacity-90 sm:hidden">{order.unitNumber} · {order.groupName}</span>
-          <span className="mt-0.5 hidden truncate text-[10px] font-medium opacity-90 sm:block">
-            {order.unitNumber}{preview ? '' : ` · ${order.groupName}`}
+          <span className={`block font-bold tabular-nums ${roomy ? 'text-xs' : 'text-[11px]'}`}>{timeLabel}</span>
+          <span className={`mt-0.5 font-semibold ${roomy ? 'line-clamp-2 break-words text-sm leading-snug' : 'block truncate text-xs'}`}>{order.customerName}</span>
+          <span className={`mt-1 block truncate font-medium opacity-85 ${roomy ? 'text-[11px]' : 'text-[10px]'}`}>
+            {order.unitNumber}{roomy || !preview ? ` · ${order.groupName}` : ''}
           </span>
           <span className="sr-only">{status.title} · {order.orderId}</span>
         </span>
@@ -105,7 +107,8 @@ export function WeeklyBookingCard({ order, dateLabel, timeLabel, onOpen, preview
       {showPreview && createPortal(
         <div id={previewId} role="tooltip" ref={panel}
           onPointerEnter={show} onPointerLeave={scheduleHide}
-          className="fixed left-0 top-0 z-[70] w-[302px] max-w-[calc(100vw-20px)] rounded-2xl border border-[#D3E2D8] bg-white p-3.5 text-[#183B2D] shadow-[0_12px_42px_rgba(13,43,31,0.22)]">
+          className={`fixed left-0 top-0 z-[70] max-w-[calc(100vw-20px)] rounded-2xl border border-[#D3E2D8] bg-white text-[#183B2D] shadow-[0_12px_42px_rgba(13,43,31,0.22)]
+            ${roomy ? 'w-[334px] p-4' : 'w-[302px] p-3.5'}`}>
           <div className="flex items-start justify-between gap-2">
             <p className="min-w-0 break-words text-sm font-bold">{order.customerName}</p>
             <span className={`shrink-0 rounded-full border px-1.5 py-0.5 text-[10px] font-semibold ${status.card}`}>{status.title}</span>

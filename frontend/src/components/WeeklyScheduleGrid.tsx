@@ -1,5 +1,5 @@
 import { useMemo, useState, type FormEvent } from 'react';
-import { CalendarDays, ChevronLeft, ChevronRight, Lock, Plus, Printer, Trash2, X } from 'lucide-react';
+import { CalendarDays, ChevronLeft, ChevronRight, ExternalLink, Lock, Plus, Printer, Trash2, X } from 'lucide-react';
 import type { LessorBookingOrder, PublishedListing } from '../types/marketplace';
 import { PillSelect } from './FairwayControls';
 import { WeeklyBookingCard, weeklyBookingStatus } from './WeeklyBookingCard';
@@ -16,6 +16,9 @@ export interface WeeklyFixedBlock {
 }
 
 interface WeeklyScheduleGridProps {
+  expanded?: boolean;
+  venueName?: string;
+  onOpenVenue?: () => void;
   listings: PublishedListing[];
   providerOrders: LessorBookingOrder[];
   fixedBlocks: WeeklyFixedBlock[];
@@ -66,7 +69,7 @@ function orderTimeLabel(order: LessorBookingOrder) {
 }
 
 export function WeeklyScheduleGrid({
-  listings, providerOrders, fixedBlocks, onAddFixedBlock, onRemoveFixedBlock, onOpenOrderDetail,
+  expanded = false, venueName, onOpenVenue, listings, providerOrders, fixedBlocks, onAddFixedBlock, onRemoveFixedBlock, onOpenOrderDetail,
 }: WeeklyScheduleGridProps) {
   const [weekOffset, setWeekOffset] = useState(0);
   const [mobileDay, setMobileDay] = useState<string | null>(null);
@@ -191,7 +194,7 @@ export function WeeklyScheduleGrid({
       {cell.hasCollision && <p className="rounded-md bg-amber-100 px-2 py-0.5 text-[10px] font-semibold text-amber-900">Trùng ô sân</p>}
       {cell.orders.map(order => (
         <WeeklyBookingCard key={order.orderId} order={order} dateLabel={`${day.dayName}, ${day.short}`}
-          timeLabel={orderTimeLabel(order)} preview={preview} onOpen={() => onOpenOrderDetail(order.orderId)} />
+          timeLabel={orderTimeLabel(order)} preview={preview} roomy={expanded && preview} onOpen={() => onOpenOrderDetail(order.orderId)} />
       ))}
       {cell.blocks.map(block => (
         <div key={block.id} className={`flex items-start gap-1.5 rounded-xl border p-2 text-[11px] ${block.kind === 'MAINTENANCE'
@@ -222,26 +225,44 @@ export function WeeklyScheduleGrid({
   });
 
   return (
-    <section aria-label="Lịch tuần vận hành" className="min-w-0 overflow-hidden rounded-[24px] border border-[#DEE9E1] bg-white shadow-xs">
-      <header className="border-b border-[#E1EBE4] bg-gradient-to-r from-[#F3F8F4] to-white px-4 py-4 sm:px-5">
+    <section aria-label="Lịch tuần vận hành" className={`min-w-0 overflow-hidden rounded-[24px] border border-[#DEE9E1] bg-white
+      ${expanded ? 'lg:rounded-[26px] lg:shadow-[0_8px_28px_rgba(24,63,44,0.07)]' : 'shadow-xs'}`}>
+      <header className={`border-b border-[#E1EBE4] px-4 py-4 sm:px-5
+        ${expanded ? 'bg-[#F8FBF9] lg:px-8 lg:py-6' : 'bg-gradient-to-r from-[#F3F8F4] to-white'}`}>
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-2.5">
-            <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-[#16422C] text-white">
+            <span className={`grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-[#16422C] text-white
+              ${expanded ? 'lg:h-12 lg:w-12 lg:rounded-2xl' : ''}`}>
               <CalendarDays aria-hidden="true" className="h-5 w-5" />
             </span>
-            <div>
-              <h2 className="text-lg font-bold tracking-tight text-[#15382A] sm:text-xl">Lịch thuê sân</h2>
-              <p className="text-xs tabular-nums text-[#466355]">{totalOrders} ca đặt · Giờ Việt Nam</p>
+            <div className="min-w-0">
+              <h2 className={`font-bold tracking-tight text-[#15382A] ${expanded ? 'text-lg sm:text-xl lg:text-[27px]' : 'text-lg sm:text-xl'}`}>Lịch thuê sân</h2>
+              {expanded && venueName && <p className="hidden text-sm leading-snug text-[#527064] lg:block">{venueName}</p>}
+              <p className={`text-xs tabular-nums text-[#466355] ${expanded ? 'lg:hidden' : ''}`}>{totalOrders} ca đặt · Giờ Việt Nam</p>
             </div>
           </div>
-          <button type="button" onClick={() => window.print()}
-            className="inline-flex min-h-10 items-center gap-1.5 rounded-xl border border-[#DDE8E1] bg-white px-3 text-xs font-semibold text-[#16422C] hover:bg-[#EDF5EF]">
-            <Printer aria-hidden="true" className="h-4 w-4" /> In lịch
-          </button>
+          <div className="flex flex-wrap items-center gap-2">
+            {expanded && (
+              <span className="hidden rounded-full bg-[#EAF3ED] px-3 py-1.5 text-xs font-semibold tabular-nums text-[#214D39] lg:inline-flex">
+                {totalOrders} ca đặt · Giờ Việt Nam
+              </span>
+            )}
+            {onOpenVenue && (
+              <button type="button" onClick={onOpenVenue}
+                className="hidden min-h-10 items-center gap-1.5 rounded-xl border border-[#DDE8E1] bg-white px-3 text-xs font-semibold text-[#16422C] hover:bg-[#EDF5EF] lg:inline-flex print:hidden">
+                <ExternalLink aria-hidden="true" className="h-4 w-4" /> Xem gian hàng
+              </button>
+            )}
+            <button type="button" onClick={() => window.print()}
+              className="inline-flex min-h-10 items-center gap-1.5 rounded-xl border border-[#DDE8E1] bg-white px-3 text-xs font-semibold text-[#16422C] hover:bg-[#EDF5EF] print:hidden">
+              <Printer aria-hidden="true" className="h-4 w-4" /> In lịch
+            </button>
+          </div>
         </div>
 
-        <div className="mt-4 grid gap-2 sm:grid-cols-2 xl:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)_minmax(0,0.7fr)]">
-          <div className="flex min-w-0 items-center gap-1.5 sm:col-span-2 xl:col-span-1">
+        <div className={`mt-4 grid gap-2 sm:grid-cols-2 xl:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)_minmax(0,0.7fr)]
+          ${expanded ? 'lg:mt-5 lg:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)_minmax(0,0.7fr)] lg:gap-3' : ''}`}>
+          <div className={`flex min-w-0 items-center gap-1.5 sm:col-span-2 xl:col-span-1 ${expanded ? 'lg:col-span-1' : ''}`}>
             <button type="button" aria-label="Tuần trước" className={weekButton}
               disabled={weekOffset === weekOffsets[0]} onClick={() => changeWeek(weekOffset - 1)}>
               <ChevronLeft aria-hidden="true" className="h-4 w-4" />
@@ -267,7 +288,8 @@ export function WeeklyScheduleGrid({
             options={[{ value: 'ALL', label: 'Tất cả ô sân' }, ...availableUnits.map(unit => ({ value: unit, label: unit }))]} />
         </div>
 
-        <div aria-label="Bộ lọc trạng thái lịch" className="mt-3 flex flex-wrap gap-x-3 gap-y-1.5">
+        <div aria-label="Bộ lọc trạng thái lịch" className={`mt-3 flex flex-wrap gap-x-3 gap-y-1.5
+          ${expanded ? 'lg:mt-4 lg:gap-x-5 lg:border-t lg:border-[#E1EBE4] lg:pt-3' : ''}`}>
           {scheduleStatuses.map(key => (
             <label key={key} className="flex items-center gap-1.5 text-[11px] font-medium text-[#345546]">
               <input type="checkbox" checked={!hiddenStatuses.has(key)} onChange={() => changeStatusVisibility(key)}
@@ -295,13 +317,22 @@ export function WeeklyScheduleGrid({
         <table aria-label="Thời khóa biểu từ thứ Hai đến Chủ nhật" className="w-full min-w-[790px] table-fixed border-separate border-spacing-0 text-xs print:min-w-0">
           <thead>
             <tr>
-              <th scope="col" className="sticky left-0 z-[1] w-[68px] border-b border-r border-[#E3ECE5] bg-[#F1F6F2] px-2 py-2 text-left font-semibold text-[#355545]">Giờ</th>
+              <th scope="col" className={`sticky left-0 z-[1] border-b border-r border-[#E3ECE5] bg-[#F1F6F2] text-left font-semibold text-[#355545]
+                ${expanded ? 'w-[82px] px-3 py-3.5' : 'w-[68px] px-2 py-2'}`}>Giờ</th>
               {weekDays.map(day => (
                 <th key={day.iso} scope="col" aria-current={day.isToday ? 'date' : undefined}
-                  className={`border-b border-r border-[#E3ECE5] px-2 py-2 text-left last:border-r-0 ${day.isToday
-                    ? 'bg-[#16422C] text-white' : 'bg-[#F6F9F6] text-[#254737]'}`}>
-                  <span className="block font-bold">{day.dayName}</span>
-                  <time dateTime={day.iso} className={`text-[11px] font-medium tabular-nums ${day.isToday ? 'text-emerald-50/90' : 'text-[#537064]'}`}>{day.short}</time>
+                  className={`border-b border-r border-[#E3ECE5] text-left last:border-r-0
+                    ${expanded ? 'px-3 py-3.5' : 'px-2 py-2'}
+                    ${day.isToday ? 'bg-[#16422C] text-white' : 'bg-[#F6F9F6] text-[#254737]'}`}>
+                  <span className="flex items-center justify-between gap-1 font-semibold">
+                    {day.dayName}
+                    {expanded && day.isToday && (
+                      <span className="rounded-full bg-white/15 px-1.5 py-0.5 text-[10px] font-medium">Hôm nay</span>
+                    )}
+                  </span>
+                  <time dateTime={day.iso} className={`block font-semibold tabular-nums
+                    ${expanded ? 'mt-0.5 text-base' : 'text-[11px]'}
+                    ${day.isToday ? 'text-emerald-50/90' : 'text-[#537064]'}`}>{day.short}</time>
                 </th>
               ))}
             </tr>
@@ -311,19 +342,22 @@ export function WeeklyScheduleGrid({
               <tr><td colSpan={8} className="p-4 text-center text-sm text-[#50685D]">Không có ca phù hợp trong tuần này.</td></tr>
             )}
             {visibleHours.map(hour => (
-              <tr key={hour}>
-                <th scope="row" className="sticky left-0 z-[1] border-b border-r border-[#E6EEE8] bg-[#F8FAF8] px-2 py-2 text-left align-top text-[11px] font-semibold tabular-nums text-[#436355]">
+              <tr key={hour} className={expanded ? 'even:bg-[#FAFCFA]' : undefined}>
+                <th scope="row" className={`sticky left-0 z-[1] border-b border-r border-[#E6EEE8] bg-[#F8FAF8] text-left align-top font-semibold tabular-nums text-[#436355]
+                  ${expanded ? 'px-3 py-3.5 text-xs' : 'px-2 py-2 text-[11px]'}`}>
                   {hourLabel(hour)}
                 </th>
                 {weekDays.map(day => {
                   const cell = cellIndex.get(`${day.iso}__${hour}`);
                   const visible = cell && (!showConflictOnly || cell.hasCollision);
                   return (
-                    <td key={day.iso} className={`group/cell h-9 border-b border-r border-[#E6EEE8] p-1 align-top last:border-r-0 ${day.isToday ? 'bg-[#F3F8F3]' : 'bg-white'}`}>
+                    <td key={day.iso} className={`group/cell border-b border-r border-[#E6EEE8] align-top last:border-r-0
+                      ${expanded ? 'h-[52px] p-1.5' : 'h-9 p-1'}
+                      ${day.isToday ? 'bg-[#F1F7F2]' : expanded ? '' : 'bg-white'}`}>
                       {visible && renderCell(cell, day, true)}
                       {!showConflictOnly && (
                         <button type="button" onClick={() => openBlock(day, hour)} aria-label={`Thêm lịch ${day.dayName} ${hourLabel(hour)}`}
-                          className={`flex w-full items-center justify-center rounded-md text-[#387256] opacity-0 group-hover/cell:opacity-100 hover:bg-[#E6F1E9] focus-visible:opacity-100 ${visible ? 'mt-0.5 h-5' : 'h-7'}`}>
+                          className={`flex w-full items-center justify-center rounded-md text-[#387256] opacity-0 group-hover/cell:opacity-100 hover:bg-[#E6F1E9] focus-visible:opacity-100 ${visible ? 'mt-0.5 h-5' : expanded ? 'h-9' : 'h-7'}`}>
                           <Plus aria-hidden="true" className="h-3.5 w-3.5" />
                         </button>
                       )}
