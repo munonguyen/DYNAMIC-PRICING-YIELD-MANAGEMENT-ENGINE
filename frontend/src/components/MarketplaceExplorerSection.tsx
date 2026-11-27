@@ -13,6 +13,7 @@ import { formatSlotWindow, formatVnd, marketplaceApi } from '../api/marketplaceA
 import { EXPO_EASE, ScrollReveal } from './motionPrimitives';
 import { ActionButton, PillSelect } from './FairwayControls';
 import { CourtDetailView } from './CourtDetailView';
+import type { BookingCourtPickerControls } from './BookingCourtPicker';
 
 interface MarketplaceExplorerSectionProps {
   sports: SportTypeItem[];
@@ -34,6 +35,7 @@ interface MarketplaceExplorerSectionProps {
   quoteLoading: boolean;
   countdownLabel: string;
   onSelectSlot: (listing: PublishedListing, slotStart: string) => void;
+  courtPicker: BookingCourtPickerControls;
   onProceedToHold: () => void;
   onOpenVenueChat: (listing: PublishedListing) => void;
   onOpenLessorShop?: (providerId: string) => void;
@@ -73,6 +75,7 @@ export const MarketplaceExplorerSection: React.FC<MarketplaceExplorerSectionProp
   quoteLoading,
   countdownLabel,
   onSelectSlot,
+  courtPicker,
   onProceedToHold,
   onOpenVenueChat,
   onOpenLessorShop,
@@ -264,6 +267,7 @@ export const MarketplaceExplorerSection: React.FC<MarketplaceExplorerSectionProp
               snapViewportTop();
             }}
             onSelectSlot={onSelectSlot}
+            courtPicker={courtPicker}
             onProceedToHold={onProceedToHold}
             onOpenVenueChat={onOpenVenueChat}
             onOpenLessorShop={onOpenLessorShop}
