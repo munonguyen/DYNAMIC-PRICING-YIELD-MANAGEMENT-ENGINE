@@ -7,6 +7,8 @@ import { PillSelect } from './FairwayControls';
 interface LiveCourtFloorProps {
   courts: VenueCourt[];
   layout?: CourtFloorLayout;
+  sportCode?: string;
+  sportName?: string;
   bookings: Map<string, LessorBookingOrder>;
   onEdit?: () => void;
   onOpenOrder: (reservationId: string) => void;
@@ -15,7 +17,7 @@ interface LiveCourtFloorProps {
 
 const states = Object.keys(floorStatuses) as VenueCourt['status'][];
 
-export function LiveCourtFloor({ courts, layout, bookings, onEdit, onOpenOrder, bookingTime }: LiveCourtFloorProps) {
+export function LiveCourtFloor({ courts, layout, sportCode, sportName, bookings, onEdit, onOpenOrder, bookingTime }: LiveCourtFloorProps) {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [filter, setFilter] = useState<VenueCourt['status'] | null>(null);
   const { byId, statuses, counts, dimmed } = useMemo(() => {
@@ -41,7 +43,7 @@ export function LiveCourtFloor({ courts, layout, bookings, onEdit, onOpenOrder, 
       <div className="flex flex-wrap items-center justify-between gap-2">
         <p className="text-xs font-medium text-[#476458]">
           {courts.length} sân vật lý
-          {layout ? ` · ${asMetres(layout.widthCm)} × ${asMetres(layout.lengthCm)} m` : ' · Bố trí tham khảo'}
+          {!layout && ' · Bố trí tham khảo'}
         </p>
         {onEdit && (
           <button type="button" onClick={onEdit}
@@ -52,7 +54,7 @@ export function LiveCourtFloor({ courts, layout, bookings, onEdit, onOpenOrder, 
       </div>
       {courts.length === 0 ? <p className="rounded-xl border border-dashed border-[#D8E5DC] p-4 text-sm text-[#476458]">Cụm này chưa có sân vật lý.</p> : (
         <>
-          <div className="flex flex-wrap gap-1.5" aria-label="Lọc trạng thái trên sơ đồ">
+          <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-5" aria-label="Lọc trạng thái trên sơ đồ">
             {states.map(state => {
               const style = floorStatuses[state];
               return (
@@ -62,11 +64,14 @@ export function LiveCourtFloor({ courts, layout, bookings, onEdit, onOpenOrder, 
                     const match = courts.find(court => court.status === state);
                     if (filter !== state && match) setSelectedId(match.id);
                   }}
-                  className={`inline-flex min-h-9 items-center gap-1.5 rounded-full border px-2.5 text-xs font-semibold hover:brightness-[0.96]
+                  className={`flex min-h-12 items-center justify-between gap-2 rounded-[10px] border px-2 py-1.5 text-left text-[11px] font-semibold hover:brightness-[0.96] sm:px-2.5
                     ${state === 'RENTED' ? 'border-[#B2D1C5] bg-[#DDEDE6] text-[#15473B]' : style.tile}
                     ${filter === state ? 'ring-2 ring-[#376853] ring-offset-1' : ''}`}>
-                  <span aria-hidden="true" className={`h-1.5 w-1.5 shrink-0 rounded-full ${state === 'RENTED' ? 'bg-[#1C554D]' : style.dot}`} />
-                  {style.label} <span className="tabular-nums">{counts[state]}</span>
+                  <span className="flex items-start gap-1.5 leading-tight">
+                    <span aria-hidden="true" className={`mt-1 h-1.5 w-1.5 shrink-0 rounded-full ${state === 'RENTED' ? 'bg-[#1C554D]' : style.dot}`} />
+                    {style.label}
+                  </span>
+                  <span className="text-base font-bold tabular-nums">{counts[state]}</span>
                 </button>
               );
             })}
@@ -74,9 +79,9 @@ export function LiveCourtFloor({ courts, layout, bookings, onEdit, onOpenOrder, 
           {remaining > 0 && <p className="text-xs font-medium text-amber-900">{remaining} sân chưa có vị trí trên sơ đồ. Có thể chọn sân trong danh sách bên cạnh.</p>}
           <div className="grid min-w-0 gap-3 lg:grid-cols-[minmax(0,1fr)_260px]">
             <CourtFloorCanvas draft={draft} selectedId={selected?.id ?? null} onSelect={setSelectedId}
-              statuses={statuses} dimmedIds={dimmed} schematic={!layout} />
+              statuses={statuses} dimmedIds={dimmed} schematic={!layout} sportCode={sportCode} sportName={sportName} />
             {selected && (
-              <aside aria-label="Chi tiết sân đang chọn" className="min-w-0 space-y-3 self-start rounded-[20px] border border-[#D8E5DC] bg-white p-3.5 sm:p-4">
+              <aside aria-label="Chi tiết sân đang chọn" className="min-w-0 space-y-3 self-start rounded-[20px] border border-[#D8E5DC] bg-[#FAFCFA] p-3.5 sm:p-4">
                 <PillSelect variant="soft" ariaLabel="Chọn sân trên mặt bằng" value={selected.id} onChange={setSelectedId}
                   options={courts.map(court => ({ value: court.id, label: placements.get(court.id)?.label ?? courtDisplayName(court.unitNumber) }))} />
                 <div className="space-y-2 border-t border-[#E5EDE7] pt-3">

@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { CalendarDays, ChevronRight, ExternalLink, RefreshCw, Search, Users } from 'lucide-react';
-import type { LessorBookingOrder, VenueCourtSnapshot } from '../types/marketplace';
+import type { LessorBookingOrder, PublishedListing, VenueCourtSnapshot } from '../types/marketplace';
 import { floorStatuses } from './CourtFloorCanvas';
 import { LiveCourtFloor } from './LiveCourtFloor';
 import { PillSelect } from './FairwayControls';
@@ -53,6 +53,7 @@ interface StaffCourtStatusProps {
   snapshot: VenueCourtSnapshot | null;
   error: string | null;
   venueName: string;
+  listings: PublishedListing[];
   onRefresh: () => void;
   onOpenSchedule: () => void;
   onOpenVenue?: () => void;
@@ -61,7 +62,7 @@ interface StaffCourtStatusProps {
   showRoster?: boolean;
 }
 
-export function StaffCourtStatus({ snapshot, error, venueName, onRefresh, onOpenSchedule, onOpenVenue, onOpenOrder, onEditFloor, showRoster = true }: StaffCourtStatusProps) {
+export function StaffCourtStatus({ snapshot, error, venueName, listings, onRefresh, onOpenSchedule, onOpenVenue, onOpenOrder, onEditFloor, showRoster = true }: StaffCourtStatusProps) {
   const [floorGroup, setFloorGroup] = useState('');
   const [rosterGroup, setRosterGroup] = useState('ALL');
   const [query, setQuery] = useState('');
@@ -77,6 +78,7 @@ export function StaffCourtStatus({ snapshot, error, venueName, onRefresh, onOpen
 
   const activeGroup = groups.find(([id]) => id === floorGroup) ?? groups[0];
   const activeGroupId = activeGroup?.[0];
+  const listing = listings.find(item => item.groupId === activeGroupId);
   const courts = useMemo(() => snapshot?.courts.filter(court => court.groupId === activeGroupId) ?? [],
     [snapshot, activeGroupId]);
   const bookingById = useMemo(() => new Map(snapshot?.bookings.map(order => [order.reservationId, order])), [snapshot]);
@@ -132,6 +134,7 @@ export function StaffCourtStatus({ snapshot, error, venueName, onRefresh, onOpen
               </div>
               <LiveCourtFloor key={activeGroup[0]} courts={courts}
                 layout={snapshot.layouts.find(layout => layout.groupId === activeGroup[0])}
+                sportCode={listing?.sportCode} sportName={listing?.sportName}
                 bookings={bookingById} bookingTime={order => bookingTime(order, snapshot.today)} onOpenOrder={onOpenOrder}
                 onEdit={onEditFloor ? () => onEditFloor(...activeGroup) : undefined} />
             </>

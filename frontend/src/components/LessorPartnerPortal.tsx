@@ -1520,7 +1520,7 @@ export const LessorPartnerPortal: React.FC<LessorPartnerPortalProps> = ({
                 >
                   {floorWorkspaceActive ? (
                     <StaffCourtStatus key={tenantId} snapshot={currentCourtSnapshot} error={courtStatusError}
-                      venueName={activeProvider.providerName}
+                      venueName={activeProvider.providerName} listings={myListings}
                       onRefresh={() => setCourtRefresh(revision => revision + 1)}
                       onOpenSchedule={() => setActiveTab('WEEKLY_SCHEDULE')}
                       onOpenVenue={onOpenPublicShop ? () => onOpenPublicShop(activeProvider.providerId) : undefined}
@@ -1593,7 +1593,7 @@ export const LessorPartnerPortal: React.FC<LessorPartnerPortalProps> = ({
                 >
                   {canEditFloor && (
                     <StaffCourtStatus key={tenantId} snapshot={currentCourtSnapshot} error={courtStatusError}
-                      venueName={activeProvider.providerName} showRoster={false}
+                      venueName={activeProvider.providerName} listings={myListings} showRoster={false}
                       onRefresh={() => setCourtRefresh(revision => revision + 1)}
                       onOpenSchedule={() => setActiveTab('WEEKLY_SCHEDULE')}
                       onEditFloor={(groupId, groupName) => setFloorEditor({ groupId, groupName })}
@@ -2503,6 +2503,7 @@ export const LessorPartnerPortal: React.FC<LessorPartnerPortalProps> = ({
       </div>
       {canEditFloor && floorEditor && (
         <CourtFloorEditor key={`${tenantId}:${floorEditor.groupId}`} tenantId={tenantId} {...floorEditor}
+          listing={myListings.find(item => item.groupId === floorEditor.groupId)}
           onClose={() => setFloorEditor(null)}
           onSaved={() => {
             setFloorEditor(null);

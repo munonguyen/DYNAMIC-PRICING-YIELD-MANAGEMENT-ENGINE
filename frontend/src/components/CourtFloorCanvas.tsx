@@ -1,6 +1,8 @@
-import { useRef, type PointerEvent } from 'react';
-import { Move } from 'lucide-react';
+import { useLayoutEffect, useRef, useState, type PointerEvent } from 'react';
+import { Grid2X2, Maximize, Minus, Move, Plus } from 'lucide-react';
 import type { CourtFloorDraft, CourtFloorPlacement, CourtFloorUnit, VenueCourt } from '../types/marketplace';
+import { CourtMarkings } from './CourtMarkings';
+import './CourtFloorCanvas.css';
 
 export const floorStatuses = {
   AVAILABLE: { label: 'Trống lúc này', short: 'Trống', tile: 'border-[#67A582] bg-[#E5F4E8] text-[#163F2D]', dot: 'bg-[#29734D]' },
@@ -53,14 +55,74 @@ interface CourtFloorCanvasProps {
   statuses?: Map<string, VenueCourt['status']>;
   dimmedIds?: Set<string>;
   schematic?: boolean;
+  sportCode?: string;
+  sportName?: string;
   onMove?: (id: string, xCm: number, yCm: number) => void;
 }
 
-export function CourtFloorCanvas({ draft, selectedId, onSelect, statuses, dimmedIds, schematic, onMove }: CourtFloorCanvasProps) {
+const zoomLevels = [1, 1.25, 1.6, 2, 2.5];
+const toolbarButton = 'grid h-8 w-8 shrink-0 place-items-center rounded-md text-[#E6F6EE] hover:bg-white/15 focus-visible:outline-[#81CDB2] disabled:opacity-35';
+
+function drawingStep(range: number) {
+  const target = range / 4.5;
+  const magnitude = 10 ** Math.floor(Math.log10(target));
+  const steps = [1, 2, 5, 10].map(step => step * magnitude);
+  return steps.reduce((closest, step) => Math.abs(step - target) < Math.abs(closest - target) ? step : closest);
+}
+
+function DrawingRuler({ range, step, axis }: { range: number; step: number; axis: 'x' | 'y' }) {
+  const steps = Array.from({ length: Math.floor(range / step) + 1 }, (_, index) => index * step);
+  return (
+    <div aria-hidden="true" className={`pointer-events-none relative select-none text-[9px] font-semibold tabular-nums text-[#BFDBCE]
+      ${axis === 'x' ? 'mb-1.5 h-5 border-b border-[#799D8B]/55' : 'mr-1.5 w-7 border-r border-[#799D8B]/55'}`}>
+      {steps.map(value => (
+        <span key={value} style={axis === 'x' ? { left: `${value / range * 100}%` } : { top: `${value / range * 100}%` }}
+          className={`absolute ${axis === 'x' ? 'bottom-0 -translate-x-1/2 pb-1' : 'right-0 -translate-y-1/2 pr-1.5'}`}>
+          {asMetres(value)}
+          <span className={`absolute bg-[#799D8B] ${axis === 'x' ? 'bottom-0 left-1/2 h-[3px] w-px' : 'right-0 top-1/2 h-px w-[3px]'}`} />
+        </span>
+      ))}
+    </div>
+  );
+}
+
+export function CourtFloorCanvas({ draft, selectedId, onSelect, statuses, dimmedIds, schematic, sportCode, sportName, onMove }: CourtFloorCanvasProps) {
   const board = useRef<HTMLDivElement>(null);
+  const viewport = useRef<HTMLDivElement>(null);
+  const zoomAnchor = useRef<{ x: number; y: number } | null>(null);
   const drag = useRef<{ id: string; pointerId: number; x: number; y: number; initial: CourtFloorPlacement } | null>(null);
+  const [zoomIndex, setZoomIndex] = useState(0);
+  const zoom = zoomLevels[zoomIndex];
   const aspect = draft.widthCm / draft.lengthCm;
-  const dense = draft.placements.length > 16;
+  const xStep = drawingStep(draft.widthCm);
+  const yStep = drawingStep(draft.lengthCm);
+  const scaleCm = Math.min(xStep, yStep);
+
+  const changeZoom = (next: number) => {
+    if (next === zoomIndex || !viewport.current || !board.current) return;
+    const frame = viewport.current.getBoundingClientRect();
+    const bounds = board.current.getBoundingClientRect();
+    zoomAnchor.current = {
+      x: Math.max(0, Math.min(1, (frame.left + frame.width / 2 - bounds.left) / bounds.width)),
+      y: Math.max(0, Math.min(1, (frame.top + frame.height / 2 - bounds.top) / bounds.height)),
+    };
+    setZoomIndex(next);
+  };
+
+  useLayoutEffect(() => {
+    const anchor = zoomAnchor.current;
+    const frame = viewport.current;
+    const bounds = board.current?.getBoundingClientRect();
+    if (!anchor || !frame || !bounds) return;
+    if (zoomIndex === 0) {
+      frame.scrollTo(0, 0);
+    } else {
+      const rect = frame.getBoundingClientRect();
+      frame.scrollLeft += bounds.left + bounds.width * anchor.x - rect.left - frame.clientWidth / 2;
+      frame.scrollTop += bounds.top + bounds.height * anchor.y - rect.top - frame.clientHeight / 2;
+    }
+    zoomAnchor.current = null;
+  }, [zoomIndex]);
 
   const move = (event: PointerEvent<HTMLButtonElement>) => {
     const origin = drag.current;
@@ -74,63 +136,84 @@ export function CourtFloorCanvas({ draft, selectedId, onSelect, statuses, dimmed
   };
 
   return (
-    <div className="min-w-0 overflow-x-auto rounded-[20px] border border-[#D8E5DC] bg-[#F4F8F5] px-3 py-4 sm:px-5">
-      {dense && <p className="mb-2 text-xs text-[#4B6255] sm:hidden">Vuốt ngang để xem toàn bộ sơ đồ.</p>}
-      <div className="mx-auto" style={{
-        width: `min(100%, ${Math.min(1400, 520 * aspect)}px)`,
-        minWidth: dense ? Math.min(390, 370 * aspect) : undefined,
-      }}>
-        {!schematic && (
-          <div className="mb-2 flex items-center gap-2 text-[11px] font-semibold tabular-nums text-[#4B6255]">
-            <span className="h-px flex-1 bg-[#AFC0B5]" /> {asMetres(draft.widthCm)} m rộng <span className="h-px flex-1 bg-[#AFC0B5]" />
-          </div>
-        )}
-        <div ref={board} role="group" aria-label="Mặt bằng các sân" style={{
-          aspectRatio: aspect,
-          backgroundImage: 'linear-gradient(#dce7de 1px, transparent 1px), linear-gradient(90deg, #dce7de 1px, transparent 1px)',
-          backgroundSize: '18px 18px',
-        }} className="relative isolate overflow-hidden rounded-[13px] border-2 border-[#A0B6A8] bg-[#EDF3EE]">
-          {draft.placements.map(court => {
-            const state = statuses?.get(court.unitId);
-            const style = state ? floorStatuses[state] : undefined;
-            const selected = selectedId === court.unitId;
-            return (
-              <button key={court.unitId} type="button" aria-pressed={selected}
-                aria-label={style ? `${court.label} · ${style.label}` : court.label}
-                title={style ? `${court.label} · ${style.label}` : court.label}
-                onClick={() => onSelect(court.unitId)}
-                onPointerDown={event => {
-                  if (!onMove || event.button !== 0) return;
-                  onSelect(court.unitId);
-                  drag.current = { id: court.unitId, pointerId: event.pointerId, x: event.clientX, y: event.clientY, initial: court };
-                  event.currentTarget.setPointerCapture(event.pointerId);
-                }}
-                onPointerMove={move}
-                onPointerUp={() => { drag.current = null; }}
-                onLostPointerCapture={() => { drag.current = null; }}
-                style={{
-                  left: `${court.xCm / draft.widthCm * 100}%`, top: `${court.yCm / draft.lengthCm * 100}%`,
-                  width: `${court.widthCm / draft.widthCm * 100}%`, height: `${court.lengthCm / draft.lengthCm * 100}%`,
-                }}
-                className={`group absolute flex min-w-0 items-center justify-center overflow-hidden rounded-[7px] border text-center shadow-xs
-                  hover:brightness-[0.96] focus-visible:z-20 focus-visible:outline-2 focus-visible:outline-offset-[-4px]
-                  ${style?.tile ?? 'border-[#79AD91] bg-[#DCEEE3] text-[#184531]'}
-                  ${onMove ? 'touch-none cursor-grab active:cursor-grabbing' : 'cursor-pointer'}
-                  ${selected ? 'z-10 ring-2 ring-[#122F25] ring-offset-1' : ''}
-                  ${dimmedIds?.has(court.unitId) && !selected ? 'opacity-40' : ''}`}>
-                <span aria-hidden="true" className="pointer-events-none absolute inset-[9%] rounded-[3px] border border-current opacity-15">
-                  <span className="absolute inset-x-0 top-1/2 border-t border-current" />
-                </span>
-                <span className="relative min-w-0 px-1">
-                  <span className={`line-clamp-2 break-words font-bold leading-tight ${dense ? 'text-[9px] sm:text-xs' : 'text-[10px] sm:text-sm'}`}>{court.label}</span>
-                  {style && <span className="mt-0.5 line-clamp-2 text-[9px] font-semibold leading-tight sm:text-[11px]">{style.short}</span>}
-                </span>
-                {onMove && selected && <Move aria-hidden="true" className="absolute right-1 top-1 hidden h-3 w-3 opacity-70 sm:block" />}
-              </button>
-            );
-          })}
+    <div className="court-drawing min-w-0">
+      <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2 border-b border-white/15 px-3 py-2 sm:px-4">
+        <div className="flex min-w-0 items-center gap-2 text-xs font-bold">
+          <Grid2X2 size={14} aria-hidden="true" className="shrink-0 text-[#9DCEBA]" />
+          <span>Mặt bằng</span>
+          {sportName && <span className="truncate border-l border-white/20 pl-2 font-medium text-[#A9CABB]">{sportName}</span>}
         </div>
-        {!schematic && <p className="mt-2 text-right text-[11px] font-semibold tabular-nums text-[#4B6255]">{asMetres(draft.lengthCm)} m dài</p>}
+        <div role="group" aria-label="Điều chỉnh độ phóng sơ đồ" className="flex items-center gap-0.5 rounded-lg border border-white/14 bg-[#0C211D] p-0.5">
+          <button type="button" aria-label="Thu nhỏ sơ đồ" title="Thu nhỏ" disabled={zoomIndex === 0}
+            className={toolbarButton} onClick={() => changeZoom(zoomIndex - 1)}><Minus aria-hidden="true" size={15} /></button>
+          <output aria-label="Độ phóng sơ đồ" className="min-w-9 text-center text-xs font-semibold tabular-nums">{Math.round(zoom * 100)}%</output>
+          <button type="button" aria-label="Phóng to sơ đồ" title="Phóng to" disabled={zoomIndex === zoomLevels.length - 1}
+            className={toolbarButton} onClick={() => changeZoom(zoomIndex + 1)}><Plus aria-hidden="true" size={15} /></button>
+          <span aria-hidden="true" className="mx-0.5 h-4 w-px bg-white/16" />
+          <button type="button" aria-label="Vừa khung sơ đồ" title="Vừa khung" disabled={zoomIndex === 0}
+            className={toolbarButton} onClick={() => changeZoom(0)}><Maximize aria-hidden="true" size={14} /></button>
+        </div>
+      </div>
+      <div ref={viewport} role="region" aria-label="Khung cuộn sơ đồ" data-zoomed={zoomIndex > 0} tabIndex={zoomIndex > 0 ? 0 : undefined}
+        className="court-drawing-viewport max-h-[min(52vh,500px)] overflow-auto px-3 py-4 focus-visible:outline-[#81CDB2] sm:max-h-[min(64vh,615px)] sm:px-5 sm:py-5">
+        <div className="mx-auto grid grid-cols-[auto_minmax(0,1fr)]" style={{
+          width: `min(${100 * zoom}%, calc(var(--drawing-fit-height) * ${aspect * zoom} + ${schematic ? 0 : 34 * zoom}px))`,
+        }}>
+          {!schematic && <>
+            <span aria-hidden="true" className="text-[9px] font-bold text-[#9AB9AA]">m</span>
+            <DrawingRuler range={draft.widthCm} step={xStep} axis="x" />
+            <DrawingRuler range={draft.lengthCm} step={yStep} axis="y" />
+          </>}
+          <div ref={board} role="group" aria-label="Mặt bằng các sân" style={{
+            aspectRatio: aspect,
+            backgroundSize: `${xStep / draft.widthCm * 100}% 100%, 100% ${yStep / draft.lengthCm * 100}%, ${xStep / draft.widthCm * 20}% 100%, 100% ${yStep / draft.lengthCm * 20}%`,
+          }} className={`court-drawing-board ${schematic ? 'col-span-2' : ''}`}>
+            {draft.placements.map(court => {
+              const state = statuses?.get(court.unitId);
+              const style = state ? floorStatuses[state] : undefined;
+              const selected = selectedId === court.unitId;
+              return (
+                <button key={court.unitId} type="button" aria-pressed={selected}
+                  aria-label={style ? `${court.label} · ${style.label}` : court.label}
+                  data-state={state}
+                  title={style ? `${court.label} · ${style.label}` : court.label}
+                  onClick={() => onSelect(court.unitId)}
+                  onPointerDown={event => {
+                    if (!onMove || event.button !== 0) return;
+                    onSelect(court.unitId);
+                    drag.current = { id: court.unitId, pointerId: event.pointerId, x: event.clientX, y: event.clientY, initial: court };
+                    event.currentTarget.setPointerCapture(event.pointerId);
+                  }}
+                  onPointerMove={move}
+                  onPointerUp={() => { drag.current = null; }}
+                  onLostPointerCapture={() => { drag.current = null; }}
+                  style={{
+                    left: `${court.xCm / draft.widthCm * 100}%`, top: `${court.yCm / draft.lengthCm * 100}%`,
+                    width: `${court.widthCm / draft.widthCm * 100}%`, height: `${court.lengthCm / draft.lengthCm * 100}%`,
+                  }}
+                  className={`court-drawing-tile absolute min-w-0 overflow-hidden
+                    transition-[filter,opacity] hover:z-10 hover:brightness-115 focus-visible:z-20 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white
+                    ${onMove ? 'touch-none cursor-grab active:cursor-grabbing' : 'cursor-pointer'}
+                    ${selected ? 'z-20' : ''}
+                    ${dimmedIds?.has(court.unitId) && !selected ? 'opacity-35' : ''}`}>
+                  <CourtMarkings sportCode={sportCode} landscape={court.widthCm > court.lengthCm} />
+                  <span className="court-drawing-caption pointer-events-none">
+                    <span className="court-drawing-name">{court.label}</span>
+                    {style && <span className="court-drawing-status">{style.short}</span>}
+                  </span>
+                  {onMove && selected && <Move aria-hidden="true" className="pointer-events-none absolute right-1.5 top-1.5 hidden h-3 w-3 text-[#D5F5E6] sm:block" />}
+                </button>
+              );
+            })}
+          </div>
+          {!schematic && (
+            <div className="col-start-2 mt-3 flex items-center gap-2 text-[10px] font-semibold tabular-nums text-[#BCD7CB]">
+              <span aria-hidden="true" className="h-1.5 shrink-0 border-x border-b border-[#CBE3D8]" style={{ width: `${scaleCm / draft.widthCm * 100}%` }} />
+              <span className="shrink-0">{asMetres(scaleCm)} m</span>
+              <span className="ml-auto text-right">{asMetres(draft.widthCm)} × {asMetres(draft.lengthCm)} m</span>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );
