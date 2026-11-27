@@ -177,6 +177,73 @@ class V3MarketplaceIntegrationTest {
     }
 
     @Test
+    @Order(13)
+    void customerScheduleReadsOnlyOwnReservationsInsideTheVietnameseWeek() throws Exception {
+        String suffix = UUID.randomUUID().toString().substring(0, 8);
+        var customer = authService.register(new RegisterRequest("schedule_" + suffix, suffix + "@example.test",
+                "Pass12345!", "Test", "Schedule", null));
+        var stranger = authService.register(new RegisterRequest("other_" + suffix, "other-" + suffix + "@example.test",
+                "Pass12345!", "Test", "Other", null));
+        var customerLogin = authService.login(new LoginRequest(customer.username(), "Pass12345!"));
+        var otherLogin = authService.login(new LoginRequest(stranger.username(), "Pass12345!"));
+
+        var zone = java.time.ZoneId.of("Asia/Ho_Chi_Minh");
+        var monday = java.time.LocalDate.now(zone).with(java.time.temporal.TemporalAdjusters.next(java.time.DayOfWeek.MONDAY))
+                .plusWeeks(1);
+        var opens = monday.atStartOfDay(zone).toInstant();
+        var closes = monday.plusWeeks(1).atStartOfDay(zone).toInstant();
+        AuthContext.set(sessionStore.findSession(customerLogin.accessToken()).orElseThrow(), customerLogin.accessToken());
+        var lastWeek = createPaymentTestHold(opens.minusSeconds(3600), customer.id());
+        var opening = createPaymentTestHold(opens, customer.id());
+        var later = createPaymentTestHold(opens.plusSeconds(7200), customer.id());
+        var nextWeek = createPaymentTestHold(closes, customer.id());
+
+        AuthContext.set(sessionStore.findSession(otherLogin.accessToken()).orElseThrow(), otherLogin.accessToken());
+        var otherBooking = createPaymentTestHold(opens.plusSeconds(3600), stranger.id());
+
+        jdbcTemplate.update("UPDATE time_slots SET slot_end = slot_start + INTERVAL '45 minutes' WHERE group_id = ? AND slot_start = ?",
+                DEFAULT_GROUP_ID, java.sql.Timestamp.from(opens));
+        jdbcTemplate.update("UPDATE reservations SET hold_expires_at = now() - INTERVAL '1 minute' WHERE id = ?",
+                later.getReservationId());
+
+        String path = "/api/v1/bookings/my-schedule";
+        AuthContext.clear();
+        assertEquals(401, mvc.perform(MockMvcRequestBuilders.get(path)).andReturn().getResponse().getStatus());
+        var request = MockMvcRequestBuilders.get(path).param("weekStart", monday.plusDays(2).toString())
+                .param("userId", stranger.id().toString()).header("Authorization", "Bearer " + customerLogin.accessToken());
+        var response = mvc.perform(request).andReturn().getResponse();
+        assertEquals(200, response.getStatus(), response.getContentAsString());
+        assertEquals("no-store", response.getHeader("Cache-Control"));
+
+        var week = JSON.readTree(response.getContentAsString());
+        assertEquals(monday.toString(), week.path("weekStart").asText());
+        var bookings = week.path("bookings");
+        assertEquals(2, bookings.size());
+        assertEquals(opening.getReservationId().toString(), bookings.get(0).path("reservationId").asText());
+        assertEquals(opens, Instant.parse(bookings.get(0).path("slotStart").asText()));
+        assertEquals(opens.plusSeconds(2700), Instant.parse(bookings.get(0).path("slotEnd").asText()));
+        assertEquals("HELD", bookings.get(0).path("status").asText());
+        assertFalse(bookings.get(0).path("unitNumber").asText().isBlank());
+        assertEquals(later.getReservationId().toString(), bookings.get(1).path("reservationId").asText());
+        assertEquals("EXPIRED", bookings.get(1).path("status").asText());
+        assertTrue(bookings.get(1).path("holdExpiresAt").isNull());
+
+        var previous = mvc.perform(MockMvcRequestBuilders.get(path).param("weekStart", monday.minusWeeks(1).toString())
+                .header("Authorization", "Bearer " + customerLogin.accessToken())).andReturn().getResponse();
+        assertEquals(lastWeek.getReservationId().toString(), JSON.readTree(previous.getContentAsString())
+                .at("/bookings/0/reservationId").asText());
+        var next = mvc.perform(MockMvcRequestBuilders.get(path).param("weekStart", monday.plusWeeks(1).toString())
+                .header("Authorization", "Bearer " + customerLogin.accessToken())).andReturn().getResponse();
+        assertEquals(nextWeek.getReservationId().toString(), JSON.readTree(next.getContentAsString())
+                .at("/bookings/0/reservationId").asText());
+        var other = mvc.perform(MockMvcRequestBuilders.get(path).param("weekStart", monday.toString())
+                .header("Authorization", "Bearer " + otherLogin.accessToken())).andReturn().getResponse();
+        var otherWeek = JSON.readTree(other.getContentAsString()).path("bookings");
+        assertEquals(1, otherWeek.size());
+        assertEquals(otherBooking.getReservationId().toString(), otherWeek.get(0).path("reservationId").asText());
+    }
+
+    @Test
     @Order(1)
     @DisplayName("BRD Worked Example: 35% Deposit & 11-Hour Cancellation Tier Boundary (11h01m vs 10h59m)")
     void testBrdWorkedCancellationBoundaryAndVenueOverride() {
