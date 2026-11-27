@@ -1,0 +1,24 @@
+{
+  "branch": "complete/lessor/court-floor-plan",
+  "title": "Thiết lập và theo dõi sơ đồ sân",
+  "scope": "Chủ sân lưu kích thước mặt bằng và bố trí sân vật lý theo mét. Nhân viên xem cùng sơ đồ và trạng thái ca hiện tại của từng sân.",
+  "operations": [
+    { "method": "GET", "path": "/api/v1/inventory/groups/{id}/floor-plan", "operationId": "getFloorPlan" },
+    { "method": "PUT", "path": "/api/v1/inventory/groups/{id}/floor-plan", "operationId": "saveFloorPlan" },
+    { "method": "GET", "path": "/api/v1/checkins/court-status", "operationId": "venueCourtStatus" }
+  ],
+  "source": [
+    {
+      "file": "src/main/java/com/yieldengine/service/CourtFloorPlanService.java",
+      "anchors": ["validatePlacements", "loadForVenue", "FOR UPDATE"]
+    },
+    {
+      "file": "frontend/src/components/CourtFloorEditor.tsx",
+      "anchors": ["Thiết lập sơ đồ sân", "Lưu sơ đồ", "Chia đều"]
+    },
+    {
+      "file": "frontend/src/components/CourtFloorCanvas.tsx",
+      "anchors": ["Mặt bằng các sân", "Đã đặt · Chờ nhận sân", "Đang sử dụng"]
+    }
+  ]
+}
