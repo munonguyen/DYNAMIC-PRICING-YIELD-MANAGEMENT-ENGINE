@@ -1,5 +1,5 @@
 {
-  "branch": "service/lessor/deposit-bookings",
+  "branch": "complete/lessor/deposit-bookings",
   "title": "Quản lý đơn chờ thanh toán",
   "scope": "Cổng chủ sân theo dõi lượt giữ ca có trạng thái HELD. Trạng thái này thể hiện lượt giữ đang chờ xử lý và chưa xác nhận thu cọc.",
   "operations": [
