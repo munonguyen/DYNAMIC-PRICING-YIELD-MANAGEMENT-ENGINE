@@ -29,6 +29,7 @@ public class CheckoutPaymentService {
     private final PaymentRepository payments;
     private final VnPayTransactionRepository vnPayTransactions;
     private final MoMoPaymentGatewayService moMo;
+    private final VnPayPaymentService vnPay;
     private final VietQrProperties vietQr;
     private final VietQrTransferService vietQrTransfers;
 
@@ -36,6 +37,7 @@ public class CheckoutPaymentService {
         var providers = new ArrayList<String>();
         if (vietQr.isConfigured()) providers.add(VietQrTransferService.PROVIDER);
         if (moMo.isConfigured()) providers.add("MOMO_WALLET");
+        if (vnPay.isConfigured()) providers.add("VNPAY_ESCROW");
         return providers;
     }
 
