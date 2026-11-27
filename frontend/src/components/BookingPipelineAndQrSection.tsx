@@ -126,6 +126,7 @@ export const BookingPipelineAndQrSection: React.FC<BookingPipelineAndQrSectionPr
   const trackedReservation = matchingHold?.reservationId ?? rememberedReservation;
   const currentPayment = paymentStatus?.reservationId === trackedReservation ? paymentStatus : null;
   const state = currentPayment?.paymentStatus;
+  const fullyPaid = state === 'VERIFIED' && currentPayment?.remainingAtVenue === 0;
   const issued = state === 'VERIFIED' || state === 'NO_DEPOSIT';
   const activeTicket = issued && myTicket?.reservationId === trackedReservation ? myTicket : null;
   const enabledQrProviders = qrProviders.filter(({ code }) => providers?.includes(code));
@@ -198,11 +199,11 @@ export const BookingPipelineAndQrSection: React.FC<BookingPipelineAndQrSectionPr
   useEffect(() => {
     if (
       trackingKey &&
-      (state === 'VERIFIED' || state === 'NO_DEPOSIT' || state === 'CANCELLED' || state === 'EXPIRED')
+      (fullyPaid || state === 'CANCELLED' || state === 'EXPIRED')
     ) {
       window.sessionStorage.removeItem(trackingKey);
     }
-  }, [trackingKey, state]);
+  }, [trackingKey, fullyPaid, state]);
 
   useEffect(() => {
     if (!ownerId || !trackedReservation) return;
@@ -262,7 +263,10 @@ export const BookingPipelineAndQrSection: React.FC<BookingPipelineAndQrSectionPr
   useEffect(() => {
     const onBalanceUpdated = (event: Event) => {
       const status = (event as CustomEvent<BookingPaymentStatus>).detail;
-      if (status?.reservationId === trackedReservation) setStatusRequest(value => value + 1);
+      if (status?.reservationId !== trackedReservation) return;
+      setPaymentStatus(status);
+      setStatusError(null);
+      setStatusRequest(value => value + 1);
     };
     window.addEventListener('arenapulse:balance-updated', onBalanceUpdated);
     return () => window.removeEventListener('arenapulse:balance-updated', onBalanceUpdated);
@@ -1084,8 +1088,10 @@ export const BookingPipelineAndQrSection: React.FC<BookingPipelineAndQrSectionPr
               )}
 
               {trackedReservation && !cancelResult && (
-                <div className="mt-4 rounded-2xl border border-neutral-200 p-4 text-sm" role="status">
-                  <p className="font-semibold">{state ? stateMessages[state] : 'Đang kiểm tra trạng thái thanh toán…'}</p>
+                <div className={`mt-4 rounded-2xl border p-4 text-sm ${fullyPaid
+                  ? 'border-[#B8DCD0] bg-[#EDF8F3] text-[#16422C]' : 'border-neutral-200'}`} role="status">
+                  <p className="font-semibold">{fullyPaid ? 'Đã thanh toán đủ tiền sân.'
+                    : state ? stateMessages[state] : 'Đang kiểm tra trạng thái thanh toán…'}</p>
                   {state === 'VERIFIED' && currentPayment && (
                     <>
                       <p>Đã thu {formatVnd(currentPayment.paidAmount)} · Còn trả tiền sân {formatVnd(currentPayment.remainingAtVenue)}</p>

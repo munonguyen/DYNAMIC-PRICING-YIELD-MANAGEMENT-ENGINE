@@ -1,8 +1,16 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { formatVnd, marketplaceApi } from '../api/marketplaceApi';
 import type { BookingPaymentStatus } from '../types/marketplace';
 import { CheckoutPaymentQr } from './CheckoutPaymentQr';
 import { ActionButton } from './FairwayControls';
+
+const PENDING_REFRESH_MS = 2_000;
+const REVIEW_REFRESH_MS = 15_000;
+const LATE_NOTICE_WINDOW_MS = 2 * 60_000;
+
+function isPaidInFull(status: BookingPaymentStatus | null) {
+  return status?.paymentStatus === 'VERIFIED' && status.remainingAtVenue === 0;
+}
 
 export function CustomerBalancePayment({ reservationId }: { reservationId: string }) {
   const [payment, setPayment] = useState<BookingPaymentStatus | null>(null);
@@ -11,45 +19,63 @@ export function CustomerBalancePayment({ reservationId }: { reservationId: strin
   const [busy, setBusy] = useState(false);
   const [revision, setRevision] = useState(0);
   const createRequest = useRef<AbortController | null>(null);
+  const notified = useRef(false);
+  const watchUntil = useRef(0);
+  const acceptStatus = useCallback((status: BookingPaymentStatus) => {
+    const expiresAt = status.balancePayment?.qr?.holdUntil;
+    if (expiresAt) watchUntil.current = Date.parse(expiresAt) + LATE_NOTICE_WINDOW_MS;
+    setPayment(status);
+    if (!notified.current && isPaidInFull(status)) {
+      notified.current = true;
+      window.dispatchEvent(new CustomEvent('arenapulse:balance-updated', { detail: status }));
+    }
+  }, []);
 
   useEffect(() => () => createRequest.current?.abort(), []);
 
   const balance = payment?.balancePayment;
-  const pollState = balance?.state === 'PENDING' || balance?.state === 'REVIEW_REQUIRED' ? balance.state : null;
+  const watchingLateNotice = payment?.reservationStatus === 'CONFIRMED' && payment.remainingAtVenue > 0
+    && Date.now() < watchUntil.current;
+  const refreshInterval = balance?.state === 'PENDING' ? PENDING_REFRESH_MS
+    : balance?.state === 'REVIEW_REQUIRED' || watchingLateNotice ? REVIEW_REFRESH_MS : null;
 
   useEffect(() => {
     if (busy) return;
     const controller = new AbortController();
+    let delay = refreshInterval ?? PENDING_REFRESH_MS;
+    let timer: number | undefined;
     let inFlight = false;
     const refresh = async () => {
-      if (document.hidden || inFlight) return;
+      if (controller.signal.aborted || document.hidden || inFlight || notified.current) return;
+      window.clearTimeout(timer);
       inFlight = true;
       try {
         const status = await marketplaceApi.getBookingPaymentStatus(reservationId, controller.signal);
         if (controller.signal.aborted) return;
         setStatusError(null);
-        setPayment(status);
-        if (pollState && status.remainingAtVenue === 0 && status.paymentStatus === 'VERIFIED') {
-          window.dispatchEvent(new CustomEvent('arenapulse:balance-updated', { detail: status }));
-        }
+        acceptStatus(status);
+        delay = refreshInterval ?? PENDING_REFRESH_MS;
       } catch (error) {
         if (!controller.signal.aborted) {
           setStatusError(error instanceof Error ? error.message : 'Chưa tải được thông tin thanh toán.');
+          delay = Math.min(delay * 2, 30_000);
         }
       } finally {
         inFlight = false;
+        if (refreshInterval && !document.hidden && !controller.signal.aborted && !notified.current) {
+          timer = window.setTimeout(refresh, delay);
+        }
       }
     };
 
     void refresh();
-    const timer = pollState ? window.setInterval(refresh, pollState === 'REVIEW_REQUIRED' ? 15_000 : 4_000) : undefined;
     document.addEventListener('visibilitychange', refresh);
     return () => {
       controller.abort();
-      window.clearInterval(timer);
+      window.clearTimeout(timer);
       document.removeEventListener('visibilitychange', refresh);
     };
-  }, [reservationId, pollState, busy, revision]);
+  }, [reservationId, refreshInterval, busy, revision, acceptStatus]);
 
   const createQr = async () => {
     if (createRequest.current) return;
@@ -59,7 +85,7 @@ export function CustomerBalancePayment({ reservationId }: { reservationId: strin
     setBusy(true);
     try {
       const status = await marketplaceApi.createVietQrBalance(reservationId, request.signal);
-      if (!request.signal.aborted) setPayment(status);
+      if (!request.signal.aborted) acceptStatus(status);
     } catch (error) {
       if (!request.signal.aborted) {
         setActionError(error instanceof Error ? error.message : 'Chưa tạo được mã thanh toán.');
@@ -71,7 +97,7 @@ export function CustomerBalancePayment({ reservationId }: { reservationId: strin
   };
 
   const error = statusError || (balance?.qr ? null : actionError);
-  const paidInFull = payment?.paymentStatus === 'VERIFIED' && payment.remainingAtVenue === 0;
+  const paidInFull = isPaidInFull(payment);
   if (!balance && !error && !paidInFull) return null;
 
   return (
@@ -93,7 +119,7 @@ export function CustomerBalancePayment({ reservationId }: { reservationId: strin
       )}
       {balance?.state === 'PENDING' && (
         <p role="status" className="text-xs text-neutral-700">
-          {balance.qr ? 'Đang chờ VietQR xác nhận khoản chuyển.' : 'Chưa tải được mã. Đang kiểm tra trạng thái với hệ thống.'}
+          {balance.qr ? 'Đang chờ VietQR báo tiền vào. Trạng thái sẽ tự cập nhật.' : 'Chưa tải được mã. Đang kiểm tra trạng thái với hệ thống.'}
         </p>
       )}
       {balance?.state === 'REVIEW_REQUIRED' && (
