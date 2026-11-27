@@ -1,5 +1,5 @@
 {
-  "branch": "service/shared/auth-session",
+  "branch": "complete/shared/auth-session",
   "title": "Đăng nhập và quản lý phiên",
   "scope": "Đăng ký, đăng nhập, đọc hồ sơ đang dùng và kết thúc phiên.",
   "operations": [
