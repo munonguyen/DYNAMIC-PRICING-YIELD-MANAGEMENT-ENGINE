@@ -1,5 +1,5 @@
 {
-  "branch": "service/customer/checkout",
+  "branch": "complete/customer/checkout",
   "title": "Thanh toán đơn sân",
   "scope": "Chọn cổng thanh toán và theo dõi trạng thái tiền trên đơn.",
   "operations": [
