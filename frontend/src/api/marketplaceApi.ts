@@ -11,6 +11,9 @@ import type {
   CancelBookingResult,
   CheckInResult,
   CourtMediaItem,
+  CourtFloorDraft,
+  CourtFloorEditorData,
+  CourtFloorLayout,
   CourtSearchResponseData,
   CustomerSchedule,
   HoldSlotResult,
@@ -833,6 +836,16 @@ class MarketplaceApiClient {
     const query = new URLSearchParams({ tenantId });
     const snapshot = await this.checkoutRequest<VenueCourtSnapshot>(`/checkins/court-status?${query}`, undefined, signal);
     return { ...snapshot, bookings: snapshot.bookings.map((order) => this.normalizeVenueOrder(order, tenantId)) };
+  }
+
+  getCourtFloor(tenantId: string, groupId: string, signal: AbortSignal): Promise<CourtFloorEditorData> {
+    const query = new URLSearchParams({ tenantId });
+    return this.checkoutRequest(`/inventory/groups/${groupId}/floor-plan?${query}`, undefined, signal);
+  }
+
+  saveCourtFloor(tenantId: string, groupId: string, draft: CourtFloorDraft): Promise<CourtFloorLayout> {
+    const query = new URLSearchParams({ tenantId });
+    return this.checkoutRequest(`/inventory/groups/${groupId}/floor-plan?${query}`, draft, undefined, 'PUT');
   }
 
   private normalizeVenueOrder(order: LessorBookingOrder, tenantId: string): LessorBookingOrder {
