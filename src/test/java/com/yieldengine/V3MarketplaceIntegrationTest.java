@@ -141,6 +141,9 @@ class V3MarketplaceIntegrationTest {
     private VnPayPaymentService vnPay;
 
     @Autowired
+    private CustomerTicketReadService customerTickets;
+
+    @Autowired
     private VnPayRefundSettlement vnPayRefundSettlement;
 
     @Autowired
@@ -316,7 +319,7 @@ class V3MarketplaceIntegrationTest {
     @Test
     @Order(5)
     @DisplayName("Full E2E Flow: Discovery -> Quote -> Idempotent Hold -> Webhook -> QR Scan -> Double-Entry Ledger & Chat")
-    void testEndToEndBookingDepositQrCheckInChatAndLedger() {
+    void testEndToEndBookingDepositQrCheckInChatAndLedger() throws Exception {
         String suffix = UUID.randomUUID().toString().substring(0, 8);
 
         // 1. Setup Player, Venue1 Staff, Venue2 Staff, and Accountant
@@ -392,6 +395,14 @@ class V3MarketplaceIntegrationTest {
 
         assertTrue(checkoutPayment.configuredProviders().contains("VNPAY_ESCROW"));
 
+        var unavailableMoMo = mvc.perform(MockMvcRequestBuilders.post("/api/v1/payments/momo/create")
+                .header("Authorization", "Bearer " + playerAuth.accessToken())
+                .contentType(org.springframework.http.MediaType.APPLICATION_JSON)
+                .content(JSON.writeValueAsString(Map.of("reservationId", held.getReservationId(), "amount", held.getDepositAmount()))))
+                .andReturn().getResponse();
+        assertEquals(503, unavailableMoMo.getStatus());
+        AuthContext.set(playerPrincipal, playerAuth.accessToken());
+
         // A provider session and browser return leave the booking on hold.
         var paymentRequest = new CreateVnPayPaymentRequest(held.getReservationId(), held.getDepositAmount(),
                 null, "vn", null, null, null, null, null, null, null, null, null);
@@ -401,6 +412,10 @@ class V3MarketplaceIntegrationTest {
         var attempt = vnPay.createPaymentUrl(paymentRequest, "127.0.0.1", player.id());
         assertEquals(State.PENDING, checkoutPayment.getStatus(held.getReservationId(), player.id()).paymentStatus());
         assertThrows(BusinessConflictException.class, () -> vnPay.createPaymentUrl(paymentRequest, "127.0.0.1", player.id()));
+
+        assertTrue(customerTickets.listPaymentHistory(player.id(), 0, 25).stream()
+                .noneMatch(ticket -> held.getReservationId().equals(ticket.reservationId())));
+        assertTrue(customerTickets.listTickets(manager.id(), held.getReservationId(), 0, 1).isEmpty());
 
         var rejected = signedVnPayFixture(attempt.txnRef(), attempt.vnpAmount(), "24", "02");
         assertFalse(vnPay.handleReturnCallback(rejected).paymentSucceeded());
@@ -424,6 +439,14 @@ class V3MarketplaceIntegrationTest {
         assertEquals(State.VERIFIED, verified.paymentStatus());
         assertEquals(held.getDepositAmount(), verified.paidAmount());
         assertEquals(retry.txnRef(), verified.providerReference());
+
+        var ticket = customerTickets.listTickets(player.id(), held.getReservationId(), 0, 1).get(0);
+        assertEquals(retry.txnRef(), ticket.providerReference());
+        assertEquals(held.getDepositAmount(), ticket.paidOnlineAmount());
+        assertNotNull(ticket.paidAt());
+        assertNotNull(ticket.qrToken());
+        assertTrue(customerTickets.listPaymentHistory(player.id(), 0, 100).stream()
+                .anyMatch(row -> held.getReservationId().equals(row.reservationId())));
 
         // 5. Player retrieves QR Code
         QrCodeResponse qr = checkInService.issueOrGetQrCode(held.getReservationId());
@@ -459,6 +482,7 @@ class V3MarketplaceIntegrationTest {
 
         assertThrows(Exception.class,
                 () -> jdbcTemplate.update("DELETE FROM ledger_entries WHERE reservation_id = ?", held.getReservationId()));
+
     }
     @Test
     @Order(6)
