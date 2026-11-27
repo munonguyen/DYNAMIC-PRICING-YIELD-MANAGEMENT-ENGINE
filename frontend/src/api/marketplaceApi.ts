@@ -14,6 +14,7 @@ import type {
   CourtFloorDraft,
   CourtFloorEditorData,
   CourtFloorLayout,
+  BookingCourtAvailability,
   CourtSearchResponseData,
   CustomerSchedule,
   HoldSlotResult,
@@ -261,13 +262,19 @@ class MarketplaceApiClient {
   async holdCourtSlot(
     listing: PublishedListing,
     quote: PriceQuote,
-    userId: string
+    userId: string,
+    unitId?: string,
   ): Promise<{ hold: HoldSlotResult; live: boolean; idempotencyKey: string }> {
     const idempotencyKey = `idem-${quote.tokenJti}`;
     const hold = await this.checkoutRequest<HoldSlotResult>('/bookings/hold', {
-      groupId: listing.groupId, slotStart: quote.slotStart, userId, priceLockToken: quote.priceLockToken, idempotencyKey,
+      groupId: listing.groupId, slotStart: quote.slotStart, userId, priceLockToken: quote.priceLockToken, idempotencyKey, unitId,
     });
     return { hold, live: true, idempotencyKey };
+  }
+
+  getBookingCourtAvailability(groupId: string, slotStart: string, signal: AbortSignal): Promise<BookingCourtAvailability> {
+    const query = new URLSearchParams({ slotStart });
+    return this.checkoutRequest(`/listings/${groupId}/court-availability?${query}`, undefined, signal);
   }
 
   private async checkoutRequest<T>(

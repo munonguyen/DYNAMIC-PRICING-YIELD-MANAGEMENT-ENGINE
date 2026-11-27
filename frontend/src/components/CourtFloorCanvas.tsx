@@ -54,6 +54,8 @@ interface CourtFloorCanvasProps {
   onSelect: (id: string) => void;
   statuses?: Map<string, VenueCourt['status']>;
   dimmedIds?: Set<string>;
+  disabledIds?: ReadonlySet<string>;
+  statusLabels?: ReadonlyMap<string, { label: string; short: string }>;
   schematic?: boolean;
   sportCode?: string;
   sportName?: string;
@@ -86,7 +88,7 @@ function DrawingRuler({ range, step, axis }: { range: number; step: number; axis
   );
 }
 
-export function CourtFloorCanvas({ draft, selectedId, onSelect, statuses, dimmedIds, schematic, sportCode, sportName, onMove }: CourtFloorCanvasProps) {
+export function CourtFloorCanvas({ draft, selectedId, onSelect, statuses, dimmedIds, disabledIds, statusLabels, schematic, sportCode, sportName, onMove }: CourtFloorCanvasProps) {
   const board = useRef<HTMLDivElement>(null);
   const viewport = useRef<HTMLDivElement>(null);
   const zoomAnchor = useRef<{ x: number; y: number } | null>(null);
@@ -170,13 +172,14 @@ export function CourtFloorCanvas({ draft, selectedId, onSelect, statuses, dimmed
           }} className={`court-drawing-board ${schematic ? 'col-span-2' : ''}`}>
             {draft.placements.map(court => {
               const state = statuses?.get(court.unitId);
-              const style = state ? floorStatuses[state] : undefined;
+              const labels = statusLabels?.get(court.unitId) ?? (state ? floorStatuses[state] : undefined);
               const selected = selectedId === court.unitId;
+              const disabled = disabledIds?.has(court.unitId);
               return (
-                <button key={court.unitId} type="button" aria-pressed={selected}
-                  aria-label={style ? `${court.label} · ${style.label}` : court.label}
+                <button key={court.unitId} type="button" aria-pressed={selected} disabled={disabled}
+                  aria-label={labels ? `${court.label} · ${labels.label}` : court.label}
                   data-state={state}
-                  title={style ? `${court.label} · ${style.label}` : court.label}
+                  title={labels ? `${court.label} · ${labels.label}` : court.label}
                   onClick={() => onSelect(court.unitId)}
                   onPointerDown={event => {
                     if (!onMove || event.button !== 0) return;
@@ -193,13 +196,13 @@ export function CourtFloorCanvas({ draft, selectedId, onSelect, statuses, dimmed
                   }}
                   className={`court-drawing-tile absolute min-w-0 overflow-hidden
                     transition-[filter,opacity] hover:z-10 hover:brightness-115 focus-visible:z-20 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white
-                    ${onMove ? 'touch-none cursor-grab active:cursor-grabbing' : 'cursor-pointer'}
+                    ${onMove ? 'touch-none cursor-grab active:cursor-grabbing' : 'cursor-pointer disabled:cursor-not-allowed'}
                     ${selected ? 'z-20' : ''}
                     ${dimmedIds?.has(court.unitId) && !selected ? 'opacity-35' : ''}`}>
                   <CourtMarkings sportCode={sportCode} landscape={court.widthCm > court.lengthCm} />
                   <span className="court-drawing-caption pointer-events-none">
                     <span className="court-drawing-name">{court.label}</span>
-                    {style && <span className="court-drawing-status">{style.short}</span>}
+                    {labels && <span className="court-drawing-status">{labels.short}</span>}
                   </span>
                   {onMove && selected && <Move aria-hidden="true" className="pointer-events-none absolute right-1.5 top-1.5 hidden h-3 w-3 text-[#D5F5E6] sm:block" />}
                 </button>

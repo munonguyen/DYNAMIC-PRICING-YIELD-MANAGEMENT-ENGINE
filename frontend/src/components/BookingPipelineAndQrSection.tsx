@@ -23,6 +23,7 @@ import { ActionButton } from './FairwayControls';
 import { CheckoutPaymentQr } from './CheckoutPaymentQr';
 import { CustomerBalancePayment } from './CustomerBalancePayment';
 import { PaymentMethodLogo } from './PaymentMethodLogo';
+import { BookingCourtPicker, type BookingCourtPickerControls } from './BookingCourtPicker';
 
 interface BookingPipelineAndQrSectionProps {
   activeListing: PublishedListing | null;
@@ -39,6 +40,7 @@ interface BookingPipelineAndQrSectionProps {
   busyStep: string | null;
   countdownLabel: string;
   onHoldSlot: () => Promise<void>;
+  courtPicker: BookingCourtPickerControls;
   onCancelBooking: (venueInitiated: boolean) => Promise<void>;
   onResetFlow: () => void;
   selectedServiceQuantities?: Record<string, number>;
@@ -80,6 +82,7 @@ export const BookingPipelineAndQrSection: React.FC<BookingPipelineAndQrSectionPr
   busyStep,
   countdownLabel,
   onHoldSlot,
+  courtPicker,
   onCancelBooking,
   onResetFlow,
   selectedServiceQuantities = {},
@@ -549,6 +552,10 @@ export const BookingPipelineAndQrSection: React.FC<BookingPipelineAndQrSectionPr
         <div className="mt-8 grid grid-cols-1 items-start gap-8 lg:grid-cols-12">
           {/* LEFT 7 COLUMNS */}
           <div className="lg:col-span-7 space-y-6">
+            {activeListing && activeQuote && !matchingHold && !trackedReservation && !issued && (
+              <BookingCourtPicker key={`${activeListing.groupId}:${activeQuote.slotStart}`} listing={activeListing}
+                slotStart={activeQuote.slotStart} controls={courtPicker} disabled={busyStep === 'HOLD'} />
+            )}
             {/* BLOCK 1: Choose Deposit Escrow vs Full Payment */}
             <ScrollReveal className="rounded-[26px] border border-neutral-200/90 bg-white p-6 sm:p-7 shadow-xs">
               <div className="flex items-center justify-between">
@@ -894,7 +901,7 @@ export const BookingPipelineAndQrSection: React.FC<BookingPipelineAndQrSectionPr
                 <div>
                   <span className="text-[10px] text-neutral-400 block">Mã sân vật lý</span>
                   <strong className="tabular-nums text-[#16422C]">
-                    {activeTicket?.unitNumber ?? matchingHold?.unitNumber ?? 'Tự động cấp khi giữ chỗ'}
+                    {activeTicket?.unitNumber ?? matchingHold?.unitNumber ?? courtPicker.selection?.label ?? 'Tự động cấp khi giữ chỗ'}
                   </strong>
                 </div>
               </div>

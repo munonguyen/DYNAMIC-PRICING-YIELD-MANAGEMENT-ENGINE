@@ -16,6 +16,7 @@ import {
 } from '../data/courtServicesData';
 import { EXPO_EASE, ScrollReveal } from './motionPrimitives';
 import { ActionButton } from './FairwayControls';
+import { BookingCourtPicker, type BookingCourtPickerControls } from './BookingCourtPicker';
 
 interface CourtDetailViewProps {
   listing: PublishedListing;
@@ -27,6 +28,7 @@ interface CourtDetailViewProps {
   countdownLabel: string;
   onBack: () => void;
   onSelectSlot: (listing: PublishedListing, slotStart: string) => void;
+  courtPicker: BookingCourtPickerControls;
   onProceedToHold: () => void;
   onOpenVenueChat: (listing: PublishedListing) => void;
   onFilterByProvider: (venueName: string) => void;
@@ -61,6 +63,7 @@ export const CourtDetailView: React.FC<CourtDetailViewProps> = ({
   countdownLabel,
   onBack,
   onSelectSlot,
+  courtPicker,
   onProceedToHold,
   onOpenVenueChat,
   onFilterByProvider,
@@ -617,9 +620,13 @@ export const CourtDetailView: React.FC<CourtDetailViewProps> = ({
                 })}
               </div>
             </div>
-
-
           </div>
+        </div>
+
+        <div className="space-y-4 lg:col-span-12">
+          {activeRole === 'USER' && activeSlotStart && activeQuote?.groupId === listing.groupId && (
+            <BookingCourtPicker key={`${listing.groupId}:${activeSlotStart}`} listing={listing} slotStart={activeSlotStart} controls={courtPicker} />
+          )}
 
           {/* Primary Transaction CTA */}
           <div className="space-y-2.5 border-t border-neutral-100 pt-4">
@@ -635,14 +642,14 @@ export const CourtDetailView: React.FC<CourtDetailViewProps> = ({
               </div>
             )}
 
-            <div className="flex flex-col gap-2.5 sm:flex-row">
+            <div className="flex flex-col gap-2.5 sm:flex-row sm:justify-end">
               <ActionButton
                 variant="forest"
                 size="lg"
                 arrow="right"
                 disabled={!hasAnyAvailable}
                 onClick={onProceedToHold}
-                className="flex-1"
+                className="sm:min-w-[260px]"
               >
                 {hasAnyAvailable
                   ? !isAuthenticated

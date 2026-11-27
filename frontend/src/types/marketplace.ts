@@ -488,6 +488,16 @@ export interface CourtFloorEditorData {
   units: CourtFloorUnit[];
 }
 
+export interface BookingCourtAvailability {
+  layout: CourtFloorLayout | null;
+  courts: (CourtFloorUnit & { status: 'AVAILABLE' | 'TAKEN' | 'UNAVAILABLE' })[];
+}
+
+export interface CourtUnitChoice {
+  id: string;
+  label: string;
+}
+
 export interface LessorStaffMember {
   id: string;
   providerId: string;

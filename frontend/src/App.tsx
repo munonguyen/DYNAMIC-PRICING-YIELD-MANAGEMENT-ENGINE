@@ -18,6 +18,7 @@ import type {
   AuthSession,
   CancelBookingResult,
   CourtServiceOption,
+  CourtUnitChoice,
   HoldSlotResult,
   NewsArticleItem,
   PriceQuote,
@@ -134,6 +135,17 @@ export function App() {
   const [activeSlotStart, setActiveSlotStart] = useState<string | null>(null);
   const [activeQuote, setActiveQuote] = useState<PriceQuote | null>(null);
   const [quoteLoading, setQuoteLoading] = useState<boolean>(false);
+  const [pickedCourt, setPickedCourt] = useState<{ groupId: string; slotStart: string; court: CourtUnitChoice } | null>(null);
+  const [courtAvailabilityRevision, setCourtAvailabilityRevision] = useState(0);
+  const selectedCourt = pickedCourt?.groupId === activeListing?.groupId && pickedCourt?.slotStart === activeSlotStart
+    ? pickedCourt.court : null;
+  const courtPicker = {
+    selection: selectedCourt,
+    revision: courtAvailabilityRevision,
+    onSelect: (court: CourtUnitChoice | null) => {
+      setPickedCourt(court && activeListing && activeSlotStart ? { groupId: activeListing.groupId, slotStart: activeSlotStart, court } : null);
+    },
+  };
 
   const [holdResult, setHoldResult] = useState<HoldSlotResult | null>(null);
   const [cancelResult, setCancelResult] = useState<CancelBookingResult | null>(null);
@@ -223,6 +235,7 @@ export function App() {
     setActiveListing(listing);
     setSelectedServiceQuantities({});
     setActiveSlotStart(slotStart);
+    setPickedCourt(choice => choice?.groupId === listing.groupId && choice.slotStart === slotStart ? choice : null);
     setActiveQuote(null);
     setQuoteLoading(true);
     setHoldResult(null);
@@ -327,11 +340,14 @@ export function App() {
     }
     setBusyStep('HOLD');
     try {
-      const { hold } = await marketplaceApi.holdCourtSlot(activeListing, activeQuote, session.userId);
+      const { hold } = await marketplaceApi.holdCourtSlot(activeListing, activeQuote, session.userId, selectedCourt?.id);
       setHoldResult(hold);
       if (hold.holdExpiresAt) {
         setRemainingSeconds(Math.max(0, Math.ceil((Date.parse(hold.holdExpiresAt) - Date.now()) / 1000)));
       }
+    } catch (error) {
+      setCourtAvailabilityRevision(current => current + 1);
+      throw error;
     } finally {
       setBusyStep(null);
     }
@@ -692,6 +708,7 @@ export function App() {
                   quoteLoading={quoteLoading}
                   countdownLabel={countdownLabel}
                   onSelectSlot={selectSlotAndQuote}
+                  courtPicker={courtPicker}
                   onProceedToHold={handleProceedToBooking}
                   onOpenVenueChat={handleOpenVenueChat}
                   onOpenLessorShop={handleOpenLessorShop}
@@ -828,6 +845,7 @@ export function App() {
                   busyStep={busyStep}
                   countdownLabel={countdownLabel}
                   onHoldSlot={handleHoldSlot}
+                  courtPicker={courtPicker}
                   onCancelBooking={handleCancelBooking}
                   onResetFlow={handleResetFlow}
                   selectedServiceQuantities={selectedServiceQuantities}
