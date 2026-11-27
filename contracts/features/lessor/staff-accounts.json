@@ -1,5 +1,5 @@
 {
-  "branch": "service/lessor/staff-accounts",
+  "branch": "complete/lessor/staff-accounts",
   "title": "Cấp tài khoản nhân viên",
   "scope": "Cấp và xem tài khoản nhân viên theo cơ sở.",
   "operations": [
