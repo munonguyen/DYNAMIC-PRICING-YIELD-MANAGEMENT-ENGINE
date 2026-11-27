@@ -13,6 +13,7 @@ import com.yieldengine.record.vnpay.VnPayPaymentUrlResponse;
 import com.yieldengine.record.vnpay.VnPayTransactionSummaryDto;
 import com.yieldengine.security.RbacGuard;
 import com.yieldengine.service.BookingOrchestratorService;
+import com.yieldengine.service.CustomerTicketReadService;
 import com.yieldengine.service.CheckoutPaymentService;
 import com.yieldengine.service.MoMoPaymentGatewayService;
 import com.yieldengine.service.VietQrTransferService;
@@ -39,6 +40,7 @@ import java.util.UUID;
 public class CustomerPaymentController {
 
     private final BookingOrchestratorService bookingOrchestratorService;
+    private final CustomerTicketReadService ticketReadService;
     private final CheckoutPaymentService checkoutPaymentService;
     private final MoMoPaymentGatewayService moMoPaymentGatewayService;
     private final MoMoGatewayMapper moMoGatewayMapper;
@@ -54,11 +56,14 @@ public class CustomerPaymentController {
 
     @Operation(summary = "[USER] List authenticated customer payment & ticket history from PostgreSQL")
     @GetMapping("/history")
-    public ResponseEntity<List<MyTicketResponse>> paymentHistory() {
+    public ResponseEntity<List<MyTicketResponse>> paymentHistory(
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "25") int size
+    ) {
         SessionPrincipal user = rbacGuard.requireAuthenticated();
         return ResponseEntity.ok()
                 .cacheControl(CacheControl.noStore())
-                .body(bookingOrchestratorService.listPaymentHistory(user.userId()));
+                .body(ticketReadService.listPaymentHistory(user.userId(), page, size));
     }
 
     @Operation(summary = "[USER] Create MoMo v2 HMAC-SHA256 payment session matching PayGate spec")

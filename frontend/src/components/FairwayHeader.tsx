@@ -169,28 +169,42 @@ export const FairwayHeader: React.FC<FairwayHeaderProps> = ({
     };
   }, []);
 
+  const historyPageSize = 25;
   const [accountTickets, setAccountTickets] = useState<MyTicketRecord[]>([]);
   const [expandedTicketId, setExpandedTicketId] = useState<string | null>(null);
+  const [historyPage, setHistoryPage] = useState(0);
+  const [historyRequest, setHistoryRequest] = useState(0);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyError, setHistoryError] = useState(false);
+
+  useEffect(() => {
+    setHistoryPage(0);
+    if (!accountMenuOpen) return;
+    const refreshHistory = () => {
+      setHistoryPage(0);
+      setHistoryRequest(request => request + 1);
+    };
+    window.addEventListener('arenapulse:tickets-updated', refreshHistory);
+    return () => window.removeEventListener('arenapulse:tickets-updated', refreshHistory);
+  }, [accountMenuOpen, session?.userId]);
 
   useEffect(() => {
     setAccountTickets([]);
     setExpandedTicketId(null);
+    setHistoryError(false);
+    setHistoryLoading(false);
     if (!session?.userId || !accountMenuOpen) return;
-    let active = true;
-    const loadPaymentHistory = () => {
-      marketplaceApi.getPaymentHistory().then(tickets => {
-        if (active) setAccountTickets(tickets);
-      }).catch(() => {
-        if (active) setAccountTickets([]);
-      });
-    };
-    loadPaymentHistory();
-    window.addEventListener('arenapulse:tickets-updated', loadPaymentHistory);
-    return () => {
-      active = false;
-      window.removeEventListener('arenapulse:tickets-updated', loadPaymentHistory);
-    };
-  }, [session?.userId, accountMenuOpen]);
+    const request = new AbortController();
+    setHistoryLoading(true);
+    marketplaceApi.getPaymentHistory(historyPage, historyPageSize, request.signal).then(tickets => {
+      if (!request.signal.aborted) setAccountTickets(tickets);
+    }).catch(() => {
+      if (!request.signal.aborted) setHistoryError(true);
+    }).finally(() => {
+      if (!request.signal.aborted) setHistoryLoading(false);
+    });
+    return () => request.abort();
+  }, [session?.userId, accountMenuOpen, historyPage, historyRequest]);
 
   const nativeRole: RoleCode = session?.roles?.[0]?.roleCode ?? 'USER';
   const isInternalWorkspaceMode = Boolean(session && activeRole !== 'USER');
@@ -800,19 +814,32 @@ export const FairwayHeader: React.FC<FairwayHeaderProps> = ({
                             )}
                           </div>
 
-                          {accountTickets.length === 0 ? (
+                          {historyLoading ? (
+                            <p role="status" className="text-xs text-neutral-600">Đang tải lịch sử giao dịch…</p>
+                          ) : historyError ? (
+                            <div role="alert" className="flex flex-wrap items-center gap-2 text-xs text-rose-700">
+                              Chưa tải được lịch sử thanh toán.
+                              <button type="button" className="underline" onClick={() => setHistoryRequest(request => request + 1)}>
+                                Thử lại
+                              </button>
+                            </div>
+                          ) : accountTickets.length === 0 ? (
                             <div className="rounded-xl bg-[#F8FAFC] border border-neutral-200/60 px-3 py-2.5 text-[11px] text-neutral-500">
-                              Chưa có giao dịch thanh toán thuê sân nào trong tài khoản này.
+                              {historyPage === 0 ? 'Chưa có giao dịch thanh toán thuê sân nào trong tài khoản này.' : 'Không còn giao dịch ở trang này.'}
                             </div>
                           ) : (
                             <div className="max-h-56 overflow-y-auto space-y-2 pr-0.5">
                               {accountTickets.map((ticket) => {
                                 const isExpanded = expandedTicketId === ticket.reservationId;
                                 const isCancelled = ticket.status === 'CANCELLED';
-                                const amountPaid =
-                                  ticket.paidOnlineAmount > 0
-                                    ? ticket.paidOnlineAmount
-                                    : ticket.depositAmount;
+                                const statusLabel = {
+                                  CONFIRMED: 'Đã xác nhận',
+                                  COMPLETED: 'Đã nhận sân',
+                                  HELD: 'Đang giữ sân',
+                                  CANCELLED: 'Đã hủy',
+                                  EXPIRED: 'Đã hết hạn',
+                                  NO_SHOW: 'Không đến nhận sân',
+                                }[ticket.status] ?? ticket.status;
                                 return (
                                   <div
                                     key={ticket.reservationId}
@@ -839,7 +866,7 @@ export const FairwayHeader: React.FC<FairwayHeaderProps> = ({
 
                                       <div className="text-right shrink-0">
                                         <div className="font-bold tabular-nums text-[#0F172A]">
-                                          {formatVnd(amountPaid)}
+                                          {formatVnd(ticket.paidOnlineAmount)}
                                         </div>
                                         <span
                                           className={`inline-block rounded-full px-1.5 py-0.5 text-[9.5px] font-bold ${
@@ -848,7 +875,7 @@ export const FairwayHeader: React.FC<FairwayHeaderProps> = ({
                                               : 'bg-emerald-50 text-emerald-700'
                                           }`}
                                         >
-                                          {isCancelled ? 'Đã hủy' : 'Đã xác nhận'}
+                                          {statusLabel}
                                         </span>
                                       </div>
                                     </button>
@@ -886,6 +913,19 @@ export const FairwayHeader: React.FC<FairwayHeaderProps> = ({
                                   </div>
                                 );
                               })}
+                            </div>
+                          )}
+                          {(historyPage > 0 || accountTickets.length === historyPageSize) && (
+                            <div className="flex items-center justify-between gap-2 text-xs">
+                              <button type="button" disabled={historyLoading || historyPage === 0}
+                                className="underline disabled:opacity-40" onClick={() => setHistoryPage(page => page - 1)}>
+                                Trang trước
+                              </button>
+                              <span>Trang {historyPage + 1}</span>
+                              <button type="button" disabled={historyLoading || accountTickets.length < historyPageSize}
+                                className="underline disabled:opacity-40" onClick={() => setHistoryPage(page => page + 1)}>
+                                Trang sau
+                              </button>
                             </div>
                           )}
                         </div>
