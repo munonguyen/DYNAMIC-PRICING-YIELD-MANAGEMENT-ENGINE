@@ -1,5 +1,5 @@
 {
-  "branch": "service/admin/sport-catalogue",
+  "branch": "complete/admin/sport-catalogue",
   "title": "Danh mục môn thể thao",
   "scope": "Tạo môn thể thao dùng trong danh mục sân.",
   "operations": [
