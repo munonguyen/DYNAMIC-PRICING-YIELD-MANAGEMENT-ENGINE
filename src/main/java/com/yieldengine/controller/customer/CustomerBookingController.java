@@ -8,6 +8,7 @@ import com.yieldengine.record.ops.*;
 import com.yieldengine.record.security.SessionPrincipal;
 import com.yieldengine.security.RbacGuard;
 import com.yieldengine.service.BookingOrchestratorService;
+import com.yieldengine.service.CustomerTicketReadService;
 import com.yieldengine.service.CheckInService;
 import com.yieldengine.service.CheckoutPaymentService;
 import com.yieldengine.service.QrTicketEmailService;
@@ -30,6 +31,7 @@ import java.util.UUID;
 public class CustomerBookingController {
 
     private final BookingOrchestratorService bookingOrchestratorService;
+    private final CustomerTicketReadService ticketReadService;
     private final CheckInService checkInService;
     private final CheckoutPaymentService checkoutPaymentService;
     private final QrTicketEmailService qrTicketEmailService;
@@ -97,9 +99,14 @@ public class CustomerBookingController {
 
     @Operation(summary = "[USER] List persistent e-tickets stored in user's account ('Vé của tôi')")
     @GetMapping("/my-tickets")
-    public ResponseEntity<List<MyTicketResponse>> listMyTickets() {
+    public ResponseEntity<List<MyTicketResponse>> listMyTickets(
+            @RequestParam(required = false) UUID reservationId,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "25") int size
+    ) {
         SessionPrincipal user = rbacGuard.requireAuthenticated();
-        return ResponseEntity.ok(bookingOrchestratorService.listMyTickets(user.userId()));
+        return ResponseEntity.ok().cacheControl(CacheControl.noStore())
+                .body(ticketReadService.listTickets(user.userId(), reservationId, page, size));
     }
 }
 
