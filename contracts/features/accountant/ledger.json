@@ -1,5 +1,5 @@
 {
-  "branch": "service/accountant/ledger",
+  "branch": "complete/accountant/ledger",
   "title": "Sổ cái",
   "scope": "Tra cứu bút toán định khoản của hệ thống.",
   "operations": [
