@@ -390,6 +390,8 @@ class V3MarketplaceIntegrationTest {
         assertThrows(IdempotencyConflictException.class,
                 () -> bookingOrchestratorService.holdSlot(tamperedHold, idemKey));
 
+        assertTrue(checkoutPayment.configuredProviders().contains("VNPAY_ESCROW"));
+
         // A provider session and browser return leave the booking on hold.
         var paymentRequest = new CreateVnPayPaymentRequest(held.getReservationId(), held.getDepositAmount(),
                 null, "vn", null, null, null, null, null, null, null, null, null);
