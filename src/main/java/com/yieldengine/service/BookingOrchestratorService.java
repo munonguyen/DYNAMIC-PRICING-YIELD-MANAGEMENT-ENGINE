@@ -6,7 +6,6 @@ import com.yieldengine.dto.SlotOccupancyChangedEvent;
 import com.yieldengine.record.ops.CancelBookingResponse;
 import com.yieldengine.record.ops.PaymentWebhookRequest;
 import com.yieldengine.record.ops.CreateQrPaymentRequest;
-import com.yieldengine.record.ops.TicketPassSnapshot;
 import com.yieldengine.dto.request.HoldSlotRequest;
 import com.yieldengine.dto.response.HoldSlotResponse;
 import com.yieldengine.entity.*;
@@ -646,65 +645,6 @@ public class BookingOrchestratorService {
                 vatTaxCode,
                 bookingNote
         ));
-    }
-
-    @Transactional(readOnly = true)
-    public java.util.List<com.yieldengine.record.ops.MyTicketResponse> listMyTickets(UUID userId) {
-        return reservationRepository.findByUserIdOrderBySlotStartDesc(userId).stream()
-                .map(res -> toTicketResponse(res, findPrimaryPaymentForBooking(res.getBookingId())))
-                .toList();
-    }
-
-    private Payment findPrimaryPaymentForBooking(UUID bookingId) {
-        if (bookingId == null) {
-            return null;
-        }
-        List<Payment> bookingPayments = paymentRepository.findByBookingIdOrderByCreatedAtAsc(bookingId);
-        return bookingPayments.stream()
-                .filter(p -> !"REFUND".equals(p.getPaymentType())
-                        && p.getGatewayVerifiedAt() != null
-                        && "SUCCESS".equals(p.getStatus()))
-                .reduce((first, second) -> second)
-                .orElseGet(() -> bookingPayments.stream()
-                        .filter(p -> !"REFUND".equals(p.getPaymentType()))
-                        .reduce((first, second) -> second)
-                        .orElse(null));
-    }
-
-    private com.yieldengine.record.ops.MyTicketResponse toTicketResponse(Reservation res, Payment primaryPayment) {
-        TicketPassSnapshot pass = ticketPassService.buildPassSnapshot(res);
-        boolean activePass = "CONFIRMED".equals(res.getStatus()) && ticketPassService.hasPaymentForPass(res);
-        String qrToken = activePass && res.getQrJti() != null ? pass.qrToken() : null;
-        String pinCode = activePass && res.getQrJti() != null && res.getPinConsumedAt() == null
-                ? pass.checkinPinCode()
-                : null;
-        String paymentProvider = primaryPayment != null ? primaryPayment.getProvider() : null;
-        String providerReference = primaryPayment != null ? primaryPayment.getProviderRef() : null;
-        Instant paidAt = primaryPayment != null && "SUCCESS".equals(primaryPayment.getStatus())
-                ? primaryPayment.getGatewayVerifiedAt() : null;
-        return new com.yieldengine.record.ops.MyTicketResponse(
-                res.getReservationId(),
-                pass.venueName(),
-                pass.venueAddress(),
-                pass.groupName(),
-                pass.unitNumber(),
-                pass.slotStart(),
-                pass.slotEnd(),
-                res.getStatus(),
-                pass.lockedPrice(),
-                res.getDepositAmount(),
-                pass.paidAmount(),
-                pass.remainingAtVenue(),
-                pass.customerEmail(),
-                res.getQrJti(),
-                qrToken,
-                pass.qrExpiresAt(),
-                pass.checkinMode(),
-                pinCode,
-                paymentProvider,
-                providerReference,
-                paidAt
-        );
     }
 
     private String resolvePaymentTypeForAmount(Reservation reservation, Long amount) {

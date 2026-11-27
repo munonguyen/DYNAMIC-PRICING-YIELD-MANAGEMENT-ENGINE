@@ -21,8 +21,6 @@ public interface PaymentRepository extends JpaRepository<Payment, UUID> {
 
     boolean existsByBookingIdAndProviderInAndStatus(UUID bookingId, List<String> providers, String status);
 
-    List<Payment> findByBookingIdOrderByCreatedAtAsc(UUID bookingId);
-
     @Query("SELECT COALESCE(SUM(p.amount), 0) FROM Payment p WHERE p.booking.id = :bookingId AND p.status = 'SUCCESS' AND p.paymentType <> 'REFUND' AND (p.gatewayVerifiedAt IS NOT NULL OR p.paymentType = 'BALANCE')")
     long sumSuccessfulPaidByBookingId(@Param("bookingId") UUID bookingId);
 

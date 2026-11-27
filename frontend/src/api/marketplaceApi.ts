@@ -350,8 +350,10 @@ class MarketplaceApiClient {
     return (await res.json()) as VnPayReturnResult;
   }
 
-  getMyTickets(): Promise<MyTicketRecord[]> {
-    return this.checkoutRequest('/bookings/my-tickets');
+  async getMyTicket(reservationId: string, signal?: AbortSignal): Promise<MyTicketRecord | null> {
+    const query = new URLSearchParams({ reservationId });
+    const tickets = await this.checkoutRequest<MyTicketRecord[]>(`/bookings/my-tickets?${query}`, undefined, signal);
+    return tickets[0] ?? null;
   }
 
   getPaymentHistory(page: number, size: number, signal?: AbortSignal): Promise<MyTicketRecord[]> {

@@ -90,6 +90,7 @@ export const BookingPipelineAndQrSection: React.FC<BookingPipelineAndQrSectionPr
   const [providersError, setProvidersError] = useState(false);
   const [providerRequest, setProviderRequest] = useState(0);
   const [returnError, setReturnError] = useState<string | null>(null);
+  const [ticketError, setTicketError] = useState<string | null>(null);
   const [paymentStatus, setPaymentStatus] = useState<BookingPaymentStatus | null>(null);
   const [paymentBusy, setPaymentBusy] = useState(false);
   const [statusError, setStatusError] = useState<string | null>(null);
@@ -105,7 +106,7 @@ export const BookingPipelineAndQrSection: React.FC<BookingPipelineAndQrSectionPr
   const [paymentError, setPaymentError] = useState<string | null>(null);
   const [simHoursBefore, setSimHoursBefore] = useState(14);
   const [venueCancelMode, setVenueCancelMode] = useState(false);
-  const [myTickets, setMyTickets] = useState<MyTicketRecord[]>([]);
+  const [myTicket, setMyTicket] = useState<MyTicketRecord | null>(null);
   const [resendEmailStatus, setResendEmailStatus] = useState<string | null>(null);
   const [sendingEmail, setSendingEmail] = useState(false);
   const ownerId = session?.userId;
@@ -125,7 +126,7 @@ export const BookingPipelineAndQrSection: React.FC<BookingPipelineAndQrSectionPr
   const currentPayment = paymentStatus?.reservationId === trackedReservation ? paymentStatus : null;
   const state = currentPayment?.paymentStatus;
   const issued = state === 'VERIFIED' || state === 'NO_DEPOSIT';
-  const activeTicket = issued ? myTickets.find(ticket => ticket.reservationId === trackedReservation) : null;
+  const activeTicket = issued && myTicket?.reservationId === trackedReservation ? myTicket : null;
   const enabledQrProviders = qrProviders.filter(({ code }) => providers?.includes(code));
   const selectedProvider = enabledQrProviders.find(({ code }) => code === preferredProvider) ?? enabledQrProviders[0];
   const shownProvider = currentPayment?.provider ?? selectedProvider?.code;
@@ -144,7 +145,7 @@ export const BookingPipelineAndQrSection: React.FC<BookingPipelineAndQrSectionPr
     }
     setRememberedReservation(window.sessionStorage.getItem(trackingKey));
     window.sessionStorage.removeItem(`${trackingKey}:url`);
-    setMyTickets([]);
+    setMyTicket(null);
     setPaymentStatus(null);
     setPaymentError(null);
     setStatusError(null);
@@ -243,14 +244,18 @@ export const BookingPipelineAndQrSection: React.FC<BookingPipelineAndQrSectionPr
   }, [ownerId, trackedReservation, statusRequest, cancelResult]);
 
   useEffect(() => {
-    if (!ownerId) return;
-    let active = true;
-    marketplaceApi.getMyTickets().then(tickets => {
-      if (active) setMyTickets(tickets);
+    setMyTicket(null);
+    setTicketError(null);
+    if (!ownerId || !issued || !trackedReservation) return;
+    const request = new AbortController();
+    marketplaceApi.getMyTicket(trackedReservation, request.signal).then(ticket => {
+      if (request.signal.aborted) return;
+      if (!ticket) throw new Error('Vé chưa xuất hiện trong tài khoản.');
+      setMyTicket(ticket);
     }).catch(() => {
-      if (active && issued) setStatusError('Giao dịch đã xác nhận. Chưa tải được vé, vui lòng thử lại.');
+      if (!request.signal.aborted) setTicketError('Đơn đã xác nhận. Chưa tải được vé nhận sân.');
     });
-    return () => { active = false; };
+    return () => request.abort();
   }, [ownerId, trackedReservation, issued, statusRequest, cancelResult]);
 
   const handleSendQrEmailNow = async (reservationId: string, targetEmail: string) => {
@@ -1116,7 +1121,14 @@ export const BookingPipelineAndQrSection: React.FC<BookingPipelineAndQrSectionPr
                   </button>
                 )}
               </div>
-              {activeTicket && !cancelResult && (activeTicket.qrToken || activeTicket.checkinPinCode) ? (
+              {ticketError && !cancelResult ? (
+                <div className="space-y-2">
+                  <p role="alert" className="text-sm text-rose-700">{ticketError}</p>
+                  <ActionButton variant="outline" size="sm" onClick={() => setStatusRequest(value => value + 1)}>
+                    Tải lại vé
+                  </ActionButton>
+                </div>
+              ) : activeTicket && !cancelResult && (activeTicket.qrToken || activeTicket.checkinPinCode) ? (
                 <article className="space-y-3 rounded-xl border border-[#16422C]/20 bg-[#F4F8F4] p-4 text-sm">
                   <div className="flex items-center justify-between gap-2">
                     <p className="font-semibold text-[#16422C]">Vé nhận sân {activeTicket.unitNumber}</p>
