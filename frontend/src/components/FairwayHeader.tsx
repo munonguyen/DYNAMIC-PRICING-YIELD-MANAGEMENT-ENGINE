@@ -295,7 +295,7 @@ export const FairwayHeader: React.FC<FairwayHeaderProps> = ({
             },
             {
               key: 'staff-live-courts',
-              label: 'Sân đang dùng',
+              label: 'Sân & khách',
               targetPage: 'governance',
               lessorTab: 'LIVE_COURTS',
             },

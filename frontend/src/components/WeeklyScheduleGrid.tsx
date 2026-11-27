@@ -1,5 +1,5 @@
 import { useMemo, useState, type FormEvent } from 'react';
-import { CalendarDays, ChevronLeft, ChevronRight, ExternalLink, Lock, Plus, Printer, Trash2, X } from 'lucide-react';
+import { CalendarDays, ChevronLeft, ChevronRight, ExternalLink, Lock, Plus, Printer, Trash2, Users, X } from 'lucide-react';
 import type { LessorBookingOrder, PublishedListing } from '../types/marketplace';
 import { PillSelect } from './FairwayControls';
 import { WeeklyBookingCard, weeklyBookingStatus } from './WeeklyBookingCard';
@@ -19,6 +19,7 @@ interface WeeklyScheduleGridProps {
   expanded?: boolean;
   venueName?: string;
   onOpenVenue?: () => void;
+  onOpenCourtStatus?: () => void;
   listings: PublishedListing[];
   providerOrders: LessorBookingOrder[];
   fixedBlocks: WeeklyFixedBlock[];
@@ -69,7 +70,8 @@ function orderTimeLabel(order: LessorBookingOrder) {
 }
 
 export function WeeklyScheduleGrid({
-  expanded = false, venueName, onOpenVenue, listings, providerOrders, fixedBlocks, onAddFixedBlock, onRemoveFixedBlock, onOpenOrderDetail,
+  expanded = false, venueName, onOpenVenue, onOpenCourtStatus,
+  listings, providerOrders, fixedBlocks, onAddFixedBlock, onRemoveFixedBlock, onOpenOrderDetail,
 }: WeeklyScheduleGridProps) {
   const [weekOffset, setWeekOffset] = useState(0);
   const [mobileDay, setMobileDay] = useState<string | null>(null);
@@ -246,6 +248,12 @@ export function WeeklyScheduleGrid({
               <span className="hidden rounded-full bg-[#EAF3ED] px-3 py-1.5 text-xs font-semibold tabular-nums text-[#214D39] lg:inline-flex">
                 {totalOrders} ca đặt · Giờ Việt Nam
               </span>
+            )}
+            {onOpenCourtStatus && (
+              <button type="button" onClick={onOpenCourtStatus}
+                className="inline-flex min-h-10 items-center gap-1.5 rounded-xl bg-[#16422C] px-3 text-xs font-semibold text-white hover:bg-[#23563C] print:hidden">
+                <Users aria-hidden="true" className="h-4 w-4" /> Sân & Khách Đặt
+              </button>
             )}
             {onOpenVenue && (
               <button type="button" onClick={onOpenVenue}
