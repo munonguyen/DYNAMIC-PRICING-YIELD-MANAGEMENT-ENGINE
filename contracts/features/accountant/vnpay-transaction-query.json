@@ -1,5 +1,5 @@
 {
-  "branch": "service/accountant/vnpay-transaction-query",
+  "branch": "initial/accountant/vnpay-transaction-query",
   "title": "Tra cứu giao dịch VNPAY",
   "scope": "Tra cứu trạng thái giao dịch VNPAY qua QueryDR.",
   "operations": [
@@ -22,5 +22,6 @@
         "queryTransactionStatus("
       ]
     }
-  ]
+  ],
+  "validationPending": "Kiểm chứng phản hồi QueryDR trên sandbox merchant."
 }
