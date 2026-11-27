@@ -1,5 +1,5 @@
 {
-  "branch": "service/admin/kyc-review",
+  "branch": "initial/admin/kyc-review",
   "title": "Duyệt hồ sơ chủ sân",
   "scope": "Xem hàng đợi và quyết định duyệt hồ sơ đối tác.",
   "operations": [
@@ -28,5 +28,6 @@
         "AdminKycReviewPanel"
       ]
     }
-  ]
+  ],
+  "validationPending": "Kiểm chứng trọn vòng đời duyệt KYC với bộ hồ sơ đại diện."
 }
