@@ -1,5 +1,5 @@
 {
-  "branch": "service/accountant/reconciliation",
+  "branch": "complete/accountant/reconciliation",
   "title": "Đối soát sổ cái",
   "scope": "Đọc chênh lệch và các số liệu đối soát tài chính từ sổ cái.",
   "operations": [
