@@ -925,6 +925,12 @@ export const FairwayHeader: React.FC<FairwayHeaderProps> = ({
                                         </div>
                                       </div>
                                     )}
+                                    {isExpanded && ticket.status === 'CONFIRMED'
+                                      && ticket.remainingAtVenue === 0 && ticket.paidOnlineAmount > 0 && (
+                                        <p className="mt-2 rounded-lg bg-emerald-50 px-2.5 py-1.5 text-[11px] font-semibold text-emerald-800" role="status">
+                                          Đã thanh toán đủ tiền sân.
+                                        </p>
+                                      )}
                                     {isExpanded && ticket.status === 'CONFIRMED' && ticket.remainingAtVenue > 0 && (
                                       <CustomerBalancePayment key={ticket.reservationId} reservationId={ticket.reservationId} />
                                     )}
