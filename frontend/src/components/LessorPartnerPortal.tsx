@@ -4,6 +4,7 @@ import {
   Camera,
   ChevronRight,
   ExternalLink,
+  LayoutGrid,
   KeyRound,
   MessageSquare,
   Package,
@@ -172,9 +173,8 @@ export const LessorPartnerPortal: React.FC<LessorPartnerPortalProps> = ({
   const activeTab: LessorPortalTabId =
     isStaffOnly && rawActiveTab === 'OVERVIEW' ? 'ORDERS_CHECKIN' : rawActiveTab;
   const staffWideSchedule = isStaffOnly && activeTab === 'WEEKLY_SCHEDULE';
-  const staffCourtsActive = isStaffOnly && activeTab === 'LIVE_COURTS';
-  const staffWideWorkspace = staffWideSchedule || staffCourtsActive;
-  const floorWorkspaceActive = staffCourtsActive || (canEditFloor && (activeTab === 'LIVE_COURTS' || activeTab === 'COURTS_INVENTORY'));
+  const courtWorkspaceActive = (isStaffOnly || canEditFloor) && (activeTab === 'LIVE_COURTS' || activeTab === 'COURTS_INVENTORY');
+  const staffWideWorkspace = staffWideSchedule || (isStaffOnly && courtWorkspaceActive);
   const setActiveTab = (next: LessorPortalTabId) => {
     setInternalActiveTab(next);
     onSelectTab?.(next);
@@ -190,16 +190,17 @@ export const LessorPartnerPortal: React.FC<LessorPartnerPortalProps> = ({
   const [providerOrders, setProviderOrders] = useState<LessorBookingOrder[]>([]);
   const [orderRevision, setOrderRevision] = useState(0);
   const [courtRefresh, setCourtRefresh] = useState(0);
+  const [floorGroup, setFloorGroup] = useState('');
   const [floorEditor, setFloorEditor] = useState<{ groupId: string; groupName: string } | null>(null);
   const [courtSnapshot, setCourtSnapshot] = useState<VenueCourtSnapshot | null>(null);
   const [courtStatusError, setCourtStatusError] = useState<string | null>(null);
   const currentCourtSnapshot = courtSnapshot?.tenantId === tenantId ? courtSnapshot : null;
   const actionableOrders = useMemo(() => {
-    if (!floorWorkspaceActive || !currentCourtSnapshot) return providerOrders;
+    if (!courtWorkspaceActive || !currentCourtSnapshot) return providerOrders;
     const latest = new Map(providerOrders.map(order => [order.reservationId, order]));
     for (const order of currentCourtSnapshot.bookings) latest.set(order.reservationId, order);
     return [...latest.values()];
-  }, [providerOrders, currentCourtSnapshot, floorWorkspaceActive]);
+  }, [providerOrders, currentCourtSnapshot, courtWorkspaceActive]);
   const [orderFilter, setOrderFilter] = useState<
     'ALL' | 'HELD' | 'CONFIRMED' | 'COMPLETED' | 'NO_SHOW' | 'CANCELLED'
   >('ALL');
@@ -236,7 +237,7 @@ export const LessorPartnerPortal: React.FC<LessorPartnerPortalProps> = ({
   }, [tenantId, orderRevision]);
 
   useEffect(() => {
-    if (!tenantId || !floorWorkspaceActive) return;
+    if (!tenantId || !courtWorkspaceActive) return;
     const controller = new AbortController();
     let pending = false;
     setCourtStatusError(null);
@@ -266,7 +267,7 @@ export const LessorPartnerPortal: React.FC<LessorPartnerPortalProps> = ({
       window.clearInterval(timer);
       document.removeEventListener('visibilitychange', refresh);
     };
-  }, [tenantId, floorWorkspaceActive, orderRevision, courtRefresh]);
+  }, [tenantId, courtWorkspaceActive, orderRevision, courtRefresh]);
 
   const loadAnalyticsFromDbOrEs = async () => {
     if (!tenantId || isStaffOnly) return;
@@ -542,11 +543,8 @@ export const LessorPartnerPortal: React.FC<LessorPartnerPortalProps> = ({
     },
     {
       id: 'LIVE_COURTS',
-      label: 'Sân & Khách Đặt',
-      sub: 'Mặt bằng sân và khách trong ngày',
-      badge: floorWorkspaceActive && currentCourtSnapshot && !courtStatusError
-        ? `${currentCourtSnapshot.courts.filter(court => court.status === 'RENTED').length} đang dùng`
-        : undefined,
+      label: isAdminInspector ? 'Sân & Khách Đặt' : 'Khách đặt hôm nay',
+      sub: 'Tra cứu khách và ca thuê trong ngày',
       staffAllowed: true,
     },
     {
@@ -559,7 +557,7 @@ export const LessorPartnerPortal: React.FC<LessorPartnerPortalProps> = ({
     {
       id: 'COURTS_INVENTORY',
       label: 'Quản lý Cụm Sân & Đăng Sân',
-      sub: 'Mở/ẩn sân, số sân trống & ảnh thực tế',
+      sub: 'Sơ đồ mặt bằng và danh sách các cụm sân',
       badge: `${metrics.publishedCount}/${metrics.totalGroups}`,
       staffAllowed: true,
     },
@@ -1518,13 +1516,11 @@ export const LessorPartnerPortal: React.FC<LessorPartnerPortalProps> = ({
                   exit={{ opacity: 0, y: -6 }}
                   transition={{ duration: 0.24, ease: EXPO_EASE }}
                 >
-                  {floorWorkspaceActive ? (
-                    <StaffCourtStatus key={tenantId} snapshot={currentCourtSnapshot} error={courtStatusError}
-                      venueName={activeProvider.providerName} listings={myListings}
+                  {courtWorkspaceActive ? (
+                    <StaffCourtStatus key={tenantId} view="roster" snapshot={currentCourtSnapshot} error={courtStatusError}
                       onRefresh={() => setCourtRefresh(revision => revision + 1)}
                       onOpenSchedule={() => setActiveTab('WEEKLY_SCHEDULE')}
-                      onOpenVenue={onOpenPublicShop ? () => onOpenPublicShop(activeProvider.providerId) : undefined}
-                      onEditFloor={canEditFloor ? (groupId, groupName) => setFloorEditor({ groupId, groupName }) : undefined}
+                      onOpenInventory={() => setActiveTab('COURTS_INVENTORY')}
                       onOpenOrder={setDetailOrderId} />
                   ) : <LiveCourtsInUseSection
                     listings={myListings}
@@ -1568,7 +1564,7 @@ export const LessorPartnerPortal: React.FC<LessorPartnerPortalProps> = ({
                     expanded={staffWideSchedule}
                     venueName={activeProvider.providerName}
                     onOpenVenue={staffWideSchedule && onOpenPublicShop ? () => onOpenPublicShop(activeProvider.providerId) : undefined}
-                    onOpenCourtStatus={staffWideSchedule ? () => setActiveTab('LIVE_COURTS') : undefined}
+                    onOpenCourtInventory={staffWideSchedule ? () => setActiveTab('COURTS_INVENTORY') : undefined}
                     listings={myListings}
                     providerOrders={providerOrders}
                     fixedBlocks={weeklyFixedBlocks}
@@ -1591,16 +1587,16 @@ export const LessorPartnerPortal: React.FC<LessorPartnerPortalProps> = ({
                   transition={{ duration: 0.24, ease: EXPO_EASE }}
                   className="space-y-5"
                 >
-                  {canEditFloor && (
-                    <StaffCourtStatus key={tenantId} snapshot={currentCourtSnapshot} error={courtStatusError}
-                      venueName={activeProvider.providerName} listings={myListings} showRoster={false}
+                  {courtWorkspaceActive && (
+                    <StaffCourtStatus key={tenantId} view="floor" snapshot={currentCourtSnapshot} error={courtStatusError}
+                      venueName={activeProvider.providerName} listings={myListings} floorGroup={floorGroup} onSelectFloorGroup={setFloorGroup}
                       onRefresh={() => setCourtRefresh(revision => revision + 1)}
-                      onOpenSchedule={() => setActiveTab('WEEKLY_SCHEDULE')}
-                      onEditFloor={(groupId, groupName) => setFloorEditor({ groupId, groupName })}
+                      onOpenVenue={isStaffOnly && onOpenPublicShop ? () => onOpenPublicShop(activeProvider.providerId) : undefined}
+                      onEditFloor={canEditFloor ? (groupId, groupName) => setFloorEditor({ groupId, groupName }) : undefined}
                       onOpenOrder={setDetailOrderId} />
                   )}
                   {/* CLEAN HEADER + QUICK FILTERS & SEARCH */}
-                  <div className="rounded-[26px] border border-neutral-200/90 bg-white p-5 sm:p-6 shadow-xs space-y-4">
+                  <div id="danh-sach-cum-san" tabIndex={-1} className="scroll-mt-24 rounded-[26px] border border-neutral-200/90 bg-white p-5 sm:p-6 shadow-xs space-y-4">
                     <div className="flex flex-wrap items-center justify-between gap-3">
                       <div>
                         <div className="flex flex-wrap items-center gap-2">
@@ -1782,6 +1778,12 @@ export const LessorPartnerPortal: React.FC<LessorPartnerPortalProps> = ({
                                       {court.groupName}
                                     </h4>
                                     <p className="text-xs text-neutral-500">{court.venueAddress}</p>
+                                    {courtWorkspaceActive && (
+                                      <a href="#so-do-cum-san" onClick={() => setFloorGroup(court.groupId)}
+                                        className="mt-1 inline-flex min-h-8 items-center gap-1.5 text-xs font-semibold text-[#16422C] hover:underline">
+                                        <LayoutGrid aria-hidden="true" size={14} /> Xem trên sơ đồ
+                                      </a>
+                                    )}
                                   </div>
 
                                   {!isStaffOnly && (
