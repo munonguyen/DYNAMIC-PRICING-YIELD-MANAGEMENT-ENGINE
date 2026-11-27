@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Grid2X2, PencilRuler, RotateCcw, X } from 'lucide-react';
 import { marketplaceApi } from '../api/marketplaceApi';
-import type { CourtFloorDraft, CourtFloorPlacement, CourtFloorUnit } from '../types/marketplace';
+import type { CourtFloorDraft, CourtFloorPlacement, CourtFloorUnit, PublishedListing } from '../types/marketplace';
 import { arrangeCourts, CourtFloorCanvas, courtDisplayName, suggestedColumns, suggestedFloor } from './CourtFloorCanvas';
 
 const fieldStyle = 'min-h-10 w-full rounded-xl border border-[#DAE5DD] bg-white px-3 text-sm font-semibold tabular-nums text-[#163D2D] focus-visible:outline-[#398563]';
@@ -52,11 +52,12 @@ interface CourtFloorEditorProps {
   tenantId: string;
   groupId: string;
   groupName: string;
+  listing?: Pick<PublishedListing, 'sportCode' | 'sportName'>;
   onClose: () => void;
   onSaved: () => void;
 }
 
-export function CourtFloorEditor({ tenantId, groupId, groupName, onClose, onSaved }: CourtFloorEditorProps) {
+export function CourtFloorEditor({ tenantId, groupId, groupName, listing, onClose, onSaved }: CourtFloorEditorProps) {
   const dialog = useRef<HTMLDialogElement>(null);
   const [units, setUnits] = useState<CourtFloorUnit[]>([]);
   const [draft, setDraft] = useState<CourtFloorDraft | null>(null);
@@ -151,6 +152,7 @@ export function CourtFloorEditor({ tenantId, groupId, groupName, onClose, onSave
           <fieldset disabled={saving} className="grid min-w-0 items-start gap-4 lg:grid-cols-[minmax(0,1fr)_300px]">
             <div className="min-w-0 space-y-3">
               {validSurface ? <CourtFloorCanvas draft={draft} selectedId={selectedId} onSelect={setSelectedId}
+                sportCode={listing?.sportCode} sportName={listing?.sportName}
                 onMove={(id, xCm, yCm) => editPlacement(id, { xCm, yCm })} /> : (
                 <p className="rounded-xl border border-[#DAE5DD] bg-[#F4F8F5] p-5 text-sm">Nhập kích thước hợp lệ để xem mặt bằng.</p>
               )}
