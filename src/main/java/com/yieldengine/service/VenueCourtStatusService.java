@@ -24,6 +24,7 @@ public class VenueCourtStatusService {
 
     private final JdbcTemplate jdbc;
     private final SearchAndAnalyticsSyncService orders;
+    private final CourtFloorPlanService courtFloors;
 
     @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
     public Snapshot load(UUID tenantId) {
@@ -71,7 +72,7 @@ public class VenueCourtStatusService {
                     unit, status, current == null ? null : current.reservationId());
         }, Timestamp.from(asOf), tenantId);
 
-        return new Snapshot(tenantId, asOf, today, courts, bookings);
+        return new Snapshot(tenantId, asOf, today, courts, bookings, courtFloors.loadForVenue(tenantId));
     }
 
     public enum CourtStatus { RENTED, AWAITING_CHECK_IN, PAYMENT_HOLD, UNAVAILABLE, AVAILABLE }
@@ -81,5 +82,5 @@ public class VenueCourtStatusService {
     public record Court(UUID id, UUID groupId, String groupName, String unitNumber,
                         CourtStatus status, UUID reservationId) {}
     public record Snapshot(UUID tenantId, Instant updatedAt, LocalDate today,
-                           List<Court> courts, List<LessorOrderSummaryDto> bookings) {}
+                           List<Court> courts, List<LessorOrderSummaryDto> bookings, List<CourtFloorPlanService.Layout> layouts) {}
 }

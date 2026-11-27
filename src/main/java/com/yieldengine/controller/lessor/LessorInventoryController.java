@@ -8,12 +8,14 @@ import com.yieldengine.entity.TimeSlot;
 import com.yieldengine.record.marketplace.PublishedListingResponse;
 import com.yieldengine.record.marketplace.UpdateCourtGroupRequest;
 import com.yieldengine.security.RbacGuard;
+import com.yieldengine.service.CourtFloorPlanService;
 import com.yieldengine.service.InventoryService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.format.annotation.DateTimeFormat;
+import org.springframework.http.CacheControl;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -30,6 +32,23 @@ public class LessorInventoryController {
 
     private final InventoryService inventoryService;
     private final RbacGuard rbacGuard;
+    private final CourtFloorPlanService courtFloors;
+
+    @Operation(summary = "[MANAGER] Read floor plan and physical courts for editing")
+    @GetMapping("/groups/{id}/floor-plan")
+    public ResponseEntity<CourtFloorPlanService.Editor> getFloorPlan(@PathVariable UUID id,
+            @RequestParam(required = false) UUID tenantId) {
+        UUID tenant = rbacGuard.resolveAuthorizedTenantId(tenantId, SystemConstant.ROLE_MANAGER);
+        return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(courtFloors.load(tenant, id));
+    }
+
+    @Operation(summary = "[MANAGER] Save a versioned floor plan for existing physical courts")
+    @PutMapping("/groups/{id}/floor-plan")
+    public ResponseEntity<CourtFloorPlanService.Layout> saveFloorPlan(@PathVariable UUID id,
+            @RequestParam(required = false) UUID tenantId, @Valid @RequestBody CourtFloorPlanService.Draft draft) {
+        UUID tenant = rbacGuard.resolveAuthorizedTenantId(tenantId, SystemConstant.ROLE_MANAGER);
+        return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(courtFloors.save(tenant, id, draft));
+    }
 
     @Operation(summary = "[MANAGER] Create a court group and auto-generate physical courts (UC-07)")
     @PostMapping("/groups")
