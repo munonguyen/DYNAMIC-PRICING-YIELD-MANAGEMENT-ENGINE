@@ -5,6 +5,7 @@ import com.yieldengine.entity.SportType;
 import com.yieldengine.record.analytics.CourtSearchResponse;
 import com.yieldengine.record.marketplace.PublishedListingResponse;
 import com.yieldengine.service.InventoryService;
+import com.yieldengine.service.CourtFloorPlanService;
 import com.yieldengine.service.PricingEngineService;
 import com.yieldengine.service.SearchAndAnalyticsSyncService;
 import com.yieldengine.security.AuthContext;
@@ -29,6 +30,16 @@ public class PublicCatalogueController {
     private final InventoryService inventoryService;
     private final SearchAndAnalyticsSyncService syncService;
     private final PricingEngineService pricingEngineService;
+    private final CourtFloorPlanService floorPlans;
+
+    @Operation(summary = "[PUBLIC] Read court positions and availability for the selected slot")
+    @GetMapping("/listings/{groupId}/court-availability")
+    public ResponseEntity<CourtFloorPlanService.BookingAvailability> getCourtAvailability(
+            @PathVariable UUID groupId,
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) Instant slotStart) {
+        return ResponseEntity.ok().cacheControl(CacheControl.noStore())
+                .body(floorPlans.loadBookingAvailability(groupId, slotStart));
+    }
 
     @Operation(summary = "[PUBLIC] List active sport types (UC-04)")
     @GetMapping("/sport-types")

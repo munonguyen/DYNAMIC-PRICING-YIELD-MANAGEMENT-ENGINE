@@ -77,8 +77,10 @@ public class BookingOrchestratorService {
         UUID tenantId = tenant.getId();
 
         String idemKey = CommonTextAndPageUtils.resolveFirstNonBlank(headerIdempotencyKey, request.getIdempotencyKey());
+        UUID requestedUnit = request.getUnitId();
         String requestHash = CryptoHashUtils.sha256Hex(
                 group.getId() + "|" + request.getSlotStart() + "|" + request.getUserId() + "|" + request.getPriceLockToken()
+                + (requestedUnit == null ? "" : "|" + requestedUnit)
         );
 
         if (idemKey != null) {
@@ -96,13 +98,20 @@ public class BookingOrchestratorService {
         TimeSlot timeSlot = timeSlotRepository.findById(slotId)
                 .orElseThrow(() -> new ResourceNotFoundException("TimeSlot not found for group: " + request.getGroupId()));
 
-        Unit unit = unitRepository.findAndLockFirstAvailableUnit(request.getGroupId(), request.getSlotStart(), timeSlot.getSlotEnd())
-                .orElseThrow(() -> new SlotUnavailableException("No physical court is currently available for this slot"));
+        Instant now = DbClockUtils.now(jdbcTemplate);
+        if (requestedUnit != null && (!InventoryService.isPublishedForBooking(group)
+                || !"OPEN".equals(timeSlot.getStatus()) || !request.getSlotStart().isAfter(now))) {
+            throw new SlotUnavailableException("Khung giờ này đã đóng. Vui lòng chọn ca khác.");
+        }
+        Unit unit = requestedUnit == null
+                ? unitRepository.findAndLockFirstAvailableUnit(group.getId(), request.getSlotStart(), timeSlot.getSlotEnd())
+                    .orElseThrow(() -> new SlotUnavailableException("Khung giờ này đã hết sân."))
+                : unitRepository.findAndLockAvailableUnit(group.getId(), requestedUnit, request.getSlotStart(), timeSlot.getSlotEnd())
+                    .orElseThrow(() -> new SlotUnavailableException("Sân bạn chọn vừa hết chỗ hoặc tạm ngừng. Vui lòng chọn sân khác."));
 
         unitTimeLockRepository.deleteExpiredHoldLocksForUnit(unit.getId());
 
         UUID reservationId = UUID.randomUUID();
-        Instant now = DbClockUtils.now(jdbcTemplate);
         int ttlSeconds = group.getHoldTtlSeconds() != null ? group.getHoldTtlSeconds() : 600;
         short depositPercent = group.getDepositPercent() != null ? group.getDepositPercent() : 0;
         long depositAmount = policyEvaluator.calculateDepositAmount(payload.getLockedPrice(), depositPercent);
@@ -163,7 +172,7 @@ public class BookingOrchestratorService {
                 ? slotInventoryRepository.incrementConfirmedCountIfAvailable(request.getGroupId(), request.getSlotStart())
                 : slotInventoryRepository.incrementHeldCountIfAvailable(request.getGroupId(), request.getSlotStart());
         if (updated == 0) {
-            throw new SlotUnavailableException("Slot capacity reached during atomic inventory update");
+            throw new SlotUnavailableException("Khung giờ này đã hết sân. Vui lòng chọn ca khác.");
         }
 
         emitOccupancyOutboxAndEvent(tenantId, request.getGroupId(), request.getSlotStart(), reservationId, now);
