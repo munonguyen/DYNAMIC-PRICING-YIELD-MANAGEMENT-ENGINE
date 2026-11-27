@@ -5,6 +5,7 @@ import {
   BarChart3,
   Bell,
   Building2,
+  CalendarDays,
   Coffee,
   Compass,
   Home,
@@ -64,6 +65,9 @@ const NewsPage = lazy(() =>
 );
 const RankingsPage = lazy(() =>
   import('./pages/RankingsPage').then((m) => ({ default: m.RankingsPage }))
+);
+const CustomerSchedulePage = lazy(() =>
+  import('./pages/CustomerSchedulePage').then((m) => ({ default: m.CustomerSchedulePage }))
 );
 const CheckoutPage = lazy(() =>
   import('./pages/CheckoutPage').then((m) => ({ default: m.CheckoutPage }))
@@ -793,6 +797,14 @@ export function App() {
               </motion.div>
             )}
 
+            {currentPage === 'schedule' && (
+              <motion.div key="page-schedule" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0 }} transition={{ duration: 0.26, ease: EXPO_EASE }}>
+                <CustomerSchedulePage userId={session?.userId} onLogin={() => navigateTo('login')}
+                  onBrowse={() => navigateTo('courts')} />
+              </motion.div>
+            )}
+
             {currentPage === 'checkout' && (
               <motion.div
                 key="page-checkout"
@@ -987,7 +999,8 @@ export function App() {
       {currentPage !== 'login' && (
         <nav
           aria-label="Thanh điều hướng nhanh trên di động"
-          className="fixed inset-x-0 bottom-0 z-40 grid grid-cols-5 border-t border-neutral-200/90 bg-white/95 px-1 py-1.5 backdrop-blur-lg md:hidden"
+          className={`fixed inset-x-0 bottom-0 z-40 grid border-t border-neutral-200/90 bg-white/95 px-1 py-1.5 backdrop-blur-lg md:hidden
+            ${session && activeRole !== 'USER' ? 'grid-cols-5' : 'grid-cols-6'}`}
         >
           {Boolean(session && activeRole !== 'USER')
             ? [
@@ -1068,6 +1081,7 @@ export function App() {
             : [
                 { id: 'home' as AppPageId, label: 'Trang chủ', icon: <Home className="h-3.5 w-3.5" /> },
                 { id: 'courts' as AppPageId, label: 'Thuê sân', icon: <Compass className="h-3.5 w-3.5" /> },
+                { id: 'schedule' as AppPageId, label: 'Lịch của tôi', icon: <CalendarDays className="h-3.5 w-3.5" /> },
                 { id: 'announcements' as AppPageId, label: 'Thông báo', icon: <Bell className="h-3.5 w-3.5" /> },
                 { id: 'rankings' as AppPageId, label: 'Xếp hạng', icon: <Award className="h-3.5 w-3.5" /> },
                 { id: 'governance' as AppPageId, label: 'Chủ sân', icon: <Settings className="h-3.5 w-3.5" /> },
@@ -1078,6 +1092,7 @@ export function App() {
                     key={tab.id}
                     type="button"
                     onClick={() => navigateTo(tab.id)}
+                    aria-current={active ? 'page' : undefined}
                     className="flex flex-col items-center justify-center gap-0.5 py-1 text-center"
                   >
                     <span

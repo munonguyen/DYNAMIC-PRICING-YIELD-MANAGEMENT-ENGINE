@@ -12,6 +12,7 @@ import type {
   CheckInResult,
   CourtMediaItem,
   CourtSearchResponseData,
+  CustomerSchedule,
   HoldSlotResult,
   LessorApplicationPayload,
   LessorApplicationReceipt,
@@ -348,6 +349,11 @@ class MarketplaceApiClient {
       throw new Error(err.message || 'Xác thực kết quả VNPAY thất bại.');
     }
     return (await res.json()) as VnPayReturnResult;
+  }
+
+  getMySchedule(weekStart: string, signal?: AbortSignal): Promise<CustomerSchedule> {
+    const query = new URLSearchParams({ weekStart });
+    return this.checkoutRequest(`/bookings/my-schedule?${query}`, undefined, signal);
   }
 
   async getMyTicket(reservationId: string, signal?: AbortSignal): Promise<MyTicketRecord | null> {
