@@ -228,7 +228,7 @@ export const FairwayHeader: React.FC<FairwayHeaderProps> = ({
           },
           {
             key: 'lessor-live-courts',
-            label: 'Sân & khách',
+            label: 'Khách đặt',
             targetPage: 'governance',
             lessorTab: 'LIVE_COURTS',
           },
@@ -278,7 +278,7 @@ export const FairwayHeader: React.FC<FairwayHeaderProps> = ({
             },
             {
               key: 'staff-live-courts',
-              label: 'Sân & khách',
+              label: 'Khách đặt',
               targetPage: 'governance',
               lessorTab: 'LIVE_COURTS',
             },

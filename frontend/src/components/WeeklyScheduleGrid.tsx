@@ -1,5 +1,5 @@
 import { useMemo, useState, type FormEvent } from 'react';
-import { CalendarDays, ChevronLeft, ChevronRight, ExternalLink, Lock, Plus, Printer, Trash2, Users, X } from 'lucide-react';
+import { CalendarDays, ChevronLeft, ChevronRight, ExternalLink, LayoutGrid, Lock, Plus, Printer, Trash2, X } from 'lucide-react';
 import type { LessorBookingOrder, PublishedListing } from '../types/marketplace';
 import { PillSelect } from './FairwayControls';
 import { WeeklyBookingCard, weeklyBookingStatus } from './WeeklyBookingCard';
@@ -19,7 +19,7 @@ interface WeeklyScheduleGridProps {
   expanded?: boolean;
   venueName?: string;
   onOpenVenue?: () => void;
-  onOpenCourtStatus?: () => void;
+  onOpenCourtInventory?: () => void;
   listings: PublishedListing[];
   providerOrders: LessorBookingOrder[];
   fixedBlocks: WeeklyFixedBlock[];
@@ -70,7 +70,7 @@ function orderTimeLabel(order: LessorBookingOrder) {
 }
 
 export function WeeklyScheduleGrid({
-  expanded = false, venueName, onOpenVenue, onOpenCourtStatus,
+  expanded = false, venueName, onOpenVenue, onOpenCourtInventory,
   listings, providerOrders, fixedBlocks, onAddFixedBlock, onRemoveFixedBlock, onOpenOrderDetail,
 }: WeeklyScheduleGridProps) {
   const [weekOffset, setWeekOffset] = useState(0);
@@ -249,10 +249,10 @@ export function WeeklyScheduleGrid({
                 {totalOrders} ca đặt · Giờ Việt Nam
               </span>
             )}
-            {onOpenCourtStatus && (
-              <button type="button" onClick={onOpenCourtStatus}
+            {onOpenCourtInventory && (
+              <button type="button" onClick={onOpenCourtInventory}
                 className="inline-flex min-h-10 items-center gap-1.5 rounded-xl bg-[#16422C] px-3 text-xs font-semibold text-white hover:bg-[#23563C] print:hidden">
-                <Users aria-hidden="true" className="h-4 w-4" /> Sân & Khách Đặt
+                <LayoutGrid aria-hidden="true" className="h-4 w-4" /> Sơ đồ & cụm sân
               </button>
             )}
             {onOpenVenue && (
