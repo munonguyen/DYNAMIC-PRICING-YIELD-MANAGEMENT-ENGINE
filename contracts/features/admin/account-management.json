@@ -1,5 +1,5 @@
 {
-  "branch": "service/admin/account-management",
+  "branch": "complete/admin/account-management",
   "title": "Quản lý tài khoản",
   "scope": "Tra cứu, tạo và đổi trạng thái tài khoản.",
   "operations": [
