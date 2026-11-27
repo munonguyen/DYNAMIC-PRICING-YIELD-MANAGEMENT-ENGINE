@@ -893,3 +893,11 @@ export interface AdminAuditLogEntry {
   createdAt: string;
 }
 
+
+
+export interface VenueOperationsSnapshot {
+  updatedAt: string;
+  today: string;
+  revenue: { today: number; week: number; month: number };
+  activity: { day: string; scheduled: number; arrivals: number }[];
+}

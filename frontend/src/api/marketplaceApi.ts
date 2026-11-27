@@ -800,6 +800,11 @@ class MarketplaceApiClient {
     return this.checkoutRequest(`/tenants/${tenantId}/staff`, payload);
   }
 
+  getVenueOperationsDashboard(tenantId: string, signal?: AbortSignal): Promise<import('../types/marketplace').VenueOperationsSnapshot> {
+    const query = new URLSearchParams({ tenantId });
+    return this.checkoutRequest(`/checkins/dashboard?${query}`, undefined, signal);
+  }
+
   async getVenueOrders(tenantId: string): Promise<LessorBookingOrder[]> {
     const rows = await this.checkoutRequest<(LessorBookingOrder & { slotStart: string })[]>(
       `/checkins/orders?tenantId=${tenantId}`

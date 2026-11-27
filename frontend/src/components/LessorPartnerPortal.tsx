@@ -46,6 +46,7 @@ import {
 import { ActionButton, PillSelect } from './FairwayControls';
 import { LessorAddOnServicesManager } from './LessorAddOnServicesManager';
 import { LessorAnalyticsDashboard } from './LessorAnalyticsDashboard';
+import { VenueOperationsDashboard } from './VenueOperationsDashboard';
 import { QrCheckInScannerModal, type QrModalTabId } from './QrCheckInScannerModal';
 import { CreateCourtGroupModal } from './CreateCourtGroupModal';
 import { BookingOrderDetailModal } from './BookingOrderDetailModal';
@@ -956,6 +957,7 @@ export const LessorPartnerPortal: React.FC<LessorPartnerPortalProps> = ({
                   transition={{ duration: 0.24, ease: EXPO_EASE }}
                   className="space-y-5"
                 >
+                  {tenantId && <VenueOperationsDashboard tenantId={tenantId} revision={orderRevision} />}
                   {/* Summary Strip for Fast Control */}
                   <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
                     {[
