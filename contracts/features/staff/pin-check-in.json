@@ -1,5 +1,5 @@
 {
-  "branch": "service/staff/pin-check-in",
+  "branch": "complete/staff/pin-check-in",
   "title": "Nhận sân bằng PIN",
   "scope": "Xác nhận nhận sân bằng mã PIN dùng một lần.",
   "operations": [
