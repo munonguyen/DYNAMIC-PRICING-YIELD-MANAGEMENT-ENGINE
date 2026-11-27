@@ -17,7 +17,7 @@ public interface PaymentRepository extends JpaRepository<Payment, UUID> {
     Optional<Payment> findFirstByBookingIdAndGatewayVerifiedAtIsNotNullAndPaymentTypeNotAndStatusOrderByGatewayVerifiedAtDesc(
             UUID bookingId, String excludedPaymentType, String status);
 
-    Optional<Payment> findFirstByBookingIdOrderByCreatedAtDesc(UUID bookingId);
+    Optional<Payment> findFirstByBookingIdOrderByCreatedAtDescIdDesc(UUID bookingId);
 
     boolean existsByBookingIdAndProviderInAndStatus(UUID bookingId, List<String> providers, String status);
 

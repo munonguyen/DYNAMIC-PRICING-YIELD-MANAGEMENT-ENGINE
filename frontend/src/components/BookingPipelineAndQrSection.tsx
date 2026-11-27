@@ -206,28 +206,39 @@ export const BookingPipelineAndQrSection: React.FC<BookingPipelineAndQrSectionPr
     if (!ownerId || !trackedReservation) return;
     const request = new AbortController();
     let inFlight = false;
+    let complete = false;
+    let delay = 4000;
+    let timer: number | undefined;
+
     async function refresh() {
-      if (inFlight || !trackedReservation) return;
+      if (inFlight || complete || request.signal.aborted || document.hidden) return;
+      window.clearTimeout(timer);
       inFlight = true;
       try {
-        const status = await marketplaceApi.getBookingPaymentStatus(trackedReservation, request.signal);
-        if (!request.signal.aborted) {
-          setPaymentStatus(status);
-          setStatusError(null);
-        }
+        const status = await marketplaceApi.getBookingPaymentStatus(trackedReservation!, request.signal);
+        if (request.signal.aborted) return;
+        setPaymentStatus(status);
+        setStatusError(null);
+        complete = ['VERIFIED', 'NO_DEPOSIT', 'REFUNDED'].includes(status.paymentStatus)
+          || (status.paymentStatus === 'CANCELLED' && status.reservationStatus === 'CANCELLED');
+        delay = ['REVIEW_REQUIRED', 'REFUND_PENDING', 'EXPIRED'].includes(status.paymentStatus) ? 15000 : 4000;
       } catch {
         if (!request.signal.aborted) setStatusError('Chưa kiểm tra được giao dịch. Vui lòng thử lại.');
+        delay = Math.min(30000, delay * 2);
       } finally {
         inFlight = false;
+        if (!complete && !request.signal.aborted && !document.hidden) {
+          timer = window.setTimeout(refresh, delay);
+        }
       }
     }
+
     void refresh();
-    const timer = window.setInterval(() => {
-      if (document.visibilityState === 'visible') void refresh();
-    }, 4000);
+    document.addEventListener('visibilitychange', refresh);
     return () => {
       request.abort();
-      window.clearInterval(timer);
+      window.clearTimeout(timer);
+      document.removeEventListener('visibilitychange', refresh);
     };
   }, [ownerId, trackedReservation, statusRequest, cancelResult]);
 
