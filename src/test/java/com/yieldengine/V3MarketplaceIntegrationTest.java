@@ -717,6 +717,62 @@ class V3MarketplaceIntegrationTest {
         assertThrows(BusinessConflictException.class, () -> checkInService.issueOrGetQrCode(cancelledHold.getReservationId()));
     }
 
+    @Test
+    @Order(11)
+    void venueDashboardReadsVerifiedMoneyAndWeeklyActivityWithinStaffScope() throws Exception {
+        String suffix = UUID.randomUUID().toString().substring(0, 8);
+        var player = authService.register(new RegisterRequest("dashboard_" + suffix, suffix + "@example.test",
+                "Pass12345!", "Test", "Player", null));
+        var login = authService.login(new LoginRequest(player.username(), "Pass12345!"));
+        var actor = sessionStore.findSession(login.accessToken()).orElseThrow();
+        String endpoint = "/api/v1/checkins/dashboard";
+        assertEquals(403, mvc.perform(MockMvcRequestBuilders.get(endpoint).param("tenantId", DEFAULT_TENANT_ID.toString())
+                .header("Authorization", "Bearer " + login.accessToken())).andReturn().getResponse().getStatus());
+
+        var staff = new com.yieldengine.record.security.SessionPrincipal(player.id(), "venue-dashboard-staff",
+                List.of(new com.yieldengine.record.security.RoleGrant("STAFF", "TENANT", DEFAULT_TENANT_ID)),
+                Instant.now(), Instant.now().plusSeconds(120));
+        String staffToken = sessionStore.createSession(staff, Duration.ofMinutes(2));
+        assertEquals(403, mvc.perform(MockMvcRequestBuilders.get(endpoint).param("tenantId", UUID.randomUUID().toString())
+                .header("Authorization", "Bearer " + staffToken)).andReturn().getResponse().getStatus());
+        var beforeResponse = mvc.perform(MockMvcRequestBuilders.get(endpoint)
+                        .header("Authorization", "Bearer " + staffToken))
+                .andReturn().getResponse();
+        assertEquals(200, beforeResponse.getStatus(), beforeResponse.getContentAsString());
+        assertEquals("no-store", beforeResponse.getHeader("Cache-Control"));
+        var before = JSON.readTree(beforeResponse.getContentAsString());
+        assertEquals(7, before.path("activity").size());
+        var monday = java.time.LocalDate.parse(before.path("activity").get(0).path("day").asText());
+        assertEquals(java.time.DayOfWeek.MONDAY, monday.getDayOfWeek());
+        assertEquals(monday.plusDays(6).toString(), before.path("activity").get(6).path("day").asText());
+        String today = before.path("today").asText();
+        int dayIndex = (int) java.time.temporal.ChronoUnit.DAYS.between(monday, java.time.LocalDate.parse(today));
+
+        AuthContext.set(actor, login.accessToken());
+        var hold = createPaymentTestHold(Instant.now().plusSeconds(52000).truncatedTo(ChronoUnit.MILLIS), player.id());
+        jdbcTemplate.update("""
+                INSERT INTO payments (id, tenant_id, booking_id, provider, provider_ref, amount, currency,
+                                      status, payment_type, gateway_verified_at)
+                VALUES (gen_random_uuid(), ?, ?, 'VIETQR_NAPAS', ?, 50000, 'VND', 'SUCCESS', 'DEPOSIT', now()),
+                       (gen_random_uuid(), ?, ?, 'PLATFORM_REFUND', ?, 10000, 'VND', 'SUCCESS', 'REFUND', now()),
+                       (gen_random_uuid(), ?, ?, 'MOMO_WALLET', ?, 70000, 'VND', 'PENDING', 'DEPOSIT', NULL)
+                """, DEFAULT_TENANT_ID, hold.getBookingId(), suffix + "-dashboard-sale",
+                DEFAULT_TENANT_ID, hold.getBookingId(), suffix + "-dashboard-refund",
+                DEFAULT_TENANT_ID, hold.getBookingId(), suffix + "-dashboard-pending");
+        jdbcTemplate.update("UPDATE reservations SET checked_in_at = now() WHERE id = ?", hold.getReservationId());
+
+        var response = mvc.perform(MockMvcRequestBuilders.get(endpoint).param("tenantId", DEFAULT_TENANT_ID.toString())
+                        .header("Authorization", "Bearer " + staffToken))
+                .andReturn().getResponse();
+        assertEquals(200, response.getStatus(), response.getContentAsString());
+        var after = JSON.readTree(response.getContentAsString());
+        for (String period : List.of("today", "week", "month")) {
+            assertEquals(before.path("revenue").path(period).asLong() + 40000, after.path("revenue").path(period).asLong());
+        }
+        assertEquals(before.path("activity").get(dayIndex).path("arrivals").asLong() + 1,
+                after.path("activity").get(dayIndex).path("arrivals").asLong());
+    }
+
     private JsonNode sendBankNotice(String auth, String suffix, long amount, String content, String order, String direction, int code)
             throws Exception {
         var body = new java.util.LinkedHashMap<String, Object>(Map.of(
