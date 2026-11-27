@@ -55,6 +55,7 @@ import { BookingOrderDetailModal } from './BookingOrderDetailModal';
 import { LiveCourtsInUseSection } from './LiveCourtsInUseSection';
 import { StaffCourtStatus } from './StaffCourtStatus';
 import { CourtFloorEditor } from './CourtFloorEditor';
+import { CourtUnitInventory } from './CourtUnitInventory';
 import { WeeklyScheduleGrid, type WeeklyFixedBlock } from './WeeklyScheduleGrid';
 import { getActiveLessorServices, resolveCourtThumbnail } from '../data/courtServicesData';
 
@@ -190,6 +191,11 @@ export const LessorPartnerPortal: React.FC<LessorPartnerPortalProps> = ({
   const [orderRevision, setOrderRevision] = useState(0);
   const [courtRefresh, setCourtRefresh] = useState(0);
   const [floorGroup, setFloorGroup] = useState('');
+  const [selectedCourtId, setSelectedCourtId] = useState<string | null>(null);
+  const selectFloorGroup = (groupId: string) => {
+    setFloorGroup(groupId);
+    setSelectedCourtId(null);
+  };
   const [floorEditor, setFloorEditor] = useState<{ groupId: string; groupName: string } | null>(null);
   const [courtSnapshot, setCourtSnapshot] = useState<VenueCourtSnapshot | null>(null);
   const [courtStatusError, setCourtStatusError] = useState<string | null>(null);
@@ -1587,14 +1593,24 @@ export const LessorPartnerPortal: React.FC<LessorPartnerPortalProps> = ({
                 >
                   {courtWorkspaceActive && (
                     <StaffCourtStatus key={tenantId} view="floor" snapshot={currentCourtSnapshot} error={courtStatusError}
-                      venueName={activeProvider.providerName} listings={myListings} floorGroup={floorGroup} onSelectFloorGroup={setFloorGroup}
+                      venueName={activeProvider.providerName} listings={myListings} floorGroup={floorGroup} onSelectFloorGroup={selectFloorGroup}
+                      selectedCourtId={selectedCourtId} onSelectCourt={setSelectedCourtId}
                       onRefresh={() => setCourtRefresh(revision => revision + 1)}
                       onOpenVenue={isStaffOnly && onOpenPublicShop ? () => onOpenPublicShop(activeProvider.providerId) : undefined}
                       onEditFloor={canEditFloor ? (groupId, groupName) => setFloorEditor({ groupId, groupName }) : undefined}
                       onOpenOrder={setDetailOrderId} />
                   )}
-                  {/* CLEAN HEADER + QUICK FILTERS & SEARCH */}
-                  <div id="danh-sach-cum-san" tabIndex={-1} className="scroll-mt-24 rounded-[26px] border border-neutral-200/90 bg-white p-5 sm:p-6 shadow-xs space-y-4">
+                  {courtWorkspaceActive && (
+                    <CourtUnitInventory key={tenantId} snapshot={currentCourtSnapshot} listings={myListings}
+                      onSelectCourt={court => { setFloorGroup(court.groupId); setSelectedCourtId(court.id); }}
+                      onCreateGroup={canEditFloor ? () => setShowCreateCourtForm(true) : undefined} />
+                  )}
+                  {!isStaffOnly && (
+                  <details open={isAdminInspector || undefined} className="group/venue-settings">
+                  <summary className="cursor-pointer rounded-xl border border-[#DDE8E1] bg-white px-4 py-3 text-sm font-semibold text-[#16422C]">
+                    Thiết lập cụm sân
+                  </summary>
+                  <div className="mt-3 rounded-[26px] border border-neutral-200/90 bg-white p-5 sm:p-6 shadow-xs space-y-4">
                     <div className="flex flex-wrap items-center justify-between gap-3">
                       <div>
                         <div className="flex flex-wrap items-center gap-2">
@@ -1606,7 +1622,7 @@ export const LessorPartnerPortal: React.FC<LessorPartnerPortalProps> = ({
                           </span>
                         </div>
                         <h3 className="mt-0.5 text-xl font-bold text-[#0F172A]">
-                          Danh sách cụm sân
+                          Thông tin, giá và ảnh cụm sân
                         </h3>
                       </div>
 
@@ -1671,7 +1687,7 @@ export const LessorPartnerPortal: React.FC<LessorPartnerPortalProps> = ({
                   </div>
 
                   {/* OWNED COURT GROUPS LIST */}
-                  <div className="space-y-4">
+                  <div className="mt-4 space-y-4">
                     {filteredMyListings.length === 0 ? (
                       <div className="rounded-[26px] border border-dashed border-neutral-300 bg-white p-10 text-center space-y-3">
                         <p className="text-sm font-semibold text-[#0F172A]">
@@ -1699,7 +1715,7 @@ export const LessorPartnerPortal: React.FC<LessorPartnerPortalProps> = ({
                         const isEditingPrice = editingPriceGroupId === court.groupId;
                         const isPinMode =
                           court.checkinMode === 'PIN_COUNTER' || court.checkinMode === 'MANUAL';
-                        const courtCapacity = court.upcomingSlots[0]?.totalCapacity ?? 4;
+                        const courtCapacity = court.totalUnits ?? court.upcomingSlots[0]?.totalCapacity ?? 0;
 
                         return (
                           <div
@@ -1777,7 +1793,7 @@ export const LessorPartnerPortal: React.FC<LessorPartnerPortalProps> = ({
                                     </h4>
                                     <p className="text-xs text-neutral-500">{court.venueAddress}</p>
                                     {courtWorkspaceActive && (
-                                      <a href="#so-do-cum-san" onClick={() => setFloorGroup(court.groupId)}
+                                      <a href="#so-do-cum-san" onClick={() => selectFloorGroup(court.groupId)}
                                         className="mt-1 inline-flex min-h-8 items-center gap-1.5 text-xs font-semibold text-[#16422C] hover:underline">
                                         <LayoutGrid aria-hidden="true" size={14} /> Xem trên sơ đồ
                                       </a>
@@ -2060,6 +2076,8 @@ export const LessorPartnerPortal: React.FC<LessorPartnerPortalProps> = ({
                       })
                     )}
                   </div>
+                  </details>
+                  )}
                 </motion.div>
               )}
 

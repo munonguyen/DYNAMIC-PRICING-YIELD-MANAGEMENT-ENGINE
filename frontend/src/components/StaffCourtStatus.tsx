@@ -62,6 +62,8 @@ type StaffCourtStatusProps = StaffCourtStatusBase & ({
   listings: PublishedListing[];
   onOpenVenue?: () => void;
   floorGroup: string;
+  selectedCourtId: string | null;
+  onSelectCourt: (id: string) => void;
   onSelectFloorGroup: (groupId: string) => void;
   onEditFloor?: (groupId: string, groupName: string) => void;
 } | {
@@ -151,6 +153,7 @@ export function StaffCourtStatus(props: StaffCourtStatusProps) {
                 </div>
                 <LiveCourtFloor key={activeGroup[0]} courts={courts}
                   layout={snapshot.layouts.find(layout => layout.groupId === activeGroup[0])}
+                  selectedId={props.selectedCourtId} onSelectCourt={props.onSelectCourt}
                   sportCode={listing?.sportCode} sportName={listing?.sportName}
                   bookings={bookingById} bookingTime={order => bookingTime(order, snapshot.today)} onOpenOrder={onOpenOrder}
                   onEdit={onEditFloor ? () => onEditFloor(...activeGroup) : undefined} />

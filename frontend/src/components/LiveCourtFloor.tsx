@@ -9,6 +9,8 @@ interface LiveCourtFloorProps {
   layout?: CourtFloorLayout;
   sportCode?: string;
   sportName?: string;
+  selectedId: string | null;
+  onSelectCourt: (id: string) => void;
   bookings: Map<string, LessorBookingOrder>;
   onEdit?: () => void;
   onOpenOrder: (reservationId: string) => void;
@@ -17,8 +19,7 @@ interface LiveCourtFloorProps {
 
 const states = Object.keys(floorStatuses) as VenueCourt['status'][];
 
-export function LiveCourtFloor({ courts, layout, sportCode, sportName, bookings, onEdit, onOpenOrder, bookingTime }: LiveCourtFloorProps) {
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+export function LiveCourtFloor({ courts, layout, sportCode, sportName, selectedId, onSelectCourt, bookings, onEdit, onOpenOrder, bookingTime }: LiveCourtFloorProps) {
   const [filter, setFilter] = useState<VenueCourt['status'] | null>(null);
   const { byId, statuses, counts, dimmed } = useMemo(() => {
     const byId = new Map(courts.map(court => [court.id, court]));
@@ -62,7 +63,7 @@ export function LiveCourtFloor({ courts, layout, sportCode, sportName, bookings,
                   onClick={() => {
                     setFilter(current => current === state ? null : state);
                     const match = courts.find(court => court.status === state);
-                    if (filter !== state && match) setSelectedId(match.id);
+                    if (filter !== state && match) onSelectCourt(match.id);
                   }}
                   className={`flex min-h-12 items-center justify-between gap-2 rounded-[10px] border px-2 py-1.5 text-left text-[11px] font-semibold hover:brightness-[0.96] sm:px-2.5
                     ${state === 'RENTED' ? 'border-[#B2D1C5] bg-[#DDEDE6] text-[#15473B]' : style.tile}
@@ -78,11 +79,11 @@ export function LiveCourtFloor({ courts, layout, sportCode, sportName, bookings,
           </div>
           {remaining > 0 && <p className="text-xs font-medium text-amber-900">{remaining} sân chưa có vị trí trên sơ đồ. Có thể chọn sân trong danh sách bên cạnh.</p>}
           <div className="grid min-w-0 gap-3 lg:grid-cols-[minmax(0,1fr)_260px]">
-            <CourtFloorCanvas draft={draft} selectedId={selected?.id ?? null} onSelect={setSelectedId}
+            <CourtFloorCanvas draft={draft} selectedId={selected?.id ?? null} onSelect={onSelectCourt}
               statuses={statuses} dimmedIds={dimmed} schematic={!layout} sportCode={sportCode} sportName={sportName} />
             {selected && (
               <aside aria-label="Chi tiết sân đang chọn" className="min-w-0 space-y-3 self-start rounded-[20px] border border-[#D8E5DC] bg-[#FAFCFA] p-3.5 sm:p-4">
-                <PillSelect variant="soft" ariaLabel="Chọn sân trên mặt bằng" value={selected.id} onChange={setSelectedId}
+                <PillSelect variant="soft" ariaLabel="Chọn sân trên mặt bằng" value={selected.id} onChange={onSelectCourt}
                   options={courts.map(court => ({ value: court.id, label: placements.get(court.id)?.label ?? courtDisplayName(court.unitNumber) }))} />
                 <div className="space-y-2 border-t border-[#E5EDE7] pt-3">
                   <p className="flex items-start gap-1.5 break-words text-base font-bold text-[#15382A]"><MapPin aria-hidden="true" size={15} className="mt-1 shrink-0" />
