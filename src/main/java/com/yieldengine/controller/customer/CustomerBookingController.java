@@ -9,6 +9,7 @@ import com.yieldengine.record.security.SessionPrincipal;
 import com.yieldengine.security.RbacGuard;
 import com.yieldengine.service.BookingOrchestratorService;
 import com.yieldengine.service.CustomerTicketReadService;
+import com.yieldengine.service.CustomerScheduleService;
 import com.yieldengine.service.CheckInService;
 import com.yieldengine.service.CheckoutPaymentService;
 import com.yieldengine.service.QrTicketEmailService;
@@ -16,11 +17,13 @@ import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.CacheControl;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.time.LocalDate;
 import java.util.List;
 import java.util.UUID;
 
@@ -32,6 +35,7 @@ public class CustomerBookingController {
 
     private final BookingOrchestratorService bookingOrchestratorService;
     private final CustomerTicketReadService ticketReadService;
+    private final CustomerScheduleService scheduleService;
     private final CheckInService checkInService;
     private final CheckoutPaymentService checkoutPaymentService;
     private final QrTicketEmailService qrTicketEmailService;
@@ -95,6 +99,16 @@ public class CustomerBookingController {
         return ResponseEntity.ok(qrTicketEmailService.sendQrTicketEmailForReservation(
                 reservationId, request.recipientEmail(), null
         ));
+    }
+
+    @Operation(summary = "[USER] View bookings for a week in the personal schedule")
+    @GetMapping("/my-schedule")
+    public ResponseEntity<CustomerScheduleResponse> mySchedule(
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate weekStart
+    ) {
+        UUID customerId = rbacGuard.requireAuthenticated().userId();
+        return ResponseEntity.ok().cacheControl(CacheControl.noStore())
+                .body(scheduleService.load(customerId, weekStart));
     }
 
     @Operation(summary = "[USER] List persistent e-tickets stored in user's account ('Vé của tôi')")
