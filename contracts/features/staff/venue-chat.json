@@ -1,5 +1,5 @@
 {
-  "branch": "service/staff/venue-chat",
+  "branch": "complete/staff/venue-chat",
   "title": "Chat hỗ trợ khách",
   "scope": "Xem trao đổi theo cơ sở và gửi tin nhắn hỗ trợ.",
   "operations": [
