@@ -1,5 +1,5 @@
 {
-  "branch": "service/lessor/court-slots",
+  "branch": "complete/lessor/court-slots",
   "title": "Quản lý ca sân",
   "scope": "Tạo ca và đọc lịch theo cụm sân.",
   "operations": [

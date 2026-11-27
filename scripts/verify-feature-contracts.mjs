@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url';
 const root = fileURLToPath(new URL('../', import.meta.url));
 const directory = join(root, 'contracts', 'features');
 const [requestedBranch, ...unexpectedArguments] = process.argv.slice(2);
-assert.equal(unexpectedArguments.length, 0, 'Specify at most one service branch name.');
+assert.equal(unexpectedArguments.length, 0, 'Specify at most one feature branch name.');
 
 const specPath = process.env.ARENAPULSE_OPENAPI_FILE;
 const openApi = specPath ? JSON.parse(await readFile(specPath, 'utf8')) : undefined;
@@ -20,11 +20,18 @@ const files = (await readdir(directory, { recursive: true, withFileTypes: true }
   .sort();
 
 for (const file of files) {
-  const branch = 'service/' + relative(directory, file).slice(0, -'.json'.length).replaceAll('\\', '/');
-  if (requestedBranch && branch !== requestedBranch) continue;
+  const feature = relative(directory, file).slice(0, -'.json'.length).replaceAll('\\', '/');
   const contract = JSON.parse(await readFile(file, 'utf8'));
-  assert.match(branch, /^service\/(?:admin|accountant|customer|lessor|shared|staff)\/[a-z0-9-]+(?:\/[a-z0-9-]+)?$/);
-  assert.equal(contract.branch, branch);
+  const { branch } = contract;
+  if (requestedBranch && branch !== requestedBranch) continue;
+  assert.match(branch, /^(?:initial|complete)\/(?:admin|accountant|customer|lessor|shared|staff)\/[a-z0-9-]+(?:\/[a-z0-9-]+)?$/);
+  const [stage, ...branchFeature] = branch.split('/');
+  assert.equal(branchFeature.join('/'), feature);
+  if (stage === 'initial') {
+    assert(contract.validationPending?.trim(), `${branch}: missing pending validation`);
+  } else {
+    assert.equal(contract.validationPending, undefined, `${branch}: pending validation remains`);
+  }
   assert(contract.title?.trim() && contract.scope?.trim(), `${branch}: missing title or scope`);
   assert(contract.operations?.length && contract.source?.length, `${branch}: missing operations or source`);
 
@@ -51,7 +58,7 @@ for (const file of files) {
   verifiedFeatures++;
 }
 
-assert(verifiedFeatures > 0, requestedBranch ? `Unknown service branch: ${requestedBranch}` : 'No feature contracts found.');
+assert(verifiedFeatures > 0, requestedBranch ? `Unknown feature branch: ${requestedBranch}` : 'No feature contracts found.');
 console.log(`Verified ${verifiedFeatures} feature contracts and ${verifiedOperations.size} distinct operations${openApi ? ' against OpenAPI' : ' in the catalogue'}.`);
 
 if (openApi && !requestedBranch && process.env.ARENAPULSE_REQUIRE_FULL_COVERAGE === '1') {
