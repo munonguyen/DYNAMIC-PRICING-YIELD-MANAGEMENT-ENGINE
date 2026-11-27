@@ -1,5 +1,5 @@
 {
-  "branch": "service/lessor/court-groups",
+  "branch": "complete/lessor/court-groups",
   "title": "Quản lý cụm sân",
   "scope": "Tạo cụm sân và xem danh mục quản lý theo cơ sở.",
   "operations": [
