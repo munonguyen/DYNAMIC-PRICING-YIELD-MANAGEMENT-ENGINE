@@ -1,0 +1,22 @@
+{
+  "branch": "complete/staff/court-status-and-guests",
+  "title": "Theo dõi trạng thái sân và khách đặt trong ngày",
+  "scope": "Theo dõi tình trạng từng sân và danh sách khách đặt tại cơ sở được phân quyền theo giờ Việt Nam. Mở chi tiết đơn và chuyển trực tiếp giữa màn hình theo dõi và lịch tuần.",
+  "operations": [
+    { "method": "GET", "path": "/api/v1/checkins/court-status", "operationId": "venueCourtStatus" }
+  ],
+  "source": [
+    {
+      "file": "src/main/java/com/yieldengine/controller/staff/StaffCheckInController.java",
+      "anchors": ["venueCourtStatus("]
+    },
+    {
+      "file": "src/main/java/com/yieldengine/service/VenueCourtStatusService.java",
+      "anchors": ["CourtStatus", "AWAITING_CHECK_IN", "Isolation.REPEATABLE_READ"]
+    },
+    {
+      "file": "frontend/src/components/StaffCourtStatus.tsx",
+      "anchors": ["Trạng thái sân hiện tại", "Khách đặt sân hôm nay", "Tìm khách đặt sân"]
+    }
+  ]
+}
