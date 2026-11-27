@@ -1,6 +1,7 @@
 package com.yieldengine.service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.yieldengine.exception.AppException;
 import com.yieldengine.config.MoMoGatewayProperties;
 import com.yieldengine.exception.MoMoSessionRejectedException;
 import com.yieldengine.record.momo.MoMoGatewayApiResponse;
@@ -12,6 +13,7 @@ import com.yieldengine.utils.CryptoHashUtils;
 import com.yieldengine.validate.MoMoPaymentValidator;
 import lombok.extern.slf4j.Slf4j;
 import org.mapstruct.factory.Mappers;
+import org.springframework.http.HttpStatus;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
@@ -19,6 +21,7 @@ import java.io.IOException;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
+import java.net.http.HttpTimeoutException;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
@@ -135,7 +138,7 @@ public class MoMoPaymentGatewayService {
                 String qrPayload = apiResp.qrCodeUrl();
                 if (!hasText(qrPayload) || qrPayload.getBytes(StandardCharsets.UTF_8).length > 1024
                         || qrPayload.codePoints().anyMatch(Character::isISOControl)) {
-                    throw new IllegalStateException("MoMo chưa cấp mã QR cho giao dịch. Vui lòng kiểm tra cấu hình QR của merchant.");
+                    throw new AppException("MoMo chưa cấp mã QR cho giao dịch. Vui lòng kiểm tra cấu hình QR của merchant.", HttpStatus.BAD_GATEWAY);
                 }
                 log.info("MoMo created QR for orderId={} amount={}VND", orderId, amount);
                 return mapper.toLiveInitResult(properties, orderId, requestId, amount, apiResp, signature, rawSignature);
@@ -146,12 +149,14 @@ public class MoMoPaymentGatewayService {
             if (resultCode > 0 && response.statusCode() < 500) {
                 throw new MoMoSessionRejectedException();
             }
-            throw new IllegalStateException("Chưa xác nhận được việc khởi tạo phiên MoMo.");
+            throw new AppException("Chưa xác nhận được việc khởi tạo phiên MoMo.", HttpStatus.BAD_GATEWAY);
+        } catch (HttpTimeoutException ex) {
+            throw new AppException("MoMo phản hồi quá thời gian. Hãy kiểm tra trạng thái giao dịch.", HttpStatus.GATEWAY_TIMEOUT);
         } catch (IOException ex) {
-            throw new IllegalStateException("Chưa kết nối được với MoMo. Hệ thống sẽ kiểm tra trạng thái giao dịch.", ex);
+            throw new AppException("Chưa kết nối được với MoMo. Hệ thống sẽ kiểm tra trạng thái giao dịch.", HttpStatus.BAD_GATEWAY);
         } catch (InterruptedException ex) {
             Thread.currentThread().interrupt();
-            throw new IllegalStateException("Chưa nhận được phản hồi từ MoMo.", ex);
+            throw new AppException("Chưa nhận được phản hồi từ MoMo.", HttpStatus.BAD_GATEWAY);
         }
     }
 
@@ -199,7 +204,7 @@ public class MoMoPaymentGatewayService {
 
     public void validateInitiation(UUID reservationId, long amount) {
         if (!isConfigured()) {
-            throw new IllegalStateException("Cổng MoMo chưa được cấu hình.");
+            throw new AppException("Cổng MoMo chưa được cấu hình.", HttpStatus.SERVICE_UNAVAILABLE);
         }
         validator.validateCreateRequest(reservationId, amount, properties);
     }
