@@ -297,6 +297,10 @@ class MarketplaceApiClient {
     return this.checkoutRequest(`/bookings/${reservationId}/payment-status`, undefined, signal);
   }
 
+  createVietQrBalance(reservationId: string, signal?: AbortSignal): Promise<import('../types/marketplace').BookingPaymentStatus> {
+    return this.checkoutRequest(`/payments/vietqr/balance/${encodeURIComponent(reservationId)}`, {}, signal);
+  }
+
   resendQrTicketEmail(reservationId: string, recipientEmail: string):
     Promise<{ sentOverSmtp: boolean; detailMessage: string }> {
     return this.checkoutRequest(`/bookings/${reservationId}/resend-qr-email`, { recipientEmail });

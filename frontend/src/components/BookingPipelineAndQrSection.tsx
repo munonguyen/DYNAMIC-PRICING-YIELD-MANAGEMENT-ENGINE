@@ -21,6 +21,7 @@ import { isValidVietnamTaxCode } from '../utils/lessorLegalValidator';
 import { EXPO_EASE, ScrollReveal } from './motionPrimitives';
 import { ActionButton } from './FairwayControls';
 import { CheckoutPaymentQr } from './CheckoutPaymentQr';
+import { CustomerBalancePayment } from './CustomerBalancePayment';
 import { PaymentMethodLogo } from './PaymentMethodLogo';
 
 interface BookingPipelineAndQrSectionProps {
@@ -55,7 +56,7 @@ const stateMessages: Record<BookingPaymentStatus['paymentStatus'], string> = {
   PENDING: 'Đang chờ cổng thanh toán xác nhận.',
   FAILED: 'Giao dịch chưa thành công. Bạn có thể thử lại nếu lượt giữ sân còn hiệu lực.',
   VERIFIED: 'Đã nhận xác nhận thanh toán từ cổng.',
-  NO_DEPOSIT: 'Đã xác nhận đặt sân. Ca này thanh toán tại sân.',
+  NO_DEPOSIT: 'Đã xác nhận đặt sân. Ca này không yêu cầu đặt cọc.',
   EXPIRED: 'Lượt giữ sân đã kết thúc. Hệ thống tiếp tục kiểm tra giao dịch đã gửi.',
   CANCELLED: 'Đơn đặt sân đã hủy.',
   UNVERIFIED: 'Đơn cũ cần đối soát trước khi cấp vé.',
@@ -257,6 +258,15 @@ export const BookingPipelineAndQrSection: React.FC<BookingPipelineAndQrSectionPr
     });
     return () => request.abort();
   }, [ownerId, trackedReservation, issued, statusRequest, cancelResult]);
+
+  useEffect(() => {
+    const onBalanceUpdated = (event: Event) => {
+      const status = (event as CustomEvent<BookingPaymentStatus>).detail;
+      if (status?.reservationId === trackedReservation) setStatusRequest(value => value + 1);
+    };
+    window.addEventListener('arenapulse:balance-updated', onBalanceUpdated);
+    return () => window.removeEventListener('arenapulse:balance-updated', onBalanceUpdated);
+  }, [trackedReservation]);
 
   const handleSendQrEmailNow = async (reservationId: string, targetEmail: string) => {
     if (!targetEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(targetEmail)) {
@@ -994,11 +1004,11 @@ export const BookingPipelineAndQrSection: React.FC<BookingPipelineAndQrSectionPr
                 <div className="flex items-baseline justify-between">
                   <div>
                     <span className="text-xs font-semibold text-[#16422C] block">
-                      {state === 'NO_DEPOSIT' ? 'Đã thu online'
+                      {issued ? 'Đã thu online'
                         : displaysFullPayment ? 'Thanh toán ngay (100% tiền sân)' : `Thanh toán ngay (Cọc ${depositPct}%)`}
                     </span>
                     <span className="text-[11px] text-neutral-400">
-                      {issued && state === 'NO_DEPOSIT' ? 'Thanh toán tại sân' : shownProvider === 'VNPAY_ESCROW' ? 'Qua VNPay'
+                      {issued && state === 'NO_DEPOSIT' ? 'Không yêu cầu cọc' : shownProvider === 'VNPAY_ESCROW' ? 'Qua VNPay'
                         : qrProviders.find(({ code }) => code === shownProvider)?.title}
                     </span>
                   </div>
@@ -1008,7 +1018,7 @@ export const BookingPipelineAndQrSection: React.FC<BookingPipelineAndQrSectionPr
                 </div>
 
                 <div className="flex justify-between text-xs text-neutral-500">
-                  <span>Tiền sân còn lại tại quầy</span>
+                  <span>Tiền sân còn lại</span>
                   <span className="tabular-nums font-semibold text-[#0F172A]">
                     {formatVnd(remainingAtVenue)}
                   </span>
@@ -1056,6 +1066,11 @@ export const BookingPipelineAndQrSection: React.FC<BookingPipelineAndQrSectionPr
                   </ActionButton>
                 )}
               </div>
+
+              {!cancelResult && issued && currentPayment?.reservationStatus === 'CONFIRMED'
+                && currentPayment.remainingAtVenue > 0 && trackedReservation && (
+                  <CustomerBalancePayment key={trackedReservation} reservationId={trackedReservation} />
+              )}
 
               {activePaymentQr && currentPayment?.requestedAmount != null && currentPayment.providerReference && !cancelResult && (
                 <div className="space-y-2.5">

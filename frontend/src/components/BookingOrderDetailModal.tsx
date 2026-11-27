@@ -310,7 +310,7 @@ export const BookingOrderDetailModal: React.FC<BookingOrderDetailModalProps> = (
                     <span className="font-bold text-[#16422C]">−{formatVnd(order.paidEscrow)}</span>
                   </div>
                   <div className="flex items-center justify-between rounded-xl bg-white px-3 py-2 border border-neutral-200/80 mt-1">
-                    <span className="font-bold text-[#0F172A]">Cần thu thêm tại sân:</span>
+                    <span className="font-bold text-[#0F172A]">Còn lại, gồm dịch vụ tại sân</span>
                     <span className="text-sm font-bold text-[#B45309]">
                       {formatVnd(remainingAtVenue)}
                     </span>
