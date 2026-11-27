@@ -1,0 +1,22 @@
+{
+  "branch": "complete/customer/booking-schedule",
+  "title": "Lịch thuê của tôi",
+  "scope": "Xem ca thuê của tài khoản theo tuần và giờ Việt Nam, mở chi tiết ca và vé nhận sân.",
+  "operations": [
+    { "method": "GET", "path": "/api/v1/bookings/my-schedule", "operationId": "mySchedule" }
+  ],
+  "source": [
+    {
+      "file": "src/main/java/com/yieldengine/controller/customer/CustomerBookingController.java",
+      "anchors": ["mySchedule("]
+    },
+    {
+      "file": "src/main/java/com/yieldengine/service/CustomerScheduleService.java",
+      "anchors": ["r.user_id = ?", "r.slot_start < ?"]
+    },
+    {
+      "file": "frontend/src/pages/CustomerSchedulePage.tsx",
+      "anchors": ["getMySchedule(", "Xem vé nhận sân"]
+    }
+  ]
+}
