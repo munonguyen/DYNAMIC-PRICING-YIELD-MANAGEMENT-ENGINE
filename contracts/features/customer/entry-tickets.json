@@ -1,5 +1,5 @@
 {
-  "branch": "service/customer/entry-tickets",
+  "branch": "complete/customer/entry-tickets",
   "title": "Vé nhận sân",
   "scope": "Xem vé, lấy QR và yêu cầu gửi lại email.",
   "operations": [
