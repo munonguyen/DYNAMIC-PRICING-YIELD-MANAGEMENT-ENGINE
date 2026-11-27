@@ -1,5 +1,5 @@
 {
-  "branch": "service/staff/qr-check-in",
+  "branch": "complete/staff/qr-check-in",
   "title": "Quét QR nhận sân",
   "scope": "Xem thông tin vé và xác nhận nhận sân bằng QR.",
   "operations": [
