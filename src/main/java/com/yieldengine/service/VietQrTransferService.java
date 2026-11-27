@@ -1,5 +1,6 @@
 package com.yieldengine.service;
 
+import com.yieldengine.exception.AppException;
 import com.yieldengine.config.VietQrProperties;
 import com.yieldengine.exception.BusinessConflictException;
 import com.yieldengine.exception.ResourceNotFoundException;
@@ -9,6 +10,7 @@ import com.yieldengine.record.ops.VietQrBankNotice;
 import com.yieldengine.repository.PaymentRepository;
 import com.yieldengine.repository.ReservationRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpStatus;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -36,7 +38,7 @@ public class VietQrTransferService {
 
     public void create(CreateQrPaymentRequest request, UUID userId) {
         if (!properties.isConfigured()) {
-            throw new IllegalStateException("VietQR chưa được cấu hình.");
+            throw new AppException("VietQR chưa được cấu hình.", HttpStatus.SERVICE_UNAVAILABLE);
         }
         String order = "AP" + UUID.randomUUID().toString().replace("-", "").substring(0, 11).toUpperCase(Locale.ROOT);
         bookings.beginQrPayment(request, userId, PROVIDER, order);
