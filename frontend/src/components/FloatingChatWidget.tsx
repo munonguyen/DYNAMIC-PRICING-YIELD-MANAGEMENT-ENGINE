@@ -4,6 +4,7 @@ import { marketplaceApi, type VenueConversation, type VenueMessage } from '../ap
 
 interface Props {
   open: boolean;
+  aboveMobileNavigation?: boolean;
   onToggleOpen: (next: boolean) => void;
   activeProviderId: string | null;
   onSelectProviderId: (providerId: string | null) => void;
@@ -14,7 +15,7 @@ interface Props {
 }
 
 export function FloatingChatWidget({
-  open, onToggleOpen, activeProviderId, onSelectProviderId,
+  open, aboveMobileNavigation = false, onToggleOpen, activeProviderId, onSelectProviderId,
   contextListing, listings, activeRole, session,
 }: Props) {
   const venueOperator = activeRole === 'STAFF' || activeRole === 'MANAGER';
@@ -99,15 +100,16 @@ export function FloatingChatWidget({
   }
 
   if (activeRole === 'ADMIN' || activeRole === 'ACCOUNTANT') return null;
+  const bottom = aboveMobileNavigation ? 'bottom-[calc(4rem+env(safe-area-inset-bottom))] md:bottom-6' : 'bottom-6';
   if (!open) {
     return <button type="button" onClick={() => onToggleOpen(true)}
-      className="fixed bottom-6 right-6 z-40 rounded-full bg-[#16422C] px-5 py-3 font-bold text-white shadow-lg">
+      className={`fixed right-6 z-40 rounded-full bg-[#16422C] px-5 py-3 font-bold text-white shadow-lg ${bottom}`}>
       Chat với sân
     </button>;
   }
   return (
     <section aria-label="Chat với sân"
-      className="fixed bottom-6 right-4 z-50 flex max-h-[75vh] w-[min(24rem,calc(100vw-2rem))] flex-col rounded-2xl border border-neutral-200 bg-white shadow-2xl">
+      className={`fixed right-4 z-50 flex max-h-[75vh] w-[min(24rem,calc(100vw-2rem))] flex-col rounded-2xl border border-neutral-200 bg-white shadow-2xl ${bottom}`}>
       <header className="flex items-center justify-between rounded-t-2xl bg-[#16422C] px-4 py-3 font-bold text-white">
         Chat với sân
         <button type="button" aria-label="Đóng chat" onClick={() => onToggleOpen(false)}>✕</button>
