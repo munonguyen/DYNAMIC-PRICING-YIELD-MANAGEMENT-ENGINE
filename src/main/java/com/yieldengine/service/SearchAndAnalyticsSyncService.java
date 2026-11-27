@@ -523,32 +523,59 @@ public class SearchAndAnalyticsSyncService implements ApplicationRunner {
     @Transactional(readOnly = true)
     public List<LessorOrderSummaryDto> loadRecentOrdersFromDb(UUID tenantId, int page, int size) {
         var bounds = CommonTextAndPageUtils.boundedPageable(page, size, 100);
+        return queryVenueOrders("reservations", """
+                WHERE r.tenant_id = ? AND COALESCE(r.pricing_audit->>'source', '') <> 'SEED_V10'
+                ORDER BY r.slot_start DESC, r.id DESC
+                LIMIT ? OFFSET ?
+                """, tenantId, bounds.getPageSize(), bounds.getOffset());
+    }
+
+    List<LessorOrderSummaryDto> loadVenueOrdersForDay(UUID tenantId, Instant dayStart, Instant dayEnd, Instant asOf) {
+        return queryVenueOrders("""
+                (
+                    SELECT * FROM reservations
+                    WHERE tenant_id = ? AND slot_start >= ? AND slot_start < ?
+                    UNION ALL
+                    SELECT overnight.* FROM time_slots previous
+                    JOIN reservations overnight ON overnight.tenant_id = previous.tenant_id
+                        AND overnight.group_id = previous.group_id AND overnight.slot_start = previous.slot_start
+                    WHERE previous.tenant_id = ? AND previous.slot_start < ? AND previous.slot_end > ?
+                )
+                """, """
+                WHERE COALESCE(r.pricing_audit->>'source', '') <> 'SEED_V10'
+                  AND r.status <> 'EXPIRED' AND (r.status <> 'HELD' OR r.hold_expires_at > ?)
+                ORDER BY r.slot_start, r.id
+                """, tenantId, Timestamp.from(dayStart), Timestamp.from(dayEnd),
+                tenantId, Timestamp.from(dayStart), Timestamp.from(dayStart), Timestamp.from(asOf));
+    }
+
+    private List<LessorOrderSummaryDto> queryVenueOrders(String source, String options, Object... args) {
         String sql = """
             SELECT r.id AS res_id, r.group_id, rg.name AS group_name, t.name AS venue_name,
-                   st.name AS sport_name, u.unit_number, r.slot_start, ts.slot_end, r.status, r.created_at,
-                   r.locked_price, r.deposit_amount,
-                   COALESCE(b.contact_name, 'Khách đặt sân') AS customer_name,
+                   st.name AS sport_name, u.unit_number, r.slot_start, r.status, r.created_at,
+                   COALESCE(ts.slot_end, r.slot_start + make_interval(mins => rg.slot_minutes)) AS slot_end,
+                   r.locked_price,
+                   COALESCE(NULLIF(BTRIM(b.contact_name), ''),
+                       NULLIF(BTRIM(CONCAT_WS(' ', customer.first_name, customer.last_name)), ''),
+                       'Khách đặt sân') AS customer_name,
                    COALESCE(b.contact_phone, '') AS customer_phone,
                    COALESCE(p.provider, '—') AS payment_provider,
                    COALESCE(p.amount, 0) AS paid_amt
-            FROM reservations r
+            FROM %s r
             JOIN resource_groups rg ON r.group_id = rg.id
             JOIN tenants t ON r.tenant_id = t.id
             JOIN sport_types st ON rg.sport_type_id = st.id
             JOIN units u ON r.unit_id = u.id
             LEFT JOIN time_slots ts ON ts.group_id = r.group_id AND ts.slot_start = r.slot_start
-            LEFT JOIN bookings b ON r.booking_id = b.id
+            LEFT JOIN bookings b ON r.booking_id = b.id AND b.tenant_id = r.tenant_id
+            LEFT JOIN users customer ON customer.id = COALESCE(r.user_id, b.user_id)
             LEFT JOIN LATERAL (
                 SELECT (array_agg(provider ORDER BY gateway_verified_at DESC))[1] AS provider, sum(amount) AS amount
-                FROM payments WHERE booking_id = r.booking_id AND status = 'SUCCESS'
+                FROM payments WHERE booking_id = r.booking_id AND tenant_id = r.tenant_id AND status = 'SUCCESS'
                     AND gateway_verified_at IS NOT NULL AND payment_type IN ('DEPOSIT', 'FULL_SETTLEMENT', 'BALANCE')
             ) p ON true
-            WHERE r.tenant_id = ? AND COALESCE(r.pricing_audit->>'source', '') <> 'SEED_V10'
-            ORDER BY r.slot_start DESC, r.id DESC
-            LIMIT ? OFFSET ?
-            """;
-
-        Object[] args = {tenantId, bounds.getPageSize(), bounds.getOffset()};
+            %s
+            """.formatted(source, options);
         return jdbcTemplate.query(sql, (rs, i) -> {
             UUID resId = UUID.fromString(rs.getString("res_id"));
             long lockedPrice = rs.getLong("locked_price");
@@ -573,7 +600,7 @@ public class SearchAndAnalyticsSyncService implements ApplicationRunner {
                     formatChannelName(rs.getString("payment_provider")),
                     rs.getString("status"),
                     rs.getTimestamp("created_at").toInstant().atZone(VN_ZONE).format(DateTimeFormatter.ofPattern("dd/MM HH:mm")),
-                    slotStart, rs.getTimestamp("slot_end") == null ? null : rs.getTimestamp("slot_end").toInstant()
+                    slotStart, rs.getTimestamp("slot_end").toInstant()
             );
         }, args);
     }
