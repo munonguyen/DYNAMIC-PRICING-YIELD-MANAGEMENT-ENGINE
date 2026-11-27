@@ -1,5 +1,5 @@
 {
-  "branch": "service/customer/payment-history",
+  "branch": "complete/customer/payment-history",
   "title": "Lịch sử thanh toán",
   "scope": "Đọc lịch sử giao dịch gắn với tài khoản khách.",
   "operations": [
