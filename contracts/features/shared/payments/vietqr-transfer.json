@@ -1,5 +1,5 @@
 {
-  "branch": "service/shared/payments/vietqr-transfer",
+  "branch": "initial/shared/payments/vietqr-transfer",
   "title": "Cổng VietQR",
   "scope": "Tạo mã chuyển khoản VietQR và xử lý xác nhận từ ngân hàng.",
   "operations": [
@@ -33,5 +33,6 @@
         "vietQrTransactionSync("
       ]
     }
-  ]
+  ],
+  "validationPending": "Kiểm chứng chuyển khoản và callback trên sandbox merchant VietQR."
 }
