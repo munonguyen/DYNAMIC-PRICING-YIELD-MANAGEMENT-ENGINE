@@ -1,5 +1,5 @@
 {
-  "branch": "service/admin/venue-governance",
+  "branch": "complete/admin/venue-governance",
   "title": "Quản trị cơ sở đối tác",
   "scope": "Tra cứu cơ sở và cụm sân, kích hoạt hoặc đình chỉ cơ sở.",
   "operations": [
