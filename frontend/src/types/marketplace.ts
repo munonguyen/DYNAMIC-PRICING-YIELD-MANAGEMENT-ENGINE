@@ -436,6 +436,8 @@ export interface LessorBookingOrder {
   createdAtLabel: string;
   dateIso?: string;
   slotHour?: number;
+  slotStart?: string;
+  slotEnd?: string | null;
 }
 
 export interface LessorStaffMember {
