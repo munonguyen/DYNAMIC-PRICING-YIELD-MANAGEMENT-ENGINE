@@ -2,6 +2,7 @@ package com.yieldengine.service;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.yieldengine.exception.AppException;
 import com.yieldengine.config.VnPayProperties;
 import com.yieldengine.record.ops.PaymentWebhookRequest;
 import com.yieldengine.record.vnpay.*;
@@ -22,6 +23,7 @@ import com.yieldengine.service.vnpay.VnPayCryptoCodec;
 import com.yieldengine.validate.VnPayPaymentValidator;
 import com.yieldengine.utils.CryptoHashUtils;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.http.HttpStatus;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -132,7 +134,7 @@ public class VnPayPaymentService {
     @Transactional
     public VnPayPaymentUrlResponse createPaymentUrl(CreateVnPayPaymentRequest request, String clientIp, UUID userId) {
         if (!isConfigured()) {
-            throw new IllegalStateException("Cổng VNPay chưa được cấu hình.");
+            throw new AppException("Cổng VNPay chưa được cấu hình.", HttpStatus.SERVICE_UNAVAILABLE);
         }
         Reservation refreshed = bookingOrchestratorService.prepareGatewayPayment(request.reservationId(), userId);
         long amountVnd = validator.validateAndResolveAmount(request, refreshed);
