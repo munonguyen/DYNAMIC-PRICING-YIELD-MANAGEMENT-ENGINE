@@ -316,7 +316,7 @@ class V3MarketplaceIntegrationTest {
     @Test
     @Order(5)
     @DisplayName("Full E2E Flow: Discovery -> Quote -> Idempotent Hold -> Webhook -> QR Scan -> Double-Entry Ledger & Chat")
-    void testEndToEndBookingDepositQrCheckInChatAndLedger() {
+    void testEndToEndBookingDepositQrCheckInChatAndLedger() throws Exception {
         String suffix = UUID.randomUUID().toString().substring(0, 8);
 
         // 1. Setup Player, Venue1 Staff, Venue2 Staff, and Accountant
@@ -389,6 +389,14 @@ class V3MarketplaceIntegrationTest {
                 .build();
         assertThrows(IdempotencyConflictException.class,
                 () -> bookingOrchestratorService.holdSlot(tamperedHold, idemKey));
+
+        var unavailableMoMo = mvc.perform(MockMvcRequestBuilders.post("/api/v1/payments/momo/create")
+                .header("Authorization", "Bearer " + playerAuth.accessToken())
+                .contentType(org.springframework.http.MediaType.APPLICATION_JSON)
+                .content(JSON.writeValueAsString(Map.of("reservationId", held.getReservationId(), "amount", held.getDepositAmount()))))
+                .andReturn().getResponse();
+        assertEquals(503, unavailableMoMo.getStatus());
+        AuthContext.set(playerPrincipal, playerAuth.accessToken());
 
         // A provider session and browser return leave the booking on hold.
         var paymentRequest = new CreateVnPayPaymentRequest(held.getReservationId(), held.getDepositAmount(),
