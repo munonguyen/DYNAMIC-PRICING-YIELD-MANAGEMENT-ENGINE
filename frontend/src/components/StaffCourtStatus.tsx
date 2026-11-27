@@ -1,22 +1,18 @@
 import { useMemo, useState } from 'react';
 import { CalendarDays, ChevronRight, ExternalLink, RefreshCw, Search, Users } from 'lucide-react';
-import type { LessorBookingOrder, VenueCourt, VenueCourtSnapshot } from '../types/marketplace';
+import type { LessorBookingOrder, VenueCourtSnapshot } from '../types/marketplace';
+import { floorStatuses } from './CourtFloorCanvas';
+import { LiveCourtFloor } from './LiveCourtFloor';
 import { PillSelect } from './FairwayControls';
 
-const courtStatuses = {
-  RENTED: { label: 'Đang thuê', tone: 'border-[#BFDBCC] bg-[#EAF4ED] text-[#16422C]', dot: 'bg-[#287552]' },
-  AWAITING_CHECK_IN: { label: 'Chờ nhận sân', tone: 'border-amber-200 bg-amber-50 text-amber-900', dot: 'bg-amber-600' },
-  PAYMENT_HOLD: { label: 'Giữ chỗ', tone: 'border-sky-200 bg-sky-50 text-sky-900', dot: 'bg-sky-600' },
-  AVAILABLE: { label: 'Chưa được thuê', tone: 'border-slate-200 bg-slate-50 text-slate-700', dot: 'bg-slate-400' },
-  UNAVAILABLE: { label: 'Tạm ngừng', tone: 'border-rose-200 bg-rose-50 text-rose-900', dot: 'bg-rose-600' },
-} satisfies Record<VenueCourt['status'], { label: string; tone: string; dot: string }>;
-
 const bookingStatuses = {
-  ...courtStatuses,
-  CHECKED_IN: { label: 'Đã nhận sân', tone: courtStatuses.RENTED.tone, dot: courtStatuses.RENTED.dot },
-  ENDED: { label: 'Đã qua ca', tone: courtStatuses.AVAILABLE.tone, dot: courtStatuses.AVAILABLE.dot },
-  CANCELLED: { label: 'Đã hủy', tone: courtStatuses.AVAILABLE.tone, dot: courtStatuses.AVAILABLE.dot },
-  NO_SHOW: { label: 'Bỏ lịch', tone: courtStatuses.UNAVAILABLE.tone, dot: courtStatuses.UNAVAILABLE.dot },
+  RENTED: { label: floorStatuses.RENTED.label, tone: floorStatuses.RENTED.tile },
+  CONFIRMED: { label: 'Chờ nhận sân', tone: floorStatuses.AWAITING_CHECK_IN.tile },
+  HELD: { label: 'Chờ thanh toán', tone: floorStatuses.PAYMENT_HOLD.tile },
+  CHECKED_IN: { label: 'Đã nhận sân', tone: 'border-[#B2D1C5] bg-[#DDEDE6] text-[#15473B]' },
+  ENDED: { label: 'Đã qua ca', tone: 'border-slate-200 bg-slate-50 text-slate-700' },
+  CANCELLED: { label: 'Đã hủy', tone: 'border-slate-200 bg-slate-50 text-slate-700' },
+  NO_SHOW: { label: 'Bỏ lịch', tone: 'border-rose-200 bg-rose-50 text-rose-900' },
 };
 const venueTimeZone = 'Asia/Ho_Chi_Minh';
 const localClock = new Intl.DateTimeFormat('vi-VN', {
@@ -28,7 +24,6 @@ const localRefreshClock = new Intl.DateTimeFormat('vi-VN', {
 const localDate = new Intl.DateTimeFormat('sv-SE', { timeZone: venueTimeZone, dateStyle: 'short' });
 const pageSize = 10;
 const guestColumns = 'md:grid-cols-[minmax(0,1.25fr)_minmax(0,1fr)_minmax(0,1.25fr)_8.5rem]';
-const courtStatusesByOrder = Object.entries(courtStatuses) as [VenueCourt['status'], typeof courtStatuses.RENTED][];
 
 function normalizeSearch(value: string) {
   return value.toLocaleLowerCase('vi').normalize('NFD').replace(/\p{Diacritic}/gu, '').replace(/đ/g, 'd');
@@ -37,8 +32,8 @@ function normalizeSearch(value: string) {
 function bookingBadge(order: LessorBookingOrder, updatedAt: number) {
   if (order.status === 'CANCELLED' || order.status === 'NO_SHOW') return bookingStatuses[order.status];
   if (order.slotEnd && Date.parse(order.slotEnd) <= updatedAt) return bookingStatuses.ENDED;
-  if (order.status === 'HELD') return bookingStatuses.PAYMENT_HOLD;
-  if (order.status === 'CONFIRMED') return bookingStatuses.AWAITING_CHECK_IN;
+  if (order.status === 'HELD') return bookingStatuses.HELD;
+  if (order.status === 'CONFIRMED') return bookingStatuses.CONFIRMED;
   return order.slotStart && Date.parse(order.slotStart) <= updatedAt ? bookingStatuses.RENTED : bookingStatuses.CHECKED_IN;
 }
 
@@ -62,11 +57,13 @@ interface StaffCourtStatusProps {
   onOpenSchedule: () => void;
   onOpenVenue?: () => void;
   onOpenOrder: (reservationId: string) => void;
+  onEditFloor?: (groupId: string, groupName: string) => void;
+  showRoster?: boolean;
 }
 
-export function StaffCourtStatus({ snapshot, error, venueName, onRefresh, onOpenSchedule, onOpenVenue, onOpenOrder }: StaffCourtStatusProps) {
-  const [groupId, setGroupId] = useState('ALL');
-  const [courtFilter, setCourtFilter] = useState<VenueCourt['status'] | null>(null);
+export function StaffCourtStatus({ snapshot, error, venueName, onRefresh, onOpenSchedule, onOpenVenue, onOpenOrder, onEditFloor, showRoster = true }: StaffCourtStatusProps) {
+  const [floorGroup, setFloorGroup] = useState('');
+  const [rosterGroup, setRosterGroup] = useState('ALL');
   const [query, setQuery] = useState('');
   const [page, setPage] = useState(1);
 
@@ -78,30 +75,16 @@ export function StaffCourtStatus({ snapshot, error, venueName, onRefresh, onOpen
     return [...entries].sort((a, b) => a[1].localeCompare(b[1], 'vi'));
   }, [snapshot]);
 
-  const { courts, bookings, bookingById, counts } = useMemo(() => {
-    const scopedCourts = snapshot?.courts.filter(court => groupId === 'ALL' || court.groupId === groupId) ?? [];
-    const allBookings = snapshot?.bookings ?? [];
-    const bookingById = new Map(allBookings.map(order => [order.reservationId, order]));
+  const activeGroup = groups.find(([id]) => id === floorGroup) ?? groups[0];
+  const activeGroupId = activeGroup?.[0];
+  const courts = useMemo(() => snapshot?.courts.filter(court => court.groupId === activeGroupId) ?? [],
+    [snapshot, activeGroupId]);
+  const bookingById = useMemo(() => new Map(snapshot?.bookings.map(order => [order.reservationId, order])), [snapshot]);
+  const bookings = useMemo(() => {
     const queryText = normalizeSearch(query.trim());
-    const counts = { RENTED: 0, AWAITING_CHECK_IN: 0, PAYMENT_HOLD: 0, AVAILABLE: 0, UNAVAILABLE: 0 };
-    for (const court of scopedCourts) counts[court.status]++;
-    return {
-      courts: scopedCourts.filter(court => !courtFilter || court.status === courtFilter),
-      bookings: allBookings.filter(order => (groupId === 'ALL' || order.groupId === groupId)
-        && normalizeSearch(`${order.customerName} ${order.customerPhone?.slice(-4) ?? ''} ${order.orderId} ${order.unitNumber}`).includes(queryText)),
-      bookingById, counts,
-    };
-  }, [snapshot, groupId, courtFilter, query]);
-
-  const courtsByGroup = useMemo(() => {
-    const grouped = new Map<string, VenueCourt[]>();
-    for (const court of courts) {
-      const group = grouped.get(court.groupId);
-      if (group) group.push(court);
-      else grouped.set(court.groupId, [court]);
-    }
-    return grouped;
-  }, [courts]);
+    return snapshot?.bookings.filter(order => (rosterGroup === 'ALL' || order.groupId === rosterGroup)
+      && normalizeSearch(`${order.customerName} ${order.customerPhone?.slice(-4) ?? ''} ${order.orderId} ${order.unitNumber}`).includes(queryText)) ?? [];
+  }, [snapshot, rosterGroup, query]);
 
   const pageCount = Math.max(1, Math.ceil(bookings.length / pageSize));
   const currentPage = Math.min(page, pageCount);
@@ -112,7 +95,7 @@ export function StaffCourtStatus({ snapshot, error, venueName, onRefresh, onOpen
       <section aria-label="Trạng thái sân hiện tại" className="rounded-[24px] border border-[#DEE9E1] bg-white shadow-xs">
         <header className="flex flex-wrap items-center justify-between gap-3 border-b border-[#E1EBE4] px-4 py-4 sm:px-6">
           <div>
-            <h2 className="text-lg font-bold tracking-tight text-[#15382A] sm:text-xl">Trạng thái sân hiện tại</h2>
+            <h2 className="text-lg font-bold tracking-tight text-[#15382A] sm:text-xl">Sơ đồ quản lý sân</h2>
             <p className="mt-0.5 hidden text-sm text-[#426154] lg:block">{venueName}</p>
             <p className="mt-0.5 text-xs text-slate-600">
               {snapshot && <><time dateTime={snapshot.updatedAt}>Cập nhật lúc {localRefreshClock.format(refreshedAt)}</time> · </>}
@@ -141,55 +124,22 @@ export function StaffCourtStatus({ snapshot, error, venueName, onRefresh, onOpen
             {snapshot ? 'Chưa làm mới được. Dữ liệu hiển thị là lần cập nhật gần nhất.' : error}
           </p>}
           {!snapshot && !error && <p role="status" className="text-sm text-slate-600">Đang tải danh sách sân và khách đặt…</p>}
-          {snapshot && (
+          {snapshot && (activeGroup ? (
             <>
-              <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-5">
-                {courtStatusesByOrder.map(([status, style]) => (
-                  <button key={status} type="button" aria-pressed={status === courtFilter}
-                    onClick={() => setCourtFilter(current => current === status ? null : status)}
-                    className={`rounded-xl border p-3 text-left hover:brightness-[0.97] ${style.tone} ${status === courtFilter ? 'ring-2 ring-[#2A7350]/50' : ''}`}>
-                    <span className="block text-xl font-bold tabular-nums">{counts[status]}</span>
-                    <span className="text-xs font-semibold">{style.label}</span>
-                  </button>
-                ))}
+              <div className="max-w-md">
+                <PillSelect variant="soft" ariaLabel="Chọn cụm sân trên sơ đồ" value={activeGroup[0]} onChange={setFloorGroup}
+                  options={groups.map(([id, name]) => ({ value: id, label: name }))} />
               </div>
-              <div className="max-w-sm">
-                <PillSelect variant="soft" ariaLabel="Lọc sân và khách theo cụm" value={groupId}
-                  onChange={value => { setGroupId(value); setPage(1); }}
-                  options={[{ value: 'ALL', label: 'Tất cả cụm sân' }, ...groups.map(([id, name]) => ({ value: id, label: name }))]} />
-              </div>
-              {courts.length === 0 && <p className="text-sm text-slate-600">Không có sân khớp với bộ lọc.</p>}
-              {[...courtsByGroup].map(([id, group]) => (
-                <div key={id} className="border-t border-[#E6EEE8] pt-3">
-                  <h3 className="mb-2 text-sm font-bold text-[#15382A]">{group[0].groupName}</h3>
-                  <ul className="grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-4">
-                    {group.map(court => {
-                      const style = courtStatuses[court.status];
-                      const order = court.reservationId ? bookingById.get(court.reservationId) : undefined;
-                      return (
-                        <li key={court.id} className="min-w-0 rounded-xl border border-[#E2EAE4] p-3">
-                          <p className="font-bold text-[#15382A]">{court.unitNumber}</p>
-                          <span className={`mt-1 inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-xs font-semibold ${style.tone}`}>
-                            <span aria-hidden="true" className={`h-1.5 w-1.5 shrink-0 rounded-full ${style.dot}`} />{style.label}
-                          </span>
-                          {order && (
-                            <button type="button" onClick={() => onOpenOrder(order.reservationId)}
-                              className="mt-1.5 flex min-h-8 w-full items-center gap-1 text-left text-xs font-semibold text-[#24593F] hover:underline">
-                              <span className="min-w-0 break-words">{order.customerName}</span><ChevronRight aria-hidden="true" size={13} className="shrink-0" />
-                            </button>
-                          )}
-                        </li>
-                      );
-                    })}
-                  </ul>
-                </div>
-              ))}
+              <LiveCourtFloor key={activeGroup[0]} courts={courts}
+                layout={snapshot.layouts.find(layout => layout.groupId === activeGroup[0])}
+                bookings={bookingById} bookingTime={order => bookingTime(order, snapshot.today)} onOpenOrder={onOpenOrder}
+                onEdit={onEditFloor ? () => onEditFloor(...activeGroup) : undefined} />
             </>
-          )}
+          ) : <p className="text-sm text-slate-600">Cơ sở chưa có cụm sân để hiển thị.</p>)}
         </div>
       </section>
 
-      {snapshot && (
+      {snapshot && showRoster && (
         <section aria-label="Khách đặt sân hôm nay" className="overflow-hidden rounded-[24px] border border-[#DEE9E1] bg-white shadow-xs">
           <header className="flex flex-wrap items-center justify-between gap-3 border-b border-[#E1EBE4] px-4 py-4 sm:px-6">
             <div>
@@ -198,12 +148,17 @@ export function StaffCourtStatus({ snapshot, error, venueName, onRefresh, onOpen
               </h2>
               <p className="mt-0.5 text-xs text-slate-600"><time dateTime={snapshot.today}>{snapshot.today.split('-').reverse().join('/')}</time> · {bookings.length} ca</p>
             </div>
-            <label className="relative w-full sm:w-64">
-              <Search aria-hidden="true" size={15} className="pointer-events-none absolute left-3 top-3 text-slate-500" />
-              <input type="search" value={query} onChange={event => { setQuery(event.target.value); setPage(1); }}
-                aria-label="Tìm khách đặt sân" placeholder="Tên khách, mã đơn, 4 số cuối SĐT"
-                className="min-h-10 w-full rounded-xl border border-[#DDE8E1] bg-[#F8FBF9] pl-9 pr-3 text-xs text-slate-900" />
-            </label>
+            <div className="grid w-full gap-2 sm:w-auto sm:grid-cols-[minmax(0,13rem)_16rem]">
+              <PillSelect variant="soft" ariaLabel="Lọc danh sách khách theo cụm" value={rosterGroup}
+                onChange={value => { setRosterGroup(value); setPage(1); }}
+                options={[{ value: 'ALL', label: 'Tất cả cụm sân' }, ...groups.map(([id, name]) => ({ value: id, label: name }))]} />
+              <label className="relative">
+                <Search aria-hidden="true" size={15} className="pointer-events-none absolute left-3 top-3 text-slate-500" />
+                <input type="search" value={query} onChange={event => { setQuery(event.target.value); setPage(1); }}
+                  aria-label="Tìm khách đặt sân" placeholder="Tên khách, mã đơn, 4 số cuối SĐT"
+                  className="min-h-10 w-full rounded-xl border border-[#DDE8E1] bg-[#F8FBF9] pl-9 pr-3 text-xs text-slate-900" />
+              </label>
+            </div>
           </header>
           <div aria-hidden="true" className={`hidden gap-3 bg-[#F8FBF9] px-6 py-2.5 text-xs font-semibold text-[#426154] md:grid ${guestColumns}`}>
             <span>Khách đặt</span><span>Giờ thuê</span><span>Sân</span><span>Trạng thái</span>

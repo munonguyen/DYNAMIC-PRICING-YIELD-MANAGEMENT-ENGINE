@@ -432,6 +432,37 @@ export interface VenueCourtSnapshot {
   today: string;
   courts: VenueCourt[];
   bookings: LessorBookingOrder[];
+  layouts: CourtFloorLayout[];
+}
+
+export interface CourtFloorPlacement {
+  unitId: string;
+  label: string;
+  xCm: number;
+  yCm: number;
+  widthCm: number;
+  lengthCm: number;
+}
+
+export interface CourtFloorDraft {
+  widthCm: number;
+  lengthCm: number;
+  placements: CourtFloorPlacement[];
+  version: number;
+}
+
+export interface CourtFloorLayout extends CourtFloorDraft {
+  groupId: string;
+}
+
+export interface CourtFloorUnit {
+  id: string;
+  unitNumber: string;
+}
+
+export interface CourtFloorEditorData {
+  layout: CourtFloorLayout | null;
+  units: CourtFloorUnit[];
 }
 
 export interface LessorStaffMember {
